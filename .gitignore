@@ -1,0 +1,16 @@
+# Directories
+.vs/
+bin/
+
+# Files
+*.vcxproj
+*.vcxproj.user
+*.vcxproj.filters
+*.sln
+*.log
+Makefile
+NeraChessApp/imgui.ini
+
+# Exclude
+!vendor
+!NeraChessApp/vendor
