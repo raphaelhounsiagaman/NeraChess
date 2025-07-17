@@ -721,8 +721,21 @@ static void DemoWindowMenuBar(ImGuiDemoWindowData* demo_data)
     {
         if (ImGui::BeginMenu("Menu"))
         {
-            IMGUI_DEMO_MARKER("Menu/File");
+            //IMGUI_DEMO_MARKER("Menu/File");
             ShowExampleMenuFile();
+            ImGui::EndMenu();
+        }
+        if (ImGui::BeginMenu("Suiiii"))
+        {
+            ImGui::MenuItem("(demo menu)", NULL, false, false);
+            ImGui::SeparatorText("Mini apps");
+            if (ImGui::MenuItem("New")) {}
+            if (ImGui::MenuItem("Open", "Ctrl+O")) {}
+            if (ImGui::BeginMenu("Open Recent"))
+            {
+                ImGui::EndMenu();
+            }
+
             ImGui::EndMenu();
         }
         if (ImGui::BeginMenu("Examples"))

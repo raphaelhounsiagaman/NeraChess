@@ -25,12 +25,14 @@ project "NeraChessApp"
 	    "../NeraChessCore/src",
 
         "vendor/SDL2/include",
+        "vendor/SDL2_image/include",
         "vendor/DearImGui"
     }
 
     libdirs
     {
-        "vendor/SDL2/lib"
+        "vendor/SDL2/lib",
+        "vendor/SDL2_image/lib"
     }
 
     links
@@ -38,7 +40,13 @@ project "NeraChessApp"
         "NeraChessCore",
         
         "SDL2",
-        "SDL2main"
+        "SDL2main",
+        "SDL2_image"
+    }
+
+    defines
+    {
+        "SDL_MAIN_HANDLED"
     }
 
     filter "system:windows"
