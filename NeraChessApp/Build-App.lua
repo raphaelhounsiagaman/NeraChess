@@ -49,6 +49,9 @@ project "NeraChessApp"
         "SDL_MAIN_HANDLED"
     }
 
+
+    -- SYSTEM SPECIFICS
+
     filter "system:windows"
         systemversion "latest"
         defines { "WINDOWS" }
@@ -60,7 +63,18 @@ project "NeraChessApp"
     filter "system:macosx"
         links { "OpenGL.framework" } -- opengl stuff
 
+    -- COMPILER SPECIFICS
 
+    filter "toolset:gcc"
+        defines { "USING_GCC" }
+
+    filter "toolset:clang"
+        defines { "USING_CLANG" }
+
+    filter "toolset:msc" 
+        defines { "USING_MSVC" }
+
+    -- CONFIG SPECIFICS
 
     filter "configurations:Debug" 
         defines { "DEBUG" }
@@ -78,3 +92,5 @@ project "NeraChessApp"
         runtime "Release"
         optimize "On"
         symbols "Off"
+    filter {}
+    

@@ -5,6 +5,8 @@
 #include "InputHandler.h"
 #include "Renderer.h"
 
+#include "MoveGenerator.h"
+
 Application::Application()
 {
 	m_Running = true;
@@ -18,10 +20,15 @@ Application::Application()
 
 void Application::Run()
 {	
-	
+	Bitboard showBoard = 0ULL;
+	int selected = 0;
+
+	std::vector<Move> moves = m_ChessBoard.GetLegalMoves();
+
 	while (m_Running)
 	{
 		m_InputHandler.Process();
+
 
 		InputEvent event;
 		while (m_InputHandler.PollInputEvent(&event))
@@ -34,13 +41,28 @@ void Application::Run()
 				case EventTypeWindowResize:
 					m_Renderer.UpdateWindowSize();
 					break;
+				case EventTypeKeyPressed:
+					selected++;
+					if (selected > 63)
+						selected = 0;
+					showBoard = 0;
+
+					for (Move move : moves)
+					{
+						if (move.startSquare == selected)
+						{
+							showBoard |= (1ULL << move.targetSquare);
+						}
+					}
+
+					break;
 				default:
 					break;
 
 			}
 		}
 
-
+		m_Renderer.SetBitboard(showBoard);
 		m_Renderer.Render();
 	}
 }

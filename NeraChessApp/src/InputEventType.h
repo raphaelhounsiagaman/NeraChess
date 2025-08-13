@@ -10,4 +10,6 @@ enum InputEventType : uint16_t
 
 	EventTypeWindowResize,
 
+	EventTypeKeyPressed,
+
 };

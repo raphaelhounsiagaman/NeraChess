@@ -159,50 +159,47 @@ void Renderer::DrawChessBoard()
                 SDL_SetRenderDrawColor(m_SDLRenderer, m_BoardWhite.r, m_BoardWhite.g, m_BoardWhite.b, m_BoardWhite.a) :
                 SDL_SetRenderDrawColor(m_SDLRenderer, m_BoardBlack.r, m_BoardBlack.g, m_BoardBlack.b, m_BoardBlack.a);
 
+            if (m_DebugBitboard && ((m_DebugBitboard >> (rank * 8 + file)) & 1U))
+                (rank + file) % 2 == 0 ?
+                    SDL_SetRenderDrawColor(m_SDLRenderer, m_DebugWhite.r, m_DebugWhite.g, m_DebugWhite.b, m_DebugWhite.a) :
+                    SDL_SetRenderDrawColor(m_SDLRenderer, m_DebugBlack.r, m_DebugBlack.g, m_DebugBlack.b, m_DebugBlack.a);
+
             SDL_Rect tile = { file * m_TileSize + m_Margin, (7 - rank) * m_TileSize + m_Margin, m_TileSize, m_TileSize };
             SDL_RenderFillRect(m_SDLRenderer, &tile);
 
             Piece piece = m_ChessBoard->GetPiece(rank * 8 + file);
 
-            if (piece.pieceType == PieceTypeFlags::NO_PIECE)
+            if (piece.pieceType == (uint8_t)PieceType::NO_PIECE)
                 continue;
 
             SDL_Rect source;
 
-            if (piece.pieceType & PieceTypeFlags::WHITE_PIECE) {
-
-                source =
-                    piece.IsType(PieceTypeFlags::PAWN) ?
-                    m_WhitePawn :
-                    piece.IsType(PieceTypeFlags::KNIGHT) ?
-                    m_WhiteKnight :
-                    piece.IsType(PieceTypeFlags::BISHOP) ?
-                    m_WhiteBishop :
-                    piece.IsType(PieceTypeFlags::ROOK) ?
-                    m_WhiteRook :
-                    piece.IsType(PieceTypeFlags::QUEEN) ?
-                    m_WhiteQueen :
-                    piece.IsType(PieceTypeFlags::KING) ?
-                    m_WhiteKing :
-                    SDL_Rect{};
-            }
-            else if (piece.pieceType & PieceTypeFlags::BLACK_PIECE)
-            {
-                source =
-                    piece.IsType(PieceTypeFlags::PAWN) ?
-                    m_BlackPawn :
-                    piece.IsType(PieceTypeFlags::KNIGHT) ?
-                    m_BlackKnight :
-                    piece.IsType(PieceTypeFlags::BISHOP) ?
-                    m_BlackBishop :
-                    piece.IsType(PieceTypeFlags::ROOK) ?
-                    m_BlackRook :
-                    piece.IsType(PieceTypeFlags::QUEEN) ?
-                    m_BlackQueen :
-                    piece.IsType(PieceTypeFlags::KING) ?
-                    m_BlackKing :
-                    SDL_Rect{};
-            }
+            source =
+                piece.pieceType == (uint8_t)PieceType::WHITE_PAWN ?
+                m_WhitePawn :
+                piece.pieceType == (uint8_t)PieceType::WHITE_KNIGHT ?
+                m_WhiteKnight :
+                piece.pieceType == (uint8_t)PieceType::WHITE_BISHOP ?
+                m_WhiteBishop :
+                piece.pieceType == (uint8_t)PieceType::WHITE_ROOK ?
+                m_WhiteRook :
+                piece.pieceType == (uint8_t)PieceType::WHITE_QUEEN ?
+                m_WhiteQueen :
+                piece.pieceType == (uint8_t)PieceType::WHITE_KING ?
+                m_WhiteKing :
+                piece.pieceType == (uint8_t)PieceType::BLACK_PAWN ?
+                m_BlackPawn :
+                piece.pieceType == (uint8_t)PieceType::BLACK_KNIGHT ?
+                m_BlackKnight :
+                piece.pieceType == (uint8_t)PieceType::BLACK_BISHOP ?
+                m_BlackBishop :
+                piece.pieceType == (uint8_t)PieceType::BLACK_ROOK ?
+                m_BlackRook :
+                piece.pieceType == (uint8_t)PieceType::BLACK_QUEEN ?
+                m_BlackQueen :
+                piece.pieceType == (uint8_t)PieceType::BLACK_KING ?
+                m_BlackKing :
+                SDL_Rect{ 0, 0, 0, 0};
 
             SDL_RenderCopy(m_SDLRenderer, m_ChessSprites, &source, &tile);
         }
@@ -232,6 +229,8 @@ void Renderer::ImGuiWindow()
 	static bool test_checkbox = true;
 
 	ImGui::Checkbox("Test Checkbox", &test_checkbox);
+
+    //ImGui::InputInt("input int", &i0);
 
     ImGui::End();
 }

@@ -31,6 +31,10 @@ void InputHandler::Process()
 		{
 			m_InputEvents.emplace_back(EventTypeWindowResize);
 		}
+		else if (event.type == SDL_KEYDOWN)
+		{
+			m_InputEvents.emplace_back(EventTypeKeyPressed);
+		}
 
     }
 }

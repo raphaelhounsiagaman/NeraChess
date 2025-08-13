@@ -41,3 +41,4 @@ project "NeraChessCore"
         runtime "Release"
         optimize "On"
         symbols "Off"
+    filter {}

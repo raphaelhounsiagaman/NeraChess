@@ -7,5 +7,4 @@
 struct InputEvent
 {
 	uint16_t type = EventTypeNone;
-
 };
