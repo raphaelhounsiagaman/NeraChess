@@ -378,10 +378,10 @@ std::array<std::array<int, 8>, 64> MoveGenerator::InitSquaresToEdge()
 		array[squareIndex][1] = south;
 		array[squareIndex][2] = west;
 		array[squareIndex][3] = east;
-		array[squareIndex][4] = std::min(north, west);
+		array[squareIndex][4] = std::min(north, east);
 		array[squareIndex][5] = std::min(south, east);
-		array[squareIndex][6] = std::min(north, east);
-		array[squareIndex][7] = std::min(south, west);
+		array[squareIndex][6] = std::min(south, west);
+		array[squareIndex][7] = std::min(north, west);
 	}
 
 	return array;
@@ -435,12 +435,17 @@ std::array<std::array<Bitboard, 64>, 64> MoveGenerator::InitAlignMask()
 	return array;
 }
 
-const std::array<int, 8> MoveGenerator::s_DirectionOffsets = { 8, -8, -1, 1, 7, -7, 9, -9 };
+const std::array<int, 8> MoveGenerator::s_DirectionOffsets = { 8, 1, -8, -1, 9, -7, -9, 7 };
 const std::array<std::array<int, 2>, 8>  MoveGenerator::s_DirectionOffsets2D =
 { {
-	{-1, 1}, { 0, 1}, { 1, 1},
-	{-1, 0},          { 1, 0},
-	{-1,-1}, { 0,-1}, { 1,-1}
+	{ 0, 1 }, // NORTH
+	{ 1, 0 }, // EAST
+	{ 0,-1 }, // SOUTH
+	{-1, 0 }, // WEST
+	{ 1, 1 }, // NORTH-EAST
+	{ 1,-1 }, // SOUTH-EAST
+	{-1,-1 }, // SOUTH-WEST
+	{-1, 1 }  // NORTH-WEST
 } };
 
 const std::array<uint8_t, 64> MoveGenerator::s_RookShifts = { 52, 53, 53, 53, 53, 53, 53, 52, 53, 54, 54, 54, 54, 54, 54, 53, 53, 54, 54, 54, 54, 54, 54, 53, 53, 54, 54, 54, 54, 54, 54, 53, 53, 54, 54, 54, 54, 54, 54, 53, 53, 54, 54, 54, 54, 54, 54, 53, 53, 54, 54, 54, 54, 54, 54, 53, 52, 53, 53, 52, 52, 53, 53, 52 };
@@ -670,7 +675,7 @@ void MoveGenerator::CalculateAttackMaps()
 
 	m_NotPinRays = ~m_PinRays;
 
-	Bitboard opponentKnightAttacks = 0;
+	m_OpponentKnightAttacks = 0ULL;
 	Bitboard knights = m_OpponentKnights;
 	Bitboard friendlyKingBoard = m_FriendlyKing;
 
@@ -678,7 +683,7 @@ void MoveGenerator::CalculateAttackMaps()
 	{
 		int knightSquare = BitUtil::PopLSB(knights);
 		Bitboard knightAttacks = s_KnightMoveMask[knightSquare];
-		opponentKnightAttacks |= knightAttacks;
+		m_OpponentKnightAttacks |= knightAttacks;
 
 		if ((knightAttacks & friendlyKingBoard) != 0)
 		{
@@ -1134,7 +1139,7 @@ PieceType MoveGenerator::GetPiece(uint8_t square)
 
 bool MoveGenerator::IsPinned(int square) const
 {
-	return ((m_PinRays >> square) & 1) != 0;
+	return ((m_PinRays >> square) & 1ULL) != 0;
 }
 
 bool MoveGenerator::InCheckAfterEnPassant(int startSquare, int targetSquare, int epCaptureSquare)

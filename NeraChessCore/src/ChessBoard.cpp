@@ -7,7 +7,7 @@
 #include <string>
 #include <vector>
 
-#include "ChessBoardFlags.h"
+#include "GameOverFlags.h"
 
 #include "MoveGenerator.h"
 
@@ -18,6 +18,9 @@
 
 ChessBoard::ChessBoard(const std::string& fen)
 {
+
+	m_MovesPlayed.reserve(100);
+
 	std::istringstream fenStream(fen);
 	std::string part;
 	std::vector<std::string> fenParts;
@@ -139,8 +142,8 @@ ChessBoard::ChessBoard(const std::string& fen)
 
 	if (fenParts[3][0] != '-')
 	{
-		uint8_t file = fenParts[3][1] - 'a';
-		uint8_t rank = fenParts[3][0] - '1';
+		uint8_t file = fenParts[3][0] - 'a';
+		uint8_t rank = fenParts[3][1] - '1';
 
 		if (file > 7 || rank > 7)
 		{
@@ -182,6 +185,8 @@ Piece ChessBoard::GetPiece(const uint8_t square) const
 
 std::vector<Move> ChessBoard::GetLegalMoves() const
 {
+	if (m_GameOverFlags & (uint8_t)GameOverFlags::IS_GAME_OVER)
+		return {};
 	return m_MoveGenerator.GenerateMoves(m_BoardState);
 }
 
@@ -193,51 +198,105 @@ void ChessBoard::MakeMove(Move move)
 		return;
 	}
 
-	m_HalfMoveClock++;
-
 	bool whitesMove = move.movePieceType.IsWhite();
-	if (!whitesMove)
-		m_FullMoves++;
-
 
 	// remove the piece from the start square
 	m_BoardState.pieceBitboards[move.movePieceType.pieceType] &= ~(1ULL << move.startSquare);
+	m_BoardState.pieceBitboards[move.movePieceType.pieceType] |= (1ULL << move.targetSquare);
+
+	if (move.movePieceType.pieceType == (uint8_t)PieceType::WHITE_KING && m_FirstWhiteKingMove == 0)
+	{
+		m_FirstWhiteKingMove = m_FullMoves;
+	}
+	else if (move.movePieceType.pieceType == (uint8_t)PieceType::BLACK_KING && m_FirstBlackKingMove == 0)
+	{
+		m_FirstBlackKingMove = m_FullMoves;
+	}
+
+	if (move.movePieceType.pieceType == (uint8_t)PieceType::WHITE_ROOK)
+	{
+
+		if (move.startSquare == 0 && m_FirstWhiteQueenRookMove == 0)
+		{
+			m_FirstWhiteQueenRookMove = m_FullMoves;
+		}
+		else if (move.startSquare == 7 && m_FirstWhiteKingRookMove == 0)
+		{
+			m_FirstWhiteKingRookMove = m_FullMoves;
+		}
+
+	}
+	else if (move.movePieceType.pieceType == (uint8_t)PieceType::BLACK_ROOK)
+	{
+
+		if (move.startSquare == 56 && m_FirstBlackQueenRookMove == 0)
+		{
+			m_FirstBlackQueenRookMove = m_FullMoves;
+		}
+		else if (move.startSquare == 63 && m_FirstBlackKingRookMove == 0)
+		{
+			m_FirstBlackKingRookMove = m_FullMoves;
+		}
+	}
+
 
 	if (move.moveFlags & (uint8_t)MoveFlags::IS_CASTLES)
 	{
+
+		bool queenSide = ChessUtil::SquareToFile(move.targetSquare) == 2;
 
 		if (whitesMove)
 		{
 			m_BoardState.boardStateFlags &= ~(uint8_t)BoardStateFlags::CanWhiteCastleKing;
 			m_BoardState.boardStateFlags &= ~(uint8_t)BoardStateFlags::CanWhiteCastleQueen;
+
+			if (queenSide)
+			{
+				if (m_FirstWhiteQueenRookMove == 0)
+					m_FirstWhiteQueenRookMove = m_FullMoves;
+
+				m_BoardState.pieceBitboards[(uint8_t)PieceType::WHITE_ROOK] &= ~(1ULL <<  0); // Remove the rook from the old square
+				m_BoardState.pieceBitboards[(uint8_t)PieceType::WHITE_ROOK] |= (1ULL << 3); // Move the rook to the correct square
+			}
+			else
+			{
+				if (m_FirstWhiteKingRookMove == 0)
+					m_FirstWhiteKingRookMove = m_FullMoves;
+
+				m_BoardState.pieceBitboards[(uint8_t)PieceType::WHITE_ROOK] &= ~(1ULL << 7); // Remove the rook from the old square
+				m_BoardState.pieceBitboards[(uint8_t)PieceType::WHITE_ROOK] |= (1ULL << 5); // Move the rook to the correct square
+			}
+			
+			
 		}
 		else
 		{
 			m_BoardState.boardStateFlags &= ~(uint8_t)BoardStateFlags::CanBlackCastleKing;
 			m_BoardState.boardStateFlags &= ~(uint8_t)BoardStateFlags::CanBlackCastleQueen;
-		}
 
+			if (queenSide)
+			{
+				if (m_FirstBlackQueenRookMove == 0)
+					m_FirstBlackQueenRookMove = m_FullMoves;
 
-		bool queenSide = ChessUtil::SquareToFile(move.targetSquare) == 2;
+				m_BoardState.pieceBitboards[(uint8_t)PieceType::BLACK_ROOK] &= ~(1ULL << 56); // Remove the rook from the old square
+				m_BoardState.pieceBitboards[(uint8_t)PieceType::BLACK_ROOK] |= (1ULL << 59); // Move the rook to the correct square
+			}
+			else
+			{
+				if (m_FirstBlackKingRookMove == 0)
+					m_FirstBlackKingRookMove = m_FullMoves;
 
+				m_BoardState.pieceBitboards[(uint8_t)PieceType::BLACK_ROOK] &= ~(1ULL << 63); // Remove the rook from the old square
+				m_BoardState.pieceBitboards[(uint8_t)PieceType::BLACK_ROOK] |= (1ULL << 61); // Move the rook to the correct square
+			}
+			
 
-		m_BoardState.pieceBitboards[move.movePieceType.pieceType] |= (1ULL << move.targetSquare);
-
-		if (whitesMove)
-		{
-			m_BoardState.pieceBitboards[(uint8_t)PieceType::WHITE_ROOK] &= ~(1ULL << (queenSide ? 0 : 7)); // Remove the rook from the old square
-			m_BoardState.pieceBitboards[(uint8_t)PieceType::WHITE_ROOK] |= (1ULL << (queenSide ? 3 : 5)); // Move the rook to the correct square
-		}
-		else
-		{
-			m_BoardState.pieceBitboards[(uint8_t)PieceType::BLACK_ROOK] &= ~(1ULL << (queenSide ? 56 : 63)); // Remove the rook from the old square
-			m_BoardState.pieceBitboards[(uint8_t)PieceType::BLACK_ROOK] |= (1ULL << (queenSide ? 59 : 61)); // Move the rook to the correct square
 		}
 		
 	}
 	if (move.moveFlags & (uint8_t)MoveFlags::PAWN_TWO_UP)
 	{
-		m_BoardState.pieceBitboards[move.movePieceType.pieceType] |= (1ULL << move.targetSquare);
 		m_BoardState.boardStateFlags |= (uint8_t)BoardStateFlags::CanEnPassent;
 		m_BoardState.enPassentFile = move.targetSquare % 8; // Set the en passant file to the file of the target square
 	}
@@ -248,7 +307,6 @@ void ChessBoard::MakeMove(Move move)
 	}
 	if (move.moveFlags & (uint8_t)MoveFlags::IS_CAPTURE)
 	{
-		m_BoardState.pieceBitboards[move.movePieceType.pieceType] |= (1ULL << move.targetSquare);
 		m_BoardState.pieceBitboards[move.capturePieceType.pieceType] &= ~(1ULL << move.targetSquare);
 		if (move.moveFlags & (uint8_t)MoveFlags::IS_EN_PASSANT)
 		{
@@ -265,9 +323,327 @@ void ChessBoard::MakeMove(Move move)
 	
 	m_BoardState.boardStateFlags ^= (uint8_t)BoardStateFlags::WhiteToMove; // Toggle the turn
 
+	m_MovesPlayed.push_back(move); // Store the move in the history
 
-	// TODO: Check if game is over
 
+	m_HalfMoveClock++;
 
+	if (!whitesMove)
+		m_FullMoves++;
+
+	MoveGenerator generator{};
+	std::vector<Move> moves = generator.GenerateMoves(m_BoardState);
+
+	// CheckMate and Stalemate
+	if (moves.size() == 0)
+	{
+		if (generator.InCheck())
+		{
+			m_GameOverFlags |= (uint8_t)GameOverFlags::IS_GAME_OVER;
+			m_GameOverFlags |= (uint8_t)GameOverFlags::IS_CHECKMATE;
+			return;
+		}
+		m_GameOverFlags |= (uint8_t)GameOverFlags::IS_GAME_OVER;
+		m_GameOverFlags |= (uint8_t)GameOverFlags::IS_STALEMATE;
+		return;
+	}
+
+	// Fifty move rule
+	if (m_HalfMoveClock >= 100)
+	{
+		m_GameOverFlags |= (uint8_t)GameOverFlags::IS_GAME_OVER;
+		m_GameOverFlags |= (uint8_t)GameOverFlags::IS_50MOVE_RULE;
+		return;
+	}
+
+	// Threefold repetition
+	int repCount = 2;//board.RepetitionPositionHistory.Count((x = > x == board.currentGameState.zobristKey));
+	if (repCount == 3)
+	{
+		m_GameOverFlags |= (uint8_t)GameOverFlags::IS_GAME_OVER;
+		m_GameOverFlags |= (uint8_t)GameOverFlags::IS_REPETITION;
+		return;
+	}
+
+	// Look for insufficient material
+	if (InsufficentMaterial(*this))
+	{
+		m_GameOverFlags |= (uint8_t)GameOverFlags::IS_GAME_OVER;
+		m_GameOverFlags |= (uint8_t)GameOverFlags::IS_INSUFFICIENT_MATERIAL;
+		return;
+	}
 
 }
+
+
+void ChessBoard::UndoMove(Move move)
+{
+
+	if (!(move.moveFlags & (uint8_t)MoveFlags::IS_VALID))
+	{
+		m_Error = 1;
+		return;
+	}
+	if (m_MovesPlayed[m_MovesPlayed.size() - 1] != move)
+	{
+		m_Error = 1;
+		return;
+	}
+
+	m_GameOverFlags = 0; // Reset game over flags
+
+	bool whitesMove = move.movePieceType.IsWhite();
+
+	if (!whitesMove)
+		m_FullMoves--;
+
+	m_MovesPlayed.pop_back(); // Remove the last move from the history
+
+	m_BoardState.boardStateFlags ^= (uint8_t)BoardStateFlags::WhiteToMove; // Toggle the turn
+
+	if (move.moveFlags & (uint8_t)MoveFlags::IS_PROMOTION)
+	{
+		m_BoardState.pieceBitboards[move.promotionPieceType.pieceType] &= ~(1ULL << move.targetSquare);
+	}
+	if (move.moveFlags & (uint8_t)MoveFlags::IS_CAPTURE)
+	{
+		if (!(move.moveFlags & (uint8_t)MoveFlags::IS_EN_PASSANT))
+			m_BoardState.pieceBitboards[move.capturePieceType.pieceType] |= (1ULL << move.targetSquare);
+
+		if (move.moveFlags & (uint8_t)MoveFlags::IS_EN_PASSANT)
+		{
+			uint8_t capturedPawnSquare = move.targetSquare + (move.movePieceType.pieceType == (uint8_t)PieceType::WHITE_PAWN ? 8 : -8);
+			m_BoardState.pieceBitboards[move.capturePieceType.pieceType] |= 1ULL << capturedPawnSquare;
+		}
+	}
+	if (m_MovesPlayed.size() > 0 && m_MovesPlayed[m_MovesPlayed.size() - 1].moveFlags & (uint8_t)MoveFlags::PAWN_TWO_UP)
+	{
+		m_BoardState.boardStateFlags |= (uint8_t)BoardStateFlags::CanEnPassent;
+		m_BoardState.enPassentFile = move.targetSquare % 8; // Set the en passant file to the file of the target square
+	}
+	else
+	{
+		m_BoardState.boardStateFlags &= ~(uint8_t)BoardStateFlags::CanEnPassent;
+		m_BoardState.enPassentFile = 8; // Reset the en passant file
+	}
+
+	if (move.moveFlags & (uint8_t)MoveFlags::IS_CASTLES)
+	{
+
+		bool queenSide = ChessUtil::SquareToFile(move.targetSquare) == 2;
+
+		if (whitesMove)
+		{
+
+
+			if (queenSide)
+			{
+				if (m_FirstWhiteKingRookMove == 0)
+					m_BoardState.boardStateFlags |= (uint8_t)BoardStateFlags::CanWhiteCastleKing;
+				m_BoardState.boardStateFlags |= (uint8_t)BoardStateFlags::CanWhiteCastleQueen;
+
+				if (m_FirstWhiteQueenRookMove == m_FullMoves)
+					m_FirstWhiteQueenRookMove = 0;
+
+				m_BoardState.pieceBitboards[(uint8_t)PieceType::WHITE_ROOK] |= (1ULL << 0);
+				m_BoardState.pieceBitboards[(uint8_t)PieceType::WHITE_ROOK] &= ~(1ULL << 3); 
+			}
+			else
+			{
+				if (m_FirstWhiteQueenRookMove == 0)
+					m_BoardState.boardStateFlags |= (uint8_t)BoardStateFlags::CanWhiteCastleQueen;
+				m_BoardState.boardStateFlags |= (uint8_t)BoardStateFlags::CanWhiteCastleKing;
+
+				if (m_FirstWhiteKingRookMove == m_FullMoves)
+					m_FirstWhiteKingRookMove = 0;
+
+				m_BoardState.pieceBitboards[(uint8_t)PieceType::WHITE_ROOK] |= (1ULL << 7);
+				m_BoardState.pieceBitboards[(uint8_t)PieceType::WHITE_ROOK] &= ~(1ULL << 5); 
+			}
+
+		}
+		else
+		{
+
+			if (queenSide)
+			{
+				if (m_FirstBlackKingRookMove == 0)
+					m_BoardState.boardStateFlags |= (uint8_t)BoardStateFlags::CanBlackCastleKing;
+				m_BoardState.boardStateFlags |= (uint8_t)BoardStateFlags::CanBlackCastleQueen;
+
+				if (m_FirstBlackQueenRookMove == m_FullMoves)
+					m_FirstBlackQueenRookMove = 0;
+
+				m_BoardState.pieceBitboards[(uint8_t)PieceType::BLACK_ROOK] |= (1ULL << 56);
+				m_BoardState.pieceBitboards[(uint8_t)PieceType::BLACK_ROOK] &= ~(1ULL << 59);
+			}
+			else
+			{
+				if (m_FirstBlackQueenRookMove == 0)
+					m_BoardState.boardStateFlags |= (uint8_t)BoardStateFlags::CanBlackCastleQueen;
+				m_BoardState.boardStateFlags |= (uint8_t)BoardStateFlags::CanBlackCastleKing;
+				
+				if (m_FirstBlackKingRookMove == m_FullMoves)
+					m_FirstBlackKingRookMove = 0;
+
+				m_BoardState.pieceBitboards[(uint8_t)PieceType::BLACK_ROOK] |= (1ULL << 63);
+				m_BoardState.pieceBitboards[(uint8_t)PieceType::BLACK_ROOK] &= ~(1ULL << 61);
+			}
+
+		}
+
+	}
+
+	if (move.movePieceType.pieceType == (uint8_t)PieceType::WHITE_ROOK)
+	{
+
+		if (move.startSquare == 0 && m_FirstWhiteQueenRookMove == m_FullMoves)
+		{
+			m_FirstWhiteQueenRookMove = 0;
+		}
+		else if (move.startSquare == 7 && m_FirstWhiteKingRookMove == m_FullMoves)
+		{
+			m_FirstWhiteKingRookMove = 0;
+		}
+
+	}
+	else if (move.movePieceType.pieceType == (uint8_t)PieceType::BLACK_ROOK)
+	{
+
+		if (move.startSquare == 56 && m_FirstBlackQueenRookMove == m_FullMoves)
+		{
+			m_FirstBlackQueenRookMove = 0;
+		}
+		else if (move.startSquare == 63 && m_FirstBlackKingRookMove == m_FullMoves)
+		{
+			m_FirstBlackKingRookMove = 0;
+		}
+	}
+
+	if (move.movePieceType.pieceType == (uint8_t)PieceType::WHITE_KING && m_FirstWhiteKingMove == m_FullMoves)
+	{
+		m_FirstWhiteKingMove = 0;
+	}
+	else if (move.movePieceType.pieceType == (uint8_t)PieceType::BLACK_KING && m_FirstBlackKingMove == m_FullMoves)
+	{
+		m_FirstBlackKingMove = 0;
+	}
+
+	// restore the piece to the start square
+	m_BoardState.pieceBitboards[move.movePieceType.pieceType] |= (1ULL << move.startSquare);
+	m_BoardState.pieceBitboards[move.movePieceType.pieceType] &= ~(1ULL << move.targetSquare);
+}
+
+
+void ChessBoard::RunPerformanceTest(ChessBoard board, int calcDepth)
+{
+	const std::array<uint64_t, 14> perftExpectedResults = {
+								1,
+							   20,
+							  400,
+							8'902,
+						  197'281,
+						4'865'609,
+					  119'060'324,
+				   	3'195'901'860,
+				   84'998'978'956,
+				2'439'530'234'167,
+			   69'352'859'712'417,
+			2'097'651'003'696'806,
+		   62'854'969'236'701'747,
+		1'981'066'775'000'396'239,
+	};
+
+	if (calcDepth <= 0)
+	{
+		std::cout << "Invalid depth for performance test. Must be greater than 0.\n";
+		return;
+	}
+
+
+	size_t n_moves;
+	uint64_t result = 0;
+
+	std::vector<Move> move_list = board.GetLegalMoves();
+	n_moves = move_list.size();
+
+	for (int i = 0; i < n_moves; i++) {
+		board.MakeMove(move_list[i]);
+		uint64_t perftResult = PerfTest(calcDepth - 1, board);
+		std::cout << 
+			ChessUtil::SquareAsString(move_list[i].startSquare) <<
+			ChessUtil::SquareAsString(move_list[i].targetSquare) <<
+			": " << perftResult << "\n";
+		result += perftResult;
+		board.UndoMove(move_list[i]);
+	}
+
+	std::cout << "\nNodes searched: " << result << std::endl;
+}
+
+uint64_t ChessBoard::PerfTest(int depth, ChessBoard board)
+{
+	std::vector<Move> move_list{};
+	size_t n_moves;
+	uint64_t nodes = 0;
+
+	if (depth == 0)
+		return 1ULL;
+
+	move_list = board.GetLegalMoves();
+	n_moves = move_list.size();
+
+	for (int i = 0; i < n_moves; i++) {
+		board.MakeMove(move_list[i]);
+		nodes += PerfTest(depth - 1, board);
+		board.UndoMove(move_list[i]);
+
+		if (board.m_Error != 0) {
+			return 0;
+		}
+	}
+	return nodes;
+}
+
+bool ChessBoard::InsufficentMaterial(ChessBoard board)
+{
+	
+
+	if (board.m_BoardState.pieceBitboards[(uint8_t)PieceType::WHITE_PAWN] > 0 || 
+		board.m_BoardState.pieceBitboards[(uint8_t)PieceType::WHITE_ROOK] > 0 ||
+		board.m_BoardState.pieceBitboards[(uint8_t)PieceType::WHITE_QUEEN] > 0 ||
+		board.m_BoardState.pieceBitboards[(uint8_t)PieceType::BLACK_PAWN] > 0 || 
+		board.m_BoardState.pieceBitboards[(uint8_t)PieceType::BLACK_ROOK] > 0 || 
+		board.m_BoardState.pieceBitboards[(uint8_t)PieceType::BLACK_QUEEN] > 0)
+	{
+		return false;
+	}
+
+
+
+	// If no pawns, queens, or rooks on the board, then consider knight and bishop cases
+	int numWhiteBishops = BitUtil::PopCnt(board.m_BoardState.pieceBitboards[(uint8_t)PieceType::WHITE_BISHOP]);
+	int numBlackBishops = BitUtil::PopCnt(board.m_BoardState.pieceBitboards[(uint8_t)PieceType::BLACK_BISHOP]);
+	int numWhiteKnights = BitUtil::PopCnt(board.m_BoardState.pieceBitboards[(uint8_t)PieceType::WHITE_KNIGHT]);
+	int numBlackKnights = BitUtil::PopCnt(board.m_BoardState.pieceBitboards[(uint8_t)PieceType::BLACK_KNIGHT]);
+	int numWhiteMinors = numWhiteBishops + numWhiteKnights;
+	int numBlackMinors = numBlackBishops + numBlackKnights;
+	int numMinors = numWhiteMinors + numBlackMinors;
+
+	// Lone kings or King vs King + single minor: is insuffient
+	if (numMinors <= 1)
+	{
+		return true;
+	}
+
+	// Bishop vs bishop: is insufficient when bishops are same colour complex
+	if (numMinors == 2 && numWhiteBishops == 1 && numBlackBishops == 1)
+	{
+		bool whiteBishopIsLightSquare = ChessUtil::LightSquare(BitUtil::PopLSB(board.m_BoardState.pieceBitboards[(uint8_t)PieceType::WHITE_BISHOP]));
+		bool blackBishopIsLightSquare = ChessUtil::LightSquare(BitUtil::PopLSB(board.m_BoardState.pieceBitboards[(uint8_t)PieceType::BLACK_BISHOP]));
+		return whiteBishopIsLightSquare == blackBishopIsLightSquare;
+	}
+
+	return false;
+}
+

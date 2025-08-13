@@ -7,6 +7,10 @@
 
 #include "MoveGenerator.h"
 
+#include <iostream>
+
+
+
 Application::Application()
 {
 	m_Running = true;
@@ -21,9 +25,8 @@ Application::Application()
 void Application::Run()
 {	
 	Bitboard showBoard = 0ULL;
-	int selected = 0;
 
-	std::vector<Move> moves = m_ChessBoard.GetLegalMoves();
+	ChessBoard::RunPerformanceTest(ChessBoard("rnb1kbnr/pppqpppp/3p4/8/Q7/2P5/PP1PPPPP/RNB1KBNR w KQkq - 2 3"), 1);
 
 	while (m_Running)
 	{
@@ -42,19 +45,6 @@ void Application::Run()
 					m_Renderer.UpdateWindowSize();
 					break;
 				case EventTypeKeyPressed:
-					selected++;
-					if (selected > 63)
-						selected = 0;
-					showBoard = 0;
-
-					for (Move move : moves)
-					{
-						if (move.startSquare == selected)
-						{
-							showBoard |= (1ULL << move.targetSquare);
-						}
-					}
-
 					break;
 				default:
 					break;
@@ -66,3 +56,5 @@ void Application::Run()
 		m_Renderer.Render();
 	}
 }
+
+

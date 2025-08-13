@@ -56,6 +56,49 @@ namespace ChessUtil
 		return rank * 8 + file;
 	}
 
+	std::string SquareAsString(uint8_t square)
+	{
+		return CoordsAsString(SquareToFile(square), SquareToRank(square));
+	}
+
+	std::string CoordsAsString(uint8_t file, uint8_t rank)
+	{
+		if (!IsValidCoordinate(file, rank))
+		{
+			return "Invalid";
+		}
+		std::string f;
+		std::string r;
+		
+		switch (file)
+		{
+		case 0: f = "a"; break;
+		case 1: f = "b"; break;
+		case 2: f = "c"; break;
+		case 3: f = "d"; break;
+		case 4: f = "e"; break;
+		case 5: f = "f"; break;
+		case 6: f = "g"; break;
+		case 7: f = "h"; break;
+		default: f = "?"; break;
+		}
+
+		switch (rank)
+		{
+		case 0: r = "1"; break;
+		case 1: r = "2"; break;
+		case 2: r = "3"; break;
+		case 3: r = "4"; break;
+		case 4: r = "5"; break;
+		case 5: r = "6"; break;
+		case 6: r = "7"; break;
+		case 7: r = "8"; break;
+		default: r = "?"; break;
+		}
+
+		return f + r;
+	}
+
 	bool LightSquare(uint8_t file, uint8_t rank)
 	{
 		return (file + rank) % 2;

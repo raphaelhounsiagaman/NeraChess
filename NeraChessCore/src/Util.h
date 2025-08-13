@@ -2,6 +2,8 @@
 
 #include <cstdint>
 
+#include <string>
+
 #include "PieceType.h"
 
 typedef uint64_t Bitboard;
@@ -44,6 +46,9 @@ namespace ChessUtil
     uint8_t SquareToFile(uint8_t square);
 
     uint8_t CoordsToSquare(uint8_t file, uint8_t rank);
+
+    std::string SquareAsString(uint8_t square);
+    std::string CoordsAsString(uint8_t file, uint8_t rank);
 
     bool LightSquare(uint8_t file, uint8_t rank);
     bool LightSquare(uint8_t squareIndex);

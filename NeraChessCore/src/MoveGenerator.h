@@ -15,6 +15,8 @@ public:
 
 	std::vector<Move> GenerateMoves(const BoardState& board);
 
+	bool InCheck() const { return m_InCheck; };
+
 private:
 
 	void InitGen();
