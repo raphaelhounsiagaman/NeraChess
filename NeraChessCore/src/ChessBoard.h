@@ -21,6 +21,9 @@ public:
 	ChessBoard(const std::string& fen = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1");
 	~ChessBoard() = default;
 
+    bool operator==(const ChessBoard& other) const;
+
+
     std::vector<Move> GetLegalMoves() const;
 
     void MakeMove(Move move);

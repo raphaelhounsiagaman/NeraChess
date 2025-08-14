@@ -6,6 +6,7 @@
 #include <sstream>
 #include <string>
 #include <vector>
+#include <chrono>
 
 #include "GameOverFlags.h"
 
@@ -126,18 +127,42 @@ ChessBoard::ChessBoard(const std::string& fen)
 
 	m_BoardState.boardStateFlags |= fenParts[1][0] == 'w' ? (uint8_t)BoardStateFlags::WhiteToMove : 0;
 
+	m_FirstWhiteKingMove = ~(1U);
+	m_FirstBlackKingMove = ~(1U);
+
+	m_FirstWhiteKingRookMove = ~(1U);
+	m_FirstWhiteQueenRookMove = ~(1U);
+	m_FirstBlackKingRookMove = ~(1U);
+	m_FirstBlackQueenRookMove = ~(1U);
+
 	for (char character : fenParts[2])
 	{
-		m_BoardState.boardStateFlags |=
-			character == 'K' ?
-			(uint8_t)BoardStateFlags::CanWhiteCastleKing :
-			character == 'Q' ?
-			(uint8_t)BoardStateFlags::CanWhiteCastleQueen :
-			character == 'k' ?
-			(uint8_t)BoardStateFlags::CanBlackCastleKing :
-			character == 'q' ?			 
-			(uint8_t)BoardStateFlags::CanBlackCastleQueen :
-			0;
+		switch (character)
+		{
+		case 'K':
+			m_BoardState.boardStateFlags |= (uint8_t)BoardStateFlags::CanWhiteCastleKing;
+			m_FirstWhiteKingMove = 0;
+			m_FirstWhiteKingRookMove = 0;
+			break;
+		case 'Q':
+			m_BoardState.boardStateFlags |= (uint8_t)BoardStateFlags::CanWhiteCastleQueen;
+			m_FirstWhiteKingMove = 0;
+			m_FirstWhiteQueenRookMove = 0;
+			break;
+		case 'k':
+			m_BoardState.boardStateFlags |= (uint8_t)BoardStateFlags::CanBlackCastleKing;
+			m_FirstBlackKingMove = 0;
+			m_FirstBlackKingRookMove = 0;
+			break;
+		case 'q':
+			m_BoardState.boardStateFlags |= (uint8_t)BoardStateFlags::CanBlackCastleQueen;
+			m_FirstBlackKingMove = 0;
+			m_FirstBlackQueenRookMove = 0;
+			break;
+		default:
+			break;
+		}
+
 	}
 
 	if (fenParts[3][0] != '-')
@@ -161,6 +186,54 @@ ChessBoard::ChessBoard(const std::string& fen)
 	m_HalfMoveClock = std::stoi(fenParts[4]);
 
 	m_FullMoves = std::stoi(fenParts[5]);
+}
+
+bool ChessBoard::operator==(const ChessBoard& other) const
+{
+	bool same = true;
+
+	if (m_BoardState != other.m_BoardState)
+		same = false;
+	if (m_MovesPlayed != other.m_MovesPlayed)
+		same = false;
+	if (m_GameOverFlags != other.m_GameOverFlags)
+		same = false;
+	if (m_HalfMoveClock != other.m_HalfMoveClock)
+		same = false;
+	if (m_FullMoves != other.m_FullMoves)
+		same = false;
+	if (m_FirstBlackKingMove != other.m_FirstBlackKingMove)
+		same = false;
+	if (m_FirstWhiteKingMove != other.m_FirstWhiteKingMove)
+		same = false;
+	if (m_FirstWhiteKingRookMove != other.m_FirstWhiteKingRookMove)
+		same = false;
+	if (m_FirstWhiteQueenRookMove != other.m_FirstWhiteQueenRookMove)
+		same = false;
+	if (m_FirstBlackKingRookMove != other.m_FirstBlackKingRookMove)
+		same = false;
+	if (m_FirstBlackQueenRookMove != other.m_FirstBlackQueenRookMove)
+		same = false;
+
+
+
+	/*
+	if (m_BoardState == other.m_BoardState &&
+		m_MovesPlayed == other.m_MovesPlayed &&
+		m_GameOverFlags == other.m_GameOverFlags &&
+		m_HalfMoveClock == other.m_HalfMoveClock &&
+		m_FullMoves == other.m_FullMoves &&
+		m_FirstBlackKingMove == other.m_FirstBlackKingMove &&
+		m_FirstWhiteKingMove == other.m_FirstWhiteKingMove &&
+		m_FirstWhiteKingRookMove == other.m_FirstWhiteKingRookMove &&
+		m_FirstWhiteQueenRookMove == other.m_FirstWhiteQueenRookMove &&
+		m_FirstBlackKingRookMove == other.m_FirstBlackKingRookMove &&
+		m_FirstBlackQueenRookMove == other.m_FirstBlackQueenRookMove
+		)
+		return true;
+	*/
+
+	return same;
 }
 
 Piece ChessBoard::GetPiece(const uint8_t square) const
@@ -207,10 +280,14 @@ void ChessBoard::MakeMove(Move move)
 	if (move.movePieceType.pieceType == (uint8_t)PieceType::WHITE_KING && m_FirstWhiteKingMove == 0)
 	{
 		m_FirstWhiteKingMove = m_FullMoves;
+		m_BoardState.boardStateFlags &= ~(uint8_t)BoardStateFlags::CanWhiteCastleQueen;
+		m_BoardState.boardStateFlags &= ~(uint8_t)BoardStateFlags::CanWhiteCastleKing;
 	}
 	else if (move.movePieceType.pieceType == (uint8_t)PieceType::BLACK_KING && m_FirstBlackKingMove == 0)
 	{
 		m_FirstBlackKingMove = m_FullMoves;
+		m_BoardState.boardStateFlags &= ~(uint8_t)BoardStateFlags::CanBlackCastleQueen;
+		m_BoardState.boardStateFlags &= ~(uint8_t)BoardStateFlags::CanBlackCastleKing;
 	}
 
 	if (move.movePieceType.pieceType == (uint8_t)PieceType::WHITE_ROOK)
@@ -219,10 +296,12 @@ void ChessBoard::MakeMove(Move move)
 		if (move.startSquare == 0 && m_FirstWhiteQueenRookMove == 0)
 		{
 			m_FirstWhiteQueenRookMove = m_FullMoves;
+			m_BoardState.boardStateFlags &= ~(uint8_t)BoardStateFlags::CanWhiteCastleQueen;
 		}
 		else if (move.startSquare == 7 && m_FirstWhiteKingRookMove == 0)
 		{
 			m_FirstWhiteKingRookMove = m_FullMoves;
+			m_BoardState.boardStateFlags &= ~(uint8_t)BoardStateFlags::CanWhiteCastleKing;
 		}
 
 	}
@@ -232,10 +311,12 @@ void ChessBoard::MakeMove(Move move)
 		if (move.startSquare == 56 && m_FirstBlackQueenRookMove == 0)
 		{
 			m_FirstBlackQueenRookMove = m_FullMoves;
+			m_BoardState.boardStateFlags &= ~(uint8_t)BoardStateFlags::CanBlackCastleQueen;
 		}
 		else if (move.startSquare == 63 && m_FirstBlackKingRookMove == 0)
 		{
 			m_FirstBlackKingRookMove = m_FullMoves;
+			m_BoardState.boardStateFlags &= ~(uint8_t)BoardStateFlags::CanBlackCastleKing;
 		}
 	}
 
@@ -308,9 +389,36 @@ void ChessBoard::MakeMove(Move move)
 	if (move.moveFlags & (uint8_t)MoveFlags::IS_CAPTURE)
 	{
 		m_BoardState.pieceBitboards[move.capturePieceType.pieceType] &= ~(1ULL << move.targetSquare);
+
+		if (move.capturePieceType.pieceType == (uint8_t)PieceType::WHITE_ROOK && move.targetSquare == 0)
+		{
+			m_BoardState.boardStateFlags &= ~(uint8_t)BoardStateFlags::CanWhiteCastleQueen;
+			if (m_FirstWhiteQueenRookMove == 0)
+				m_FirstWhiteQueenRookMove = m_FullMoves;
+		}
+		if (move.capturePieceType.pieceType == (uint8_t)PieceType::WHITE_ROOK && move.targetSquare == 7)
+		{
+			m_BoardState.boardStateFlags &= ~(uint8_t)BoardStateFlags::CanWhiteCastleKing;
+			if (m_FirstWhiteKingRookMove == 0)
+				m_FirstWhiteKingRookMove = m_FullMoves;
+		}
+		if (move.capturePieceType.pieceType == (uint8_t)PieceType::BLACK_ROOK && move.targetSquare == 56)
+		{
+			m_BoardState.boardStateFlags &= ~(uint8_t)BoardStateFlags::CanBlackCastleQueen;
+			if (m_FirstBlackQueenRookMove == 0)
+				m_FirstBlackQueenRookMove = m_FullMoves;
+		}
+		if (move.capturePieceType.pieceType == (uint8_t)PieceType::BLACK_ROOK && move.targetSquare == 63)
+		{
+			m_BoardState.boardStateFlags &= ~(uint8_t)BoardStateFlags::CanBlackCastleKing;
+			if (m_FirstBlackKingRookMove == 0)
+				m_FirstBlackKingRookMove = m_FullMoves;
+		}
+
+
 		if (move.moveFlags & (uint8_t)MoveFlags::IS_EN_PASSANT)
 		{
-			uint8_t capturedPawnSquare = move.targetSquare + (move.movePieceType.pieceType == (uint8_t)PieceType::WHITE_PAWN ? 8 : -8);
+			uint8_t capturedPawnSquare = move.targetSquare + (move.movePieceType.pieceType == (uint8_t)PieceType::WHITE_PAWN ? -8 : 8);
 			m_BoardState.pieceBitboards[move.capturePieceType.pieceType] &= ~(1ULL << capturedPawnSquare);
 		}
 	}
@@ -333,6 +441,8 @@ void ChessBoard::MakeMove(Move move)
 
 	MoveGenerator generator{};
 	std::vector<Move> moves = generator.GenerateMoves(m_BoardState);
+
+	m_GameOverFlags = 0;
 
 	// CheckMate and Stalemate
 	if (moves.size() == 0)
@@ -397,6 +507,8 @@ void ChessBoard::UndoMove(Move move)
 	if (!whitesMove)
 		m_FullMoves--;
 
+	m_HalfMoveClock--;
+
 	m_MovesPlayed.pop_back(); // Remove the last move from the history
 
 	m_BoardState.boardStateFlags ^= (uint8_t)BoardStateFlags::WhiteToMove; // Toggle the turn
@@ -408,18 +520,63 @@ void ChessBoard::UndoMove(Move move)
 	if (move.moveFlags & (uint8_t)MoveFlags::IS_CAPTURE)
 	{
 		if (!(move.moveFlags & (uint8_t)MoveFlags::IS_EN_PASSANT))
+		{
 			m_BoardState.pieceBitboards[move.capturePieceType.pieceType] |= (1ULL << move.targetSquare);
+		}
+			
 
 		if (move.moveFlags & (uint8_t)MoveFlags::IS_EN_PASSANT)
 		{
-			uint8_t capturedPawnSquare = move.targetSquare + (move.movePieceType.pieceType == (uint8_t)PieceType::WHITE_PAWN ? 8 : -8);
+			uint8_t capturedPawnSquare = move.targetSquare + (move.movePieceType.pieceType == (uint8_t)PieceType::WHITE_PAWN ? -8 : 8);
 			m_BoardState.pieceBitboards[move.capturePieceType.pieceType] |= 1ULL << capturedPawnSquare;
 		}
+
+
+		if (move.capturePieceType.pieceType == (uint8_t)PieceType::WHITE_ROOK && 
+			move.targetSquare == 0 && 
+			m_FirstWhiteQueenRookMove == m_FullMoves 			
+			)
+		{
+			m_FirstWhiteQueenRookMove = 0;
+			if (m_FirstWhiteKingMove == 0)
+				m_BoardState.boardStateFlags |= (uint8_t)BoardStateFlags::CanWhiteCastleQueen;
+		}
+
+		if (move.capturePieceType.pieceType == (uint8_t)PieceType::WHITE_ROOK && 
+			move.targetSquare == 7 && 
+			m_FirstWhiteKingRookMove == m_FullMoves
+			)
+		{
+			m_FirstWhiteKingRookMove = 0;
+			if (m_FirstWhiteKingMove == 0)
+				m_BoardState.boardStateFlags |= (uint8_t)BoardStateFlags::CanWhiteCastleKing;
+		}
+
+		if (move.capturePieceType.pieceType == (uint8_t)PieceType::BLACK_ROOK && 
+			move.targetSquare == 56 && 
+			m_FirstBlackQueenRookMove == m_FullMoves 
+			)
+		{
+			m_FirstBlackQueenRookMove = 0;
+			if (m_FirstBlackKingMove == 0)
+				m_BoardState.boardStateFlags |= (uint8_t)BoardStateFlags::CanBlackCastleQueen;
+		}
+
+		if (move.capturePieceType.pieceType == (uint8_t)PieceType::BLACK_ROOK && 
+			move.targetSquare == 63 && 
+			m_FirstBlackKingRookMove == m_FullMoves 
+			)
+		{
+			m_FirstBlackKingRookMove = 0;
+			if (m_FirstBlackKingMove == 0)
+				m_BoardState.boardStateFlags |= (uint8_t)BoardStateFlags::CanBlackCastleKing;
+		}
+
 	}
 	if (m_MovesPlayed.size() > 0 && m_MovesPlayed[m_MovesPlayed.size() - 1].moveFlags & (uint8_t)MoveFlags::PAWN_TWO_UP)
 	{
 		m_BoardState.boardStateFlags |= (uint8_t)BoardStateFlags::CanEnPassent;
-		m_BoardState.enPassentFile = move.targetSquare % 8; // Set the en passant file to the file of the target square
+		m_BoardState.enPassentFile = m_MovesPlayed[m_MovesPlayed.size() - 1].targetSquare % 8; // Set the en passant file to the file of the target square
 	}
 	else
 	{
@@ -500,10 +657,14 @@ void ChessBoard::UndoMove(Move move)
 		if (move.startSquare == 0 && m_FirstWhiteQueenRookMove == m_FullMoves)
 		{
 			m_FirstWhiteQueenRookMove = 0;
+			if (m_FirstWhiteKingMove == 0)
+				m_BoardState.boardStateFlags |= (uint8_t)BoardStateFlags::CanWhiteCastleQueen;
 		}
 		else if (move.startSquare == 7 && m_FirstWhiteKingRookMove == m_FullMoves)
 		{
 			m_FirstWhiteKingRookMove = 0;
+			if (m_FirstWhiteKingMove == 0)
+				m_BoardState.boardStateFlags |= (uint8_t)BoardStateFlags::CanWhiteCastleKing;
 		}
 
 	}
@@ -513,25 +674,41 @@ void ChessBoard::UndoMove(Move move)
 		if (move.startSquare == 56 && m_FirstBlackQueenRookMove == m_FullMoves)
 		{
 			m_FirstBlackQueenRookMove = 0;
+			if (m_FirstBlackKingMove == 0)
+				m_BoardState.boardStateFlags |= (uint8_t)BoardStateFlags::CanBlackCastleQueen;
 		}
 		else if (move.startSquare == 63 && m_FirstBlackKingRookMove == m_FullMoves)
 		{
 			m_FirstBlackKingRookMove = 0;
+			if (m_FirstBlackKingMove == 0)
+				m_BoardState.boardStateFlags |= (uint8_t)BoardStateFlags::CanBlackCastleKing;
 		}
 	}
 
 	if (move.movePieceType.pieceType == (uint8_t)PieceType::WHITE_KING && m_FirstWhiteKingMove == m_FullMoves)
 	{
 		m_FirstWhiteKingMove = 0;
+		if (m_FirstWhiteQueenRookMove == 0)
+			m_BoardState.boardStateFlags |= (uint8_t)BoardStateFlags::CanWhiteCastleQueen;
+		if (m_FirstWhiteKingRookMove == 0)
+			m_BoardState.boardStateFlags |= (uint8_t)BoardStateFlags::CanWhiteCastleKing;
 	}
 	else if (move.movePieceType.pieceType == (uint8_t)PieceType::BLACK_KING && m_FirstBlackKingMove == m_FullMoves)
 	{
 		m_FirstBlackKingMove = 0;
+		if (m_FirstBlackQueenRookMove == 0)
+			m_BoardState.boardStateFlags |= (uint8_t)BoardStateFlags::CanBlackCastleQueen;
+		if (m_FirstBlackKingRookMove == 0)								 
+			m_BoardState.boardStateFlags |= (uint8_t)BoardStateFlags::CanBlackCastleKing;
 	}
 
 	// restore the piece to the start square
 	m_BoardState.pieceBitboards[move.movePieceType.pieceType] |= (1ULL << move.startSquare);
 	m_BoardState.pieceBitboards[move.movePieceType.pieceType] &= ~(1ULL << move.targetSquare);
+
+
+	m_GameOverFlags = 0;
+
 }
 
 
@@ -560,15 +737,16 @@ void ChessBoard::RunPerformanceTest(ChessBoard board, int calcDepth)
 		return;
 	}
 
-
-	size_t n_moves;
-	uint64_t result = 0;
+	auto start = std::chrono::steady_clock::now();
 
 	std::vector<Move> move_list = board.GetLegalMoves();
-	n_moves = move_list.size();
+	size_t n_moves = move_list.size();
+	uint64_t result = 0;
 
 	for (int i = 0; i < n_moves; i++) {
+		ChessBoard temp_board = board;
 		board.MakeMove(move_list[i]);
+		ChessBoard midBoard = board;
 		uint64_t perftResult = PerfTest(calcDepth - 1, board);
 		std::cout << 
 			ChessUtil::SquareAsString(move_list[i].startSquare) <<
@@ -576,33 +754,76 @@ void ChessBoard::RunPerformanceTest(ChessBoard board, int calcDepth)
 			": " << perftResult << "\n";
 		result += perftResult;
 		board.UndoMove(move_list[i]);
+
+		if (temp_board != board)
+		{
+			std::cout << "Error: Board state changed after undoing move.\n";
+			board.m_Error = 1;
+		}
 	}
 
-	std::cout << "\nNodes searched: " << result << std::endl;
+	auto end = std::chrono::steady_clock::now();
+	auto duration = duration_cast<std::chrono::milliseconds>(end - start);
+
+
+	std::cout << "\nNodes searched: " << result << "\n";
+	std::cout << "Time Elapsed: " << duration.count() << " ms (" << (result * 1000) / duration.count() << " nodes/s)\n";
+
+
+
+
+
 }
 
 uint64_t ChessBoard::PerfTest(int depth, ChessBoard board)
 {
-	std::vector<Move> move_list{};
-	size_t n_moves;
+	std::vector<Move> move_list;
+	move_list.reserve(218); // Reserve space for moves to avoid reallocations
+	move_list = board.GetLegalMoves();
+	int n_moves;
 	uint64_t nodes = 0;
 
-	if (depth == 0)
-		return 1ULL;
-
-	move_list = board.GetLegalMoves();
 	n_moves = move_list.size();
 
+	if (depth == 1)
+		return (uint64_t)n_moves;
+
 	for (int i = 0; i < n_moves; i++) {
+		ChessBoard temp_board = board;
 		board.MakeMove(move_list[i]);
+		ChessBoard midBoard = board;
 		nodes += PerfTest(depth - 1, board);
 		board.UndoMove(move_list[i]);
-
-		if (board.m_Error != 0) {
-			return 0;
+		if (temp_board != board || board.m_Error != 0)
+		{
+			std::cout << "Error: Board state changed after undoing move.\n";
+			board.m_Error = 1;
 		}
 	}
 	return nodes;
+	/*
+	if (depth == 0)
+		return 1ULL;
+
+	std::vector<Move> move_list = board.GetLegalMoves();
+	size_t n_moves = move_list.size();
+	uint64_t nodes = 0;
+
+	for (int i = 0; i < n_moves; i++) {
+		ChessBoard temp_board = board;
+		board.MakeMove(move_list[i]);
+		nodes += PerfTest(depth - 1, board);
+		ChessBoard midBoard = board;
+		board.UndoMove(move_list[i]);
+		if (temp_board != board || board.m_Error != 0)
+		{
+			std::cout << "Error: Board state changed after undoing move.\n";
+			board.m_Error = 1;
+		}
+
+	}
+	return nodes;
+	*/
 }
 
 bool ChessBoard::InsufficentMaterial(ChessBoard board)

@@ -5,8 +5,6 @@
 
 #include "Util.h"
 
-
-
 Bitboard MoveGenerator::GetStraightSlidingMask(uint8_t square)
 {
 	Bitboard mask = 0ULL;
@@ -375,9 +373,9 @@ std::array<std::array<int, 8>, 64> MoveGenerator::InitSquaresToEdge()
 		int east = 7 - x;
 	
 		array[squareIndex][0] = north;
-		array[squareIndex][1] = south;
-		array[squareIndex][2] = west;
-		array[squareIndex][3] = east;
+		array[squareIndex][1] = east;
+		array[squareIndex][2] = south;
+		array[squareIndex][3] = west;
 		array[squareIndex][4] = std::min(north, east);
 		array[squareIndex][5] = std::min(south, east);
 		array[squareIndex][6] = std::min(south, west);
@@ -389,7 +387,7 @@ std::array<std::array<int, 8>, 64> MoveGenerator::InitSquaresToEdge()
 
 std::array<std::array<Bitboard, 64>, 64> MoveGenerator::InitAlignMask()
 {
-	std::array<std::array<Bitboard, 64>, 64> array{};
+	static std::array<std::array<Bitboard, 64>, 64> array{};
 	
 	for (int squareA = 0; squareA < 64; squareA++)
 	{
@@ -402,26 +400,24 @@ std::array<std::array<Bitboard, 64>, 64> MoveGenerator::InitAlignMask()
 			uint8_t pointBFile = ChessUtil::SquareToFile(squareB);
 			uint8_t pointBRank = ChessUtil::SquareToRank(squareB);
 
-			uint8_t deltaFile = pointBFile - pointAFile;
-			uint8_t deltaRank = pointBRank - pointARank;
+			int deltaFile = pointBFile - pointAFile;
+			int deltaRank = pointBRank - pointARank;
 
-			uint8_t dirFile = 
-				deltaFile > 0 ? 
-				1 : 
-				deltaFile < 0 ? 
-				-1 : 0;
+			int dirFile = 
+				deltaFile > 0 ?  1 : 
+				deltaFile < 0 ? -1 : 
+				0;
 
-			uint8_t dirRank =
-				deltaRank > 0 ?
-				1 :
-				deltaRank < 0 ?
-				-1 : 0;
+			int dirRank =
+				deltaRank > 0 ?  1 :
+				deltaRank < 0 ? -1 : 
+				0;
 
 
 			for (int i = -8; i < 8; i++)
 			{
-				uint8_t coordFile = pointAFile + dirFile * i;
-				uint8_t coordRank = pointARank + dirRank * i;
+				int coordFile = pointAFile + dirFile * i;
+				int coordRank = pointARank + dirRank * i;
 
 				if (ChessUtil::IsValidCoordinate(coordFile, coordRank))
 				{
@@ -511,6 +507,9 @@ void MoveGenerator::InitGen()
 	// Reset Variables?
 	m_PinRays = 0ULL;
 	m_CheckRayBitmask = 0ULL;
+
+	m_InCheck = false; // check
+	m_InDoubleCheck = false; // check
 
 	// Convenience
 	m_WhiteToMove = m_BoardState.boardStateFlags & (uint8_t)BoardStateFlags::WhiteToMove;
@@ -712,7 +711,7 @@ void MoveGenerator::CalculateAttackMaps()
 
 	if (!m_InCheck)
 	{
-		m_CheckRayBitmask = 0xFFFFFFFFFFFFFFFF;
+		m_CheckRayBitmask = ~(0ULL);
 	}
 
 
@@ -957,7 +956,7 @@ void MoveGenerator::CalculatePawnMoves(std::vector<Move>& moveList)
 	
 
 	// Captures
-	while (captureA != 0)
+	while (captureA != 0)	
 	{
 		uint8_t targetSquare = BitUtil::PopLSB(captureA);
 		uint8_t startSquare = targetSquare - pushDir * 7;
@@ -1069,7 +1068,7 @@ void MoveGenerator::GeneratePromotions(uint8_t startSquare, uint8_t targetSquare
 		startSquare, 
 		targetSquare, 
 		(uint8_t)MoveFlags::IS_VALID | (uint8_t)MoveFlags::IS_PROMOTION | (GetPiece(targetSquare) == PieceType::NO_PIECE ? 0 : (uint8_t)MoveFlags::IS_CAPTURE),
-		Piece{ (uint8_t)PieceType::WHITE_PAWN },
+		m_WhiteToMove ? Piece{ (uint8_t)PieceType::WHITE_PAWN } : Piece{ (uint8_t)PieceType::BLACK_PAWN },
 		Piece{ (uint8_t)GetPiece(targetSquare) },
 		m_WhiteToMove ? Piece{ (uint8_t)PieceType::WHITE_BISHOP } : Piece{ (uint8_t)PieceType::BLACK_BISHOP }
 	);
@@ -1079,7 +1078,7 @@ void MoveGenerator::GeneratePromotions(uint8_t startSquare, uint8_t targetSquare
 		startSquare,
 		targetSquare,
 		(uint8_t)MoveFlags::IS_VALID | (uint8_t)MoveFlags::IS_PROMOTION | (GetPiece(targetSquare) == PieceType::NO_PIECE ? 0 : (uint8_t)MoveFlags::IS_CAPTURE),
-		Piece{ (uint8_t)PieceType::WHITE_PAWN },
+		m_WhiteToMove ? Piece{ (uint8_t)PieceType::WHITE_PAWN } : Piece{ (uint8_t)PieceType::BLACK_PAWN },
 		Piece{ (uint8_t)GetPiece(targetSquare) },
 		m_WhiteToMove ? Piece{ (uint8_t)PieceType::WHITE_KNIGHT } : Piece{ (uint8_t)PieceType::BLACK_KNIGHT }
 	);
@@ -1088,7 +1087,7 @@ void MoveGenerator::GeneratePromotions(uint8_t startSquare, uint8_t targetSquare
 		startSquare,
 		targetSquare,
 		(uint8_t)MoveFlags::IS_VALID | (uint8_t)MoveFlags::IS_PROMOTION | (GetPiece(targetSquare) == PieceType::NO_PIECE ? 0 : (uint8_t)MoveFlags::IS_CAPTURE),
-		Piece{ (uint8_t)PieceType::WHITE_PAWN },
+		m_WhiteToMove ? Piece{ (uint8_t)PieceType::WHITE_PAWN } : Piece{ (uint8_t)PieceType::BLACK_PAWN },
 		Piece{ (uint8_t)GetPiece(targetSquare) },
 		m_WhiteToMove ? Piece{ (uint8_t)PieceType::WHITE_ROOK } : Piece{ (uint8_t)PieceType::BLACK_ROOK }
 	);
@@ -1097,7 +1096,7 @@ void MoveGenerator::GeneratePromotions(uint8_t startSquare, uint8_t targetSquare
 		startSquare,
 		targetSquare,
 		(uint8_t)MoveFlags::IS_VALID | (uint8_t)MoveFlags::IS_PROMOTION | (GetPiece(targetSquare) == PieceType::NO_PIECE ? 0 : (uint8_t)MoveFlags::IS_CAPTURE),
-		Piece{ (uint8_t)PieceType::WHITE_PAWN },
+		m_WhiteToMove ? Piece{ (uint8_t)PieceType::WHITE_PAWN } : Piece{ (uint8_t)PieceType::BLACK_PAWN },
 		Piece{ (uint8_t)GetPiece(targetSquare) },
 		m_WhiteToMove ? Piece{ (uint8_t)PieceType::WHITE_QUEEN } : Piece{ (uint8_t)PieceType::BLACK_QUEEN }
 	);

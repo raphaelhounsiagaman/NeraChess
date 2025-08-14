@@ -26,7 +26,9 @@ void Application::Run()
 {	
 	Bitboard showBoard = 0ULL;
 
-	ChessBoard::RunPerformanceTest(ChessBoard("rnb1kbnr/pppqpppp/3p4/8/Q7/2P5/PP1PPPPP/RNB1KBNR w KQkq - 2 3"), 1);
+	//rnb1kbnr/pppqpppp/3p4/8/Q7/2P5/PP1PPPPP/RNB1KBNR w KQkq - 2 3
+
+	ChessBoard::RunPerformanceTest(ChessBoard(), 5);
 
 	while (m_Running)
 	{
