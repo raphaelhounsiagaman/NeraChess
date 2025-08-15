@@ -43,9 +43,8 @@ Move Human::GetNextMove(const ChessBoard& board)
             startSquare = 64;
             targetSquare = 64;
 
-            
 		}
-        else if (startSquare != 64 && targetSquare == 64)
+        if (startSquare != 64 && targetSquare == 64)
         {
             if (!m_PossibleMoves)
             {
@@ -57,6 +56,11 @@ Move Human::GetNextMove(const ChessBoard& board)
                         m_PossibleMoves |= 1ULL << legalMove.targetSquare;
                     }
                 }
+
+                if (m_PossibleMoves == 0ULL)
+                {
+                    startSquare = 64; // Reset if no possible moves
+				}
             }
 
         }
