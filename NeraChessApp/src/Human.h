@@ -2,9 +2,6 @@
 
 #include "ChessPlayer.h"
 
-#include "NeraChessCore.h"
-
-
 #include <mutex>
 
 class Human : public ChessPlayer

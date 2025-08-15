@@ -476,30 +476,27 @@ const Bitboard MoveGenerator::s_BlackQueensideMask = 1ULL << ChessUtil::d8 | 1UL
 
 const std::array<std::array<Bitboard, 64>, 64> MoveGenerator::s_AlignMask = InitAlignMask();
 
-std::vector<Move> MoveGenerator::GenerateMoves(const BoardState& board)
+MoveList MoveGenerator::GenerateMoves(const BoardState& board)
 {
 	m_BoardState = board;
 
-	std::vector<Move> moveList;
-	moveList.reserve(m_MaxPossibleMoves);
+	m_LegalMoves.clear();
 	
 	InitGen();
 
-	CalculateKingMoves(moveList);
+	CalculateKingMoves();
 
 	// If King is in Double Check, we only need King moves
 	if (m_InDoubleCheck)
 	{
-		return moveList;
+		return m_LegalMoves;
 	}
 
-	CalculateSlidingMoves(moveList);
-	CalculateKnightMoves(moveList);
-	CalculatePawnMoves(moveList);
+	CalculateSlidingMoves();
+	CalculateKnightMoves();
+	CalculatePawnMoves();
 
-
-
-	return moveList;
+	return m_LegalMoves;
 }
 
 void MoveGenerator::InitGen()
@@ -740,7 +737,7 @@ void MoveGenerator::GenSlidingAttacks()
 }
 
 
-void MoveGenerator::CalculateKingMoves(std::vector<Move>& moveList)
+void MoveGenerator::CalculateKingMoves()
 {
 	Bitboard legalMask = ~(m_OpponentAttackMap | m_FriendlyPieces);
 	Bitboard kingMoves = s_KingMoveMask[m_FriendlyKingSquare] & legalMask;
@@ -748,13 +745,13 @@ void MoveGenerator::CalculateKingMoves(std::vector<Move>& moveList)
 	while (kingMoves != 0)
 	{
 		int targetSquare = BitUtil::PopLSB(kingMoves);
-		moveList.emplace_back(
+		m_LegalMoves.push(Move(
 			m_FriendlyKingSquare, 
 			targetSquare, 
 			(uint8_t)MoveFlags::IS_VALID | (GetPiece(targetSquare) == PieceType::NO_PIECE ? 0 : (uint8_t)MoveFlags::IS_CAPTURE),
 			Piece{ (uint8_t)(m_WhiteToMove ? PieceType::WHITE_KING : PieceType::BLACK_KING) },
 			Piece{ (uint8_t)GetPiece(targetSquare) }
-		);
+		));
 	}
 
 	// Castling
@@ -769,12 +766,12 @@ void MoveGenerator::CalculateKingMoves(std::vector<Move>& moveList)
 		if ((castleMask & castleBlockers) == 0)
 		{
 			int targetSquare = m_WhiteToMove ? ChessUtil::g1 : ChessUtil::g8;
-			moveList.emplace_back(
+			m_LegalMoves.push(Move(
 				m_FriendlyKingSquare, 
 				targetSquare,
 				(uint8_t)MoveFlags::IS_VALID | (uint8_t)MoveFlags::IS_CASTLES,
 				Piece{ (uint8_t)GetPiece(m_FriendlyKingSquare) }
-			);
+			));
 		}
 	}
 
@@ -786,18 +783,18 @@ void MoveGenerator::CalculateKingMoves(std::vector<Move>& moveList)
 		if ((castleMask & castleBlockers) == 0 && (castleBlockMask & m_AllPieces) == 0)
 		{
 			int targetSquare = m_WhiteToMove ? ChessUtil::c1 : ChessUtil::c8;
-			moveList.emplace_back(
+			m_LegalMoves.push(Move(
 				m_FriendlyKingSquare,
 				targetSquare,
 				(uint8_t)MoveFlags::IS_VALID | (uint8_t)MoveFlags::IS_CASTLES,
 				Piece{ (uint8_t)GetPiece(m_FriendlyKingSquare) }
-			);
+			));
 		}
 	}
 
 }
 
-void MoveGenerator::CalculateSlidingMoves(std::vector<Move>& moveList)
+void MoveGenerator::CalculateSlidingMoves()
 {
 	// Limit movement to empty or enemy squares, and must block check if king is in check.
 	Bitboard moveMask = ~m_FriendlyPieces & m_CheckRayBitmask;
@@ -827,13 +824,13 @@ void MoveGenerator::CalculateSlidingMoves(std::vector<Move>& moveList)
 		while (moveSquares != 0)
 		{
 			int targetSquare = BitUtil::PopLSB(moveSquares);
-			moveList.emplace_back(
+			m_LegalMoves.push(Move(
 				startSquare, 
 				targetSquare,
 				(uint8_t)MoveFlags::IS_VALID | (GetPiece(targetSquare) == PieceType::NO_PIECE ? 0 : (uint8_t)MoveFlags::IS_CAPTURE),
 				Piece{ (uint8_t)GetPiece(startSquare) },
 				Piece{ (uint8_t)GetPiece(targetSquare) }
-			);
+			));
 		}
 	}
 
@@ -852,18 +849,18 @@ void MoveGenerator::CalculateSlidingMoves(std::vector<Move>& moveList)
 		while (moveSquares != 0)
 		{
 			int targetSquare = BitUtil::PopLSB(moveSquares);
-			moveList.emplace_back(
+			m_LegalMoves.push(Move(
 				startSquare,
 				targetSquare,
 				(uint8_t)MoveFlags::IS_VALID | (GetPiece(targetSquare) == PieceType::NO_PIECE ? 0 : (uint8_t)MoveFlags::IS_CAPTURE),
 				Piece{ (uint8_t)GetPiece(startSquare) },
 				Piece{ (uint8_t)GetPiece(targetSquare) }
-			);
+			));
 		}
 	}
 }
 
-void MoveGenerator::CalculateKnightMoves(std::vector<Move>& moveList)
+void MoveGenerator::CalculateKnightMoves()
 {
 	// bitboard of all non-pinned knights
 	Bitboard knights = m_FriendlyKinghts & m_NotPinRays;
@@ -877,18 +874,18 @@ void MoveGenerator::CalculateKnightMoves(std::vector<Move>& moveList)
 		while (moveSquares != 0)
 		{
 			int targetSquare = BitUtil::PopLSB(moveSquares);
-			moveList.emplace_back(
+			m_LegalMoves.push(Move(
 				knightSquare, 
 				targetSquare, 
 				(uint8_t)MoveFlags::IS_VALID | (GetPiece(targetSquare) == PieceType::NO_PIECE ? 0 : (uint8_t)MoveFlags::IS_CAPTURE),
 				Piece{ (uint8_t)GetPiece(knightSquare) },
 				Piece{ (uint8_t)GetPiece(targetSquare) }
-			);
+			));
 		}
 	}
 }
 
-void MoveGenerator::CalculatePawnMoves(std::vector<Move>& moveList)
+void MoveGenerator::CalculatePawnMoves()
 {
 	int pushDir = m_WhiteToMove ? 1 : -1;
 	int pushOffset = pushDir * 8;
@@ -924,12 +921,12 @@ void MoveGenerator::CalculatePawnMoves(std::vector<Move>& moveList)
 		int startSquare = targetSquare - pushOffset;
 		if (!IsPinned(startSquare) || s_AlignMask[startSquare][m_FriendlyKingSquare] == s_AlignMask[targetSquare][m_FriendlyKingSquare])
 		{
-			moveList.emplace_back(
+			m_LegalMoves.push(Move(
 				startSquare,
 				targetSquare,
 				(uint8_t)MoveFlags::IS_VALID,
 				Piece{ (uint8_t)friendlyPawnPiece }
-			);
+			));
 		}
 	}
 
@@ -943,12 +940,12 @@ void MoveGenerator::CalculatePawnMoves(std::vector<Move>& moveList)
 		uint8_t startSquare = targetSquare - pushOffset * 2;
 		if (!IsPinned(startSquare) || s_AlignMask[startSquare][m_FriendlyKingSquare] == s_AlignMask[targetSquare][m_FriendlyKingSquare])
 		{
-			moveList.emplace_back(
+			m_LegalMoves.push(Move(
 				startSquare,
 				targetSquare, 
 				(uint8_t)MoveFlags::IS_VALID | (uint8_t)MoveFlags::PAWN_TWO_UP,
 				Piece{ (uint8_t)friendlyPawnPiece }
-			);
+			));
 		}
 	}
 	
@@ -961,13 +958,13 @@ void MoveGenerator::CalculatePawnMoves(std::vector<Move>& moveList)
 
 		if (!IsPinned(startSquare) || s_AlignMask[startSquare][m_FriendlyKingSquare] == s_AlignMask[targetSquare][m_FriendlyKingSquare])
 		{
-			moveList.emplace_back(
+			m_LegalMoves.push(Move(
 				startSquare, 
 				targetSquare,
 				(uint8_t)MoveFlags::IS_VALID | (uint8_t)MoveFlags::IS_CAPTURE,
 				Piece{ (uint8_t)friendlyPawnPiece },
 				Piece{ (uint8_t)GetPiece(targetSquare) }
-			);
+			));
 		}
 	}
 
@@ -978,13 +975,13 @@ void MoveGenerator::CalculatePawnMoves(std::vector<Move>& moveList)
 
 		if (!IsPinned(startSquare) || s_AlignMask[startSquare][m_FriendlyKingSquare] == s_AlignMask[targetSquare][m_FriendlyKingSquare])
 		{
-			moveList.emplace_back(
+			m_LegalMoves.push(Move(
 				startSquare,
 				targetSquare,
 				(uint8_t)MoveFlags::IS_VALID | (uint8_t)MoveFlags::IS_CAPTURE,
 				Piece{ (uint8_t)friendlyPawnPiece },
 				Piece{ (uint8_t)GetPiece(targetSquare) }
-			);
+			));
 		}
 	}
 
@@ -997,7 +994,7 @@ void MoveGenerator::CalculatePawnMoves(std::vector<Move>& moveList)
 		uint8_t startSquare = targetSquare - pushOffset;
 		if (!IsPinned(startSquare))
 		{
-			GeneratePromotions(startSquare, targetSquare, moveList);
+			GeneratePromotions(startSquare, targetSquare);
 		}
 	}
 
@@ -1009,7 +1006,7 @@ void MoveGenerator::CalculatePawnMoves(std::vector<Move>& moveList)
 
 		if (!IsPinned(startSquare) || s_AlignMask[startSquare][m_FriendlyKingSquare] == s_AlignMask[targetSquare][m_FriendlyKingSquare])
 		{
-			GeneratePromotions(startSquare, targetSquare, moveList);
+			GeneratePromotions(startSquare, targetSquare);
 		}
 	}
 
@@ -1020,7 +1017,7 @@ void MoveGenerator::CalculatePawnMoves(std::vector<Move>& moveList)
 
 		if (!IsPinned(startSquare) || s_AlignMask[startSquare][m_FriendlyKingSquare] == s_AlignMask[targetSquare][m_FriendlyKingSquare])
 		{
-			GeneratePromotions(startSquare, targetSquare, moveList);
+			GeneratePromotions(startSquare, targetSquare);
 		}
 	}
 
@@ -1043,13 +1040,13 @@ void MoveGenerator::CalculatePawnMoves(std::vector<Move>& moveList)
 				{
 					if (!InCheckAfterEnPassant(startSquare, targetSquare, capturedPawnSquare))
 					{
-						moveList.emplace_back(
+						m_LegalMoves.push(Move(
 							startSquare, 
 							targetSquare, 
 							(uint8_t)MoveFlags::IS_VALID | (uint8_t)MoveFlags::IS_EN_PASSANT | (uint8_t)MoveFlags::IS_CAPTURE,
 							Piece{ (uint8_t)friendlyPawnPiece },
 							Piece{ (uint8_t)GetPiece(capturedPawnSquare)}
-						);
+						));
 					}
 				}
 			}
@@ -1059,45 +1056,45 @@ void MoveGenerator::CalculatePawnMoves(std::vector<Move>& moveList)
 	
 }
 
-void MoveGenerator::GeneratePromotions(uint8_t startSquare, uint8_t targetSquare, std::vector<Move>& moveList)
+void MoveGenerator::GeneratePromotions(uint8_t startSquare, uint8_t targetSquare)
 {
 
-	moveList.emplace_back(
+	m_LegalMoves.push(Move(
 		startSquare, 
 		targetSquare, 
 		(uint8_t)MoveFlags::IS_VALID | (uint8_t)MoveFlags::IS_PROMOTION | (GetPiece(targetSquare) == PieceType::NO_PIECE ? 0 : (uint8_t)MoveFlags::IS_CAPTURE),
 		m_WhiteToMove ? Piece{ (uint8_t)PieceType::WHITE_PAWN } : Piece{ (uint8_t)PieceType::BLACK_PAWN },
 		Piece{ (uint8_t)GetPiece(targetSquare) },
 		m_WhiteToMove ? Piece{ (uint8_t)PieceType::WHITE_BISHOP } : Piece{ (uint8_t)PieceType::BLACK_BISHOP }
-	);
+	));
 
 
-	moveList.emplace_back(
+	m_LegalMoves.push(Move(
 		startSquare,
 		targetSquare,
 		(uint8_t)MoveFlags::IS_VALID | (uint8_t)MoveFlags::IS_PROMOTION | (GetPiece(targetSquare) == PieceType::NO_PIECE ? 0 : (uint8_t)MoveFlags::IS_CAPTURE),
 		m_WhiteToMove ? Piece{ (uint8_t)PieceType::WHITE_PAWN } : Piece{ (uint8_t)PieceType::BLACK_PAWN },
 		Piece{ (uint8_t)GetPiece(targetSquare) },
 		m_WhiteToMove ? Piece{ (uint8_t)PieceType::WHITE_KNIGHT } : Piece{ (uint8_t)PieceType::BLACK_KNIGHT }
-	);
+	));
 
-	moveList.emplace_back(
+	m_LegalMoves.push(Move(
 		startSquare,
 		targetSquare,
 		(uint8_t)MoveFlags::IS_VALID | (uint8_t)MoveFlags::IS_PROMOTION | (GetPiece(targetSquare) == PieceType::NO_PIECE ? 0 : (uint8_t)MoveFlags::IS_CAPTURE),
 		m_WhiteToMove ? Piece{ (uint8_t)PieceType::WHITE_PAWN } : Piece{ (uint8_t)PieceType::BLACK_PAWN },
 		Piece{ (uint8_t)GetPiece(targetSquare) },
 		m_WhiteToMove ? Piece{ (uint8_t)PieceType::WHITE_ROOK } : Piece{ (uint8_t)PieceType::BLACK_ROOK }
-	);
+	));
 
-	moveList.emplace_back(
+	m_LegalMoves.push(Move(
 		startSquare,
 		targetSquare,
 		(uint8_t)MoveFlags::IS_VALID | (uint8_t)MoveFlags::IS_PROMOTION | (GetPiece(targetSquare) == PieceType::NO_PIECE ? 0 : (uint8_t)MoveFlags::IS_CAPTURE),
 		m_WhiteToMove ? Piece{ (uint8_t)PieceType::WHITE_PAWN } : Piece{ (uint8_t)PieceType::BLACK_PAWN },
 		Piece{ (uint8_t)GetPiece(targetSquare) },
 		m_WhiteToMove ? Piece{ (uint8_t)PieceType::WHITE_QUEEN } : Piece{ (uint8_t)PieceType::BLACK_QUEEN }
-	);
+	));
 }
 
 Bitboard MoveGenerator::GetSlidingAttacks(uint8_t square, Bitboard blockers, bool orthogonal)

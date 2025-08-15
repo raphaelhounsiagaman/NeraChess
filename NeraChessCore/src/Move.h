@@ -2,8 +2,19 @@
 
 #include <cstdint>
 
-#include "MoveFlags.h"
 #include "Piece.h"
+
+enum class MoveFlags : uint8_t
+{
+	NO_MOVE = 0,
+	IS_VALID = 1, // Bit 1
+	IS_CAPTURE = 2, // Bit 2
+	IS_EN_PASSANT = 4, // Bit 3
+	IS_PROMOTION = 8, // Bit 4
+	IS_CASTLES = 16, // Bit 5
+	PAWN_TWO_UP = 32, // Bit 6
+};
+
 
 struct Move
 {
@@ -19,7 +30,19 @@ public:
 		: startSquare(start), targetSquare(target), moveFlags(flags), movePieceType(movePiece), capturePieceType(capturePiece), promotionPieceType(promotionPiece)
 	{ }
 
-	bool operator==(const Move& other) const;
+	bool operator==(const Move& other) const
+	{
+		return (
+			startSquare == other.startSquare &&
+			targetSquare == other.targetSquare &&
+
+			movePieceType == other.movePieceType &&
+			capturePieceType == other.capturePieceType &&
+			promotionPieceType == other.promotionPieceType &&
+
+			moveFlags == other.moveFlags
+			);
+	}
 
 	explicit operator bool() const {
 		return moveFlags != 0;

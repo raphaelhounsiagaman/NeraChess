@@ -1,6 +1,6 @@
 #include "Renderer.h"
 
-#include "NeraChessCore.h"
+#include "ChessBoard.h"
 
 #include <iostream>
 #include <cstdint>

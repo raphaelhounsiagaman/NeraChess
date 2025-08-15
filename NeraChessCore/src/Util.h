@@ -4,7 +4,7 @@
 
 #include <string>
 
-#include "PieceType.h"
+#include "Piece.h"
 
 typedef uint64_t Bitboard;
 

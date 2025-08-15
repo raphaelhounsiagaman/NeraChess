@@ -2,8 +2,6 @@
 
 #include "ChessPlayer.h"
 
-#include "NeraChessCore.h"
-
 class Bot1 : public ChessPlayer
 {
 public:

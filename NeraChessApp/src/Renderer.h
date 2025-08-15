@@ -1,6 +1,6 @@
 #pragma once
 
-#include "NeraChessCore.h"
+#include "ChessBoard.h"
 
 #include <cstdint>
 #include <string>

@@ -1,6 +1,6 @@
 #pragma once
 
-#include "NeraChessCore.h"
+#include "ChessBoard.h"
 
 class ChessPlayer
 {

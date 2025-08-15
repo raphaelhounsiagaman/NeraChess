@@ -3,9 +3,9 @@
 #include <vector>
 #include <memory>
 
-#include "BoardState.h"
 #include "Move.h"
-
+#include "MoveList.h"
+#include "BoardState.h"
 
 class MoveGenerator
 {	
@@ -13,7 +13,7 @@ public:
 	MoveGenerator() = default;
 	~MoveGenerator() = default;
 
-	std::vector<Move> GenerateMoves(const BoardState& board);
+	MoveList GenerateMoves(const BoardState& board);
 
 	bool InCheck() const { return m_InCheck; };
 
@@ -24,12 +24,12 @@ private:
 	void CalculateAttackMaps();
 	void GenSlidingAttacks();
 
-	void CalculateKingMoves(std::vector<Move>& moveList);
-	void CalculateSlidingMoves(std::vector<Move>& moveList);
-	void CalculateKnightMoves(std::vector<Move>& moveList);
-	void CalculatePawnMoves(std::vector<Move>& moveList);
+	void CalculateKingMoves();
+	void CalculateSlidingMoves();
+	void CalculateKnightMoves();
+	void CalculatePawnMoves();
 
-	void GeneratePromotions(uint8_t startSquare, uint8_t targetSquare, std::vector<Move>& moveList);
+	void GeneratePromotions(uint8_t startSquare, uint8_t targetSquare);
 
 	Bitboard GetSlidingAttacks(uint8_t square, Bitboard blockers, bool orthogonal);
 
@@ -41,8 +41,10 @@ private:
 
 private:
 
-	BoardState m_BoardState{}; // check
+	MoveList m_LegalMoves;
 	
+	BoardState m_BoardState{}; // check
+
 	bool m_WhiteToMove{}; // check
 
 	Bitboard m_WhitePieces{};  // check

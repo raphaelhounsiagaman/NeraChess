@@ -1,6 +1,6 @@
 #include "Application.h"
 
-#include "NeraChessCore.h"
+#include "ChessBoard.h"
 
 #include <iostream>
 #include <thread>
@@ -125,7 +125,7 @@ void Application::ProcessGame()
 		return;
 
 	assert(m_Player1 != nullptr && m_Player2 != nullptr);
-	std::vector<Move> legalMoves = m_ChessBoard.GetLegalMoves();
+	MoveList legalMoves = m_ChessBoard.GetLegalMoves();
 	std::unique_lock<std::mutex> lock(m_MovePlayedMutex);
 	assert(std::find(legalMoves.begin(), legalMoves.end(), m_MovePlayed) != legalMoves.end());
 

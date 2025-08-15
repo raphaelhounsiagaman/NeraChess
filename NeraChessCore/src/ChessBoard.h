@@ -4,14 +4,33 @@
 #include <string>
 #include <vector>
 
-#include "GameOverFlags.h"
-
-#include "MoveGenerator.h"
-#include "BoardState.h"
+#include "Util.h"
 #include "Piece.h"
 #include "Move.h"
+#include "MoveList.h"
+#include "BoardState.h"
+#include "MoveGenerator.h"
 
 typedef uint64_t Bitboard;
+
+enum  class GameOverFlags : uint16_t
+{
+    IS_GAME_CONTINUE = 0,
+
+    IS_GAME_OVER = 1, // Bit 1
+
+    IS_WHITE_WIN = 2, // Bit 2
+
+    IS_CHECKMATE = 4, // Bit 3
+    IS_RESIGN = 8, // Bit 4
+    IS_TIMEOUT = 16, // Bit 5
+
+    IS_STALEMATE = 32, // Bit 6
+    IS_REPETITION = 64, // Bit 7
+    IS_50MOVE_RULE = 128, // Bit 8
+    IS_INSUFFICIENT_MATERIAL = 256, // Bit 9
+    IS_AGREE_ON_DRAW = 512, // Bit 10
+};
 
 class ChessBoard
 {
@@ -23,7 +42,7 @@ public:
 
     bool operator==(const ChessBoard& other) const;
 
-    std::vector<Move> GetLegalMoves() const;
+    MoveList GetLegalMoves() const;
 
     void MakeMove(Move move);
 	void UndoMove(Move move);
@@ -47,7 +66,7 @@ private:
 
     std::vector<Move> m_MovesPlayed{};
 
-    // ChessBoardFlags OR'ed together.
+    // GameOverFlags OR'ed together.
     uint16_t m_GameOverFlags = 0;
 
     uint8_t m_HalfMoveClock = 0;

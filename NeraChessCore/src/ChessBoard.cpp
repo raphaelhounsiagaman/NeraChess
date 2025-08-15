@@ -8,8 +8,6 @@
 #include <vector>
 #include <chrono>
 
-#include "GameOverFlags.h"
-
 #include "MoveGenerator.h"
 
 #include "Util.h"
@@ -255,7 +253,7 @@ Piece ChessBoard::GetPiece(const uint8_t square) const
 		Piece{ (uint8_t)PieceType::NO_PIECE };
 }
 
-std::vector<Move> ChessBoard::GetLegalMoves() const
+MoveList ChessBoard::GetLegalMoves() const
 {
 	if (m_GameOverFlags & (uint8_t)GameOverFlags::IS_GAME_OVER)
 		return {};
@@ -443,12 +441,12 @@ void ChessBoard::MakeMove(Move move)
 		m_FullMoves++;
 
 	MoveGenerator generator{};
-	std::vector<Move> moves = generator.GenerateMoves(m_BoardState);
+	size_t movesCount = generator.GenerateMoves(m_BoardState).size();
 
 	m_GameOverFlags = 0;
 
 	// CheckMate and Stalemate
-	if (moves.size() == 0)
+	if (movesCount == 0)
 	{
 		if (generator.InCheck())
 		{
@@ -745,23 +743,6 @@ void ChessBoard::UndoMove(Move move)
 
 void ChessBoard::RunPerformanceTest(ChessBoard board, int calcDepth)
 {
-	const std::array<uint64_t, 14> perftExpectedResults = {
-								1,
-							   20,
-							  400,
-							8'902,
-						  197'281,
-						4'865'609,
-					  119'060'324,
-				   	3'195'901'860,
-				   84'998'978'956,
-				2'439'530'234'167,
-			   69'352'859'712'417,
-			2'097'651'003'696'806,
-		   62'854'969'236'701'747,
-		1'981'066'775'000'396'239,
-	};
-
 	if (calcDepth <= 0)
 	{
 		std::cout << "Invalid depth for performance test. Must be greater than 0.\n";
@@ -770,14 +751,13 @@ void ChessBoard::RunPerformanceTest(ChessBoard board, int calcDepth)
 
 	auto start = std::chrono::steady_clock::now();
 
-	std::vector<Move> move_list = board.GetLegalMoves();
-	size_t n_moves = move_list.size();
+	MoveList move_list = board.GetLegalMoves();
 	uint64_t result = 0;
 
-	for (int i = 0; i < n_moves; i++) {
-		ChessBoard temp_board = board;
+	for (int i = 0; i < move_list.size(); i++) {
+		//ChessBoard temp_board = board;
 		board.MakeMove(move_list[i]);
-		ChessBoard midBoard = board;
+		//ChessBoard midBoard = board;
 		uint64_t perftResult = PerfTest(calcDepth - 1, board);
 		std::cout << 
 			ChessUtil::SquareAsString(move_list[i].startSquare) <<
@@ -785,11 +765,10 @@ void ChessBoard::RunPerformanceTest(ChessBoard board, int calcDepth)
 			": " << perftResult << "\n";
 		result += perftResult;
 		board.UndoMove(move_list[i]);
-
-		if (temp_board != board)
+		//if (temp_board != board)
 		{
-			std::cout << "Error: Board state changed after undoing move.\n";
-			board.m_Error = 1;
+			//std::cout << "Error: Board state changed after undoing move.\n";
+			//board.m_Error = 1;
 		}
 	}
 
@@ -803,59 +782,29 @@ void ChessBoard::RunPerformanceTest(ChessBoard board, int calcDepth)
 
 uint64_t ChessBoard::PerfTest(int depth, ChessBoard board)
 {
-	std::vector<Move> move_list;
-	move_list.reserve(218); // Reserve space for moves to avoid reallocations
-	move_list = board.GetLegalMoves();
-	int n_moves;
+	MoveList moveList = board.GetLegalMoves(); 
 	uint64_t nodes = 0;
-
-	n_moves = (int)move_list.size();
 
 	if (depth == 1)
-		return (uint64_t)n_moves;
+		return moveList.size();
 
-	for (int i = 0; i < n_moves; i++) {
-		ChessBoard temp_board = board;
-		board.MakeMove(move_list[i]);
-		ChessBoard midBoard = board;
+	for (int i = 0; i < moveList.size(); i++) {
+		//ChessBoard temp_board = board;
+		board.MakeMove(moveList[i]);
+		//ChessBoard midBoard = board;
 		nodes += PerfTest(depth - 1, board);
-		board.UndoMove(move_list[i]);
-		if (temp_board != board || board.m_Error != 0)
+		board.UndoMove(moveList[i]);
+		//if (temp_board != board || board.m_Error != 0)
 		{
-			std::cout << "Error: Board state changed after undoing move.\n";
-			board.m_Error = 1;
+			//std::cout << "Error: Board state changed after undoing move.\n";
+			//board.m_Error = 1;
 		}
 	}
 	return nodes;
-	/*
-	if (depth == 0)
-		return 1ULL;
-
-	std::vector<Move> move_list = board.GetLegalMoves();
-	size_t n_moves = move_list.size();
-	uint64_t nodes = 0;
-
-	for (int i = 0; i < n_moves; i++) {
-		ChessBoard temp_board = board;
-		board.MakeMove(move_list[i]);
-		nodes += PerfTest(depth - 1, board);
-		ChessBoard midBoard = board;
-		board.UndoMove(move_list[i]);
-		if (temp_board != board || board.m_Error != 0)
-		{
-			std::cout << "Error: Board state changed after undoing move.\n";
-			board.m_Error = 1;
-		}
-
-	}
-	return nodes;
-	*/
 }
 
 bool ChessBoard::InsufficentMaterial(ChessBoard board)
 {
-	
-
 	if (board.m_BoardState.pieceBitboards[(uint8_t)PieceType::WHITE_PAWN] > 0 || 
 		board.m_BoardState.pieceBitboards[(uint8_t)PieceType::WHITE_ROOK] > 0 ||
 		board.m_BoardState.pieceBitboards[(uint8_t)PieceType::WHITE_QUEEN] > 0 ||
@@ -865,8 +814,6 @@ bool ChessBoard::InsufficentMaterial(ChessBoard board)
 	{
 		return false;
 	}
-
-
 
 	// If no pawns, queens, or rooks on the board, then consider knight and bishop cases
 	int numWhiteBishops = BitUtil::PopCnt(board.m_BoardState.pieceBitboards[(uint8_t)PieceType::WHITE_BISHOP]);
