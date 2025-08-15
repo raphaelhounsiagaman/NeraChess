@@ -12,4 +12,10 @@ enum InputEventType : uint16_t
 
 	EventTypeKeyPressed,
 
+	EventTypeLMBPressed,
+	EventTypeRMBPressed,
+
+	EventTypeStartGame,
+	EventTypeStopGame,
+
 };

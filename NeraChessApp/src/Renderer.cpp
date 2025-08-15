@@ -145,8 +145,8 @@ void Renderer::Render()
 
 void Renderer::SetInputHandler(InputHandler& inputHandler)
 {
-    m_InputHandler = inputHandler;
-    m_InputHandler.SetImGuiIO(m_IO);
+    m_InputHandler = &inputHandler;
+    m_InputHandler->SetImGuiIO(m_IO);
 }
 
 void Renderer::DrawChessBoard()
@@ -227,12 +227,34 @@ void Renderer::ImGuiWindow()
     ImGui::Begin("Settings");
 
 	static bool test_checkbox = true;
-
 	ImGui::Checkbox("Test Checkbox", &test_checkbox);
+
+	if(ImGui::Button("Start Game"))
+		m_InputHandler->AddInputEvent(InputEvent(EventTypeStartGame));
+	if(ImGui::Button("Stop Game"))
+		m_InputHandler->AddInputEvent(InputEvent(EventTypeStopGame));
 
     //ImGui::InputInt("input int", &i0);
 
     ImGui::End();
+}
+
+uint8_t Renderer::GetSquareFromPos(int x, int y) const
+{
+    bool isOutOfBounds = 
+        x < m_Margin ||
+        x > m_Margin + 8 * m_TileSize ||
+        y < m_Margin ||
+        y > m_Margin + 8 * m_TileSize;
+    if (isOutOfBounds)
+		return 64;
+
+    uint8_t file = (x - m_Margin) / m_TileSize;
+    uint8_t rank = 7 - ((y - m_Margin) / m_TileSize);
+
+	uint8_t square = rank * 8 + file;
+
+    return square;
 }
 
 void Renderer::UpdateWindowSize()

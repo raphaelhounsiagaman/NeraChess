@@ -23,13 +23,13 @@ public:
 
     bool operator==(const ChessBoard& other) const;
 
-
     std::vector<Move> GetLegalMoves() const;
 
     void MakeMove(Move move);
 	void UndoMove(Move move);
 
     Piece GetPiece(const uint8_t square) const;
+	uint16_t GetGameOverFlags() const { return m_GameOverFlags; }
 
     uint8_t GetError() const { return m_Error; }
 

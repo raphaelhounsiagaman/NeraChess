@@ -713,8 +713,6 @@ void MoveGenerator::CalculateAttackMaps()
 	{
 		m_CheckRayBitmask = ~(0ULL);
 	}
-
-
 }
 
 void MoveGenerator::GenSlidingAttacks()

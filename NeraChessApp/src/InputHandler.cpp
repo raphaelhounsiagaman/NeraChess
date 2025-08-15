@@ -35,19 +35,41 @@ void InputHandler::Process()
 		{
 			m_InputEvents.emplace_back(EventTypeKeyPressed);
 		}
+		else if (event.type == SDL_MOUSEBUTTONDOWN)
+		{
+			if (event.button.button == SDL_BUTTON_LEFT)
+			{
+				InputEvent inputEvent;
+				inputEvent.type = EventTypeLMBPressed;
+				inputEvent.eventPos = { event.button.x, event.button.y };
+				m_InputEvents.push_back(inputEvent);
+			}
+			if (event.button.button == SDL_BUTTON_RIGHT)
+			{
+				InputEvent inputEvent;
+				inputEvent.type = EventTypeRMBPressed;
+				inputEvent.eventPos = { event.button.x, event.button.y };
+				m_InputEvents.push_back(inputEvent);
+			}
+		}
 
     }
 }
 
-int InputHandler::PollInputEvent(InputEvent* event)
+int InputHandler::PollInputEvent(InputEvent& event)
 {	
 	if (!m_InputEvents.empty())
 	{
-		*event = m_InputEvents.back();
+		event = m_InputEvents.back();
 		m_InputEvents.pop_back();
 		return 1;
 	}
 	return 0;
+}
+
+void InputHandler::AddInputEvent(InputEvent inputEvent)
+{
+	m_InputEvents.push_back(inputEvent);
 }
 
 bool InputHandler::IsImGuiWantCapture() const

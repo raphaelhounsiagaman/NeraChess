@@ -15,9 +15,11 @@ public:
 	
 	void Process();
 
-	int PollInputEvent(InputEvent* event);
+	int PollInputEvent(InputEvent& event);
 
 	void SetImGuiIO(const ImGuiIO* io) { m_IO = io; }
+
+	void AddInputEvent(InputEvent event);
 
 private:
 

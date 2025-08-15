@@ -22,6 +22,7 @@ public:
 	void SetChessBoard(const ChessBoard* chessBoard) { m_ChessBoard = chessBoard; }
 	void SetBitboard(Bitboard board) { m_DebugBitboard = board; }
 
+	uint8_t GetSquareFromPos(int x, int y) const;
 	uint8_t GetError() const { return m_Error; }
 
 	void UpdateWindowSize();
@@ -55,7 +56,7 @@ private:
 	const float m_MarginPortion = 0.05f;
 
 	Bitboard m_DebugBitboard = 0ULL;
-	InputHandler m_InputHandler{};
+	InputHandler* m_InputHandler = nullptr;
 
 	int m_TileSize = 0;
 	int m_Margin = 0;
