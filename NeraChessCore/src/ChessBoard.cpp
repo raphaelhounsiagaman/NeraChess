@@ -262,61 +262,70 @@ MoveList ChessBoard::GetLegalMoves() const
 
 void ChessBoard::MakeMove(Move move)
 {
-	if (!(move.moveFlags & (uint8_t)MoveFlags::IS_VALID))
+	if (!(move))
 	{
 		m_Error = 1;
 		return;
 	}
 
+	UndoInfo info;
+	info.move = move;
+	info.capturedPiece = GetPiece(MoveUtil::GetTargetSquare(move)); // save what was there
+	info.castlingRights = m_BoardState.boardStateFlags & 0b1111;
+	info.enPassantFile = m_BoardState.enPassentFile;
+	info.halfmoveClock = m_HalfMoveClock;
+
+	m_UndoStack.push(info);
+
 	m_HalfMoveClock++;
 
-	bool whitesMove = move.movePieceType.IsWhite();
+	bool whitesMove = PieceUtil::IsWhite(MoveUtil::GetMovePiece(move));
 
 	// remove the piece from the start square
-	m_BoardState.pieceBitboards[move.movePieceType.pieceType] &= ~(1ULL << move.startSquare);
-	m_BoardState.pieceBitboards[move.movePieceType.pieceType] |= (1ULL << move.targetSquare);
+	m_BoardState.pieceBitboards[MoveUtil::GetMovePiece(move)] &= ~(1ULL << MoveUtil::GetFromSquare(move));
+	m_BoardState.pieceBitboards[MoveUtil::GetMovePiece(move)] |= (1ULL << MoveUtil::GetTargetSquare(move));
 
-	if (move.movePieceType.pieceType == (uint8_t)PieceType::WHITE_PAWN || move.movePieceType.pieceType == (uint8_t)PieceType::BLACK_PAWN)
+	if (MoveUtil::GetMovePiece(move) == (uint8_t)PieceType::WHITE_PAWN || MoveUtil::GetMovePiece(move) == (uint8_t)PieceType::BLACK_PAWN)
 	{
 		m_HalfMoveClock = 0;
 	}
-	if (move.movePieceType.pieceType == (uint8_t)PieceType::WHITE_KING && m_FirstWhiteKingMove == 0)
+	if (MoveUtil::GetMovePiece(move) == (uint8_t)PieceType::WHITE_KING && m_FirstWhiteKingMove == 0)
 	{
 		m_FirstWhiteKingMove = m_FullMoves;
 		m_BoardState.boardStateFlags &= ~(uint8_t)BoardStateFlags::CanWhiteCastleQueen;
 		m_BoardState.boardStateFlags &= ~(uint8_t)BoardStateFlags::CanWhiteCastleKing;
 	}
-	else if (move.movePieceType.pieceType == (uint8_t)PieceType::BLACK_KING && m_FirstBlackKingMove == 0)
+	else if (MoveUtil::GetMovePiece(move) == (uint8_t)PieceType::BLACK_KING && m_FirstBlackKingMove == 0)
 	{
 		m_FirstBlackKingMove = m_FullMoves;
 		m_BoardState.boardStateFlags &= ~(uint8_t)BoardStateFlags::CanBlackCastleQueen;
 		m_BoardState.boardStateFlags &= ~(uint8_t)BoardStateFlags::CanBlackCastleKing;
 	}
 
-	if (move.movePieceType.pieceType == (uint8_t)PieceType::WHITE_ROOK)
+	if (MoveUtil::GetMovePiece(move) == (uint8_t)PieceType::WHITE_ROOK)
 	{
 
-		if (move.startSquare == 0 && m_FirstWhiteQueenRookMove == 0)
+		if (MoveUtil::GetFromSquare(move) == 0 && m_FirstWhiteQueenRookMove == 0)
 		{
 			m_FirstWhiteQueenRookMove = m_FullMoves;
 			m_BoardState.boardStateFlags &= ~(uint8_t)BoardStateFlags::CanWhiteCastleQueen;
 		}
-		else if (move.startSquare == 7 && m_FirstWhiteKingRookMove == 0)
+		else if (MoveUtil::GetFromSquare(move) == 7 && m_FirstWhiteKingRookMove == 0)
 		{
 			m_FirstWhiteKingRookMove = m_FullMoves;
 			m_BoardState.boardStateFlags &= ~(uint8_t)BoardStateFlags::CanWhiteCastleKing;
 		}
 
 	}
-	else if (move.movePieceType.pieceType == (uint8_t)PieceType::BLACK_ROOK)
+	else if (MoveUtil::GetMovePiece(move) == (uint8_t)PieceType::BLACK_ROOK)
 	{
 
-		if (move.startSquare == 56 && m_FirstBlackQueenRookMove == 0)
+		if (MoveUtil::GetFromSquare(move) == 56 && m_FirstBlackQueenRookMove == 0)
 		{
 			m_FirstBlackQueenRookMove = m_FullMoves;
 			m_BoardState.boardStateFlags &= ~(uint8_t)BoardStateFlags::CanBlackCastleQueen;
 		}
-		else if (move.startSquare == 63 && m_FirstBlackKingRookMove == 0)
+		else if (MoveUtil::GetFromSquare(move) == 63 && m_FirstBlackKingRookMove == 0)
 		{
 			m_FirstBlackKingRookMove = m_FullMoves;
 			m_BoardState.boardStateFlags &= ~(uint8_t)BoardStateFlags::CanBlackCastleKing;
@@ -324,10 +333,10 @@ void ChessBoard::MakeMove(Move move)
 	}
 
 
-	if (move.moveFlags & (uint8_t)MoveFlags::IS_CASTLES)
+	if (MoveUtil::GetMoveFlags(move) & MoveFlags::IS_CASTLES)
 	{
 
-		bool queenSide = ChessUtil::SquareToFile(move.targetSquare) == 2;
+		bool queenSide = SquareUtil::GetFile(MoveUtil::GetTargetSquare(move)) == 2;
 
 		if (whitesMove)
 		{
@@ -379,40 +388,40 @@ void ChessBoard::MakeMove(Move move)
 		}
 		
 	}
-	if (move.moveFlags & (uint8_t)MoveFlags::PAWN_TWO_UP)
+	if (MoveUtil::GetMoveFlags(move) & (uint8_t)MoveFlags::PAWN_TWO_UP)
 	{
 		m_BoardState.boardStateFlags |= (uint8_t)BoardStateFlags::CanEnPassent;
-		m_BoardState.enPassentFile = move.targetSquare % 8; // Set the en passant file to the file of the target square
+		m_BoardState.enPassentFile = MoveUtil::GetTargetSquare(move) % 8; // Set the en passant file to the file of the target square
 	}
 	else
 	{
 		m_BoardState.boardStateFlags &= ~(uint8_t)BoardStateFlags::CanEnPassent;
 		m_BoardState.enPassentFile = 8; // Reset the en passant file
 	}
-	if (move.moveFlags & (uint8_t)MoveFlags::IS_CAPTURE)
+	if (MoveUtil::GetMoveFlags(move) & (uint8_t)MoveFlags::IS_CAPTURE)
 	{
-		m_BoardState.pieceBitboards[move.capturePieceType.pieceType] &= ~(1ULL << move.targetSquare);
+		m_BoardState.pieceBitboards[GetPiece(MoveUtil::GetTargetSquare(move))] &= ~(1ULL << MoveUtil::GetTargetSquare(move));
 		m_HalfMoveClock = 0;
 
-		if (move.capturePieceType.pieceType == (uint8_t)PieceType::WHITE_ROOK && move.targetSquare == 0)
+		if (GetPiece(MoveUtil::GetTargetSquare(move)) == (uint8_t)PieceType::WHITE_ROOK && MoveUtil::GetTargetSquare(move) == 0)
 		{
 			m_BoardState.boardStateFlags &= ~(uint8_t)BoardStateFlags::CanWhiteCastleQueen;
 			if (m_FirstWhiteQueenRookMove == 0)
 				m_FirstWhiteQueenRookMove = m_FullMoves;
 		}
-		if (move.capturePieceType.pieceType == (uint8_t)PieceType::WHITE_ROOK && move.targetSquare == 7)
+		if (GetPiece(MoveUtil::GetTargetSquare(move)) == (uint8_t)PieceType::WHITE_ROOK && MoveUtil::GetTargetSquare(move) == 7)
 		{
 			m_BoardState.boardStateFlags &= ~(uint8_t)BoardStateFlags::CanWhiteCastleKing;
 			if (m_FirstWhiteKingRookMove == 0)
 				m_FirstWhiteKingRookMove = m_FullMoves;
 		}
-		if (move.capturePieceType.pieceType == (uint8_t)PieceType::BLACK_ROOK && move.targetSquare == 56)
+		if (GetPiece(MoveUtil::GetTargetSquare(move)) == (uint8_t)PieceType::BLACK_ROOK && MoveUtil::GetTargetSquare(move) == 56)
 		{
 			m_BoardState.boardStateFlags &= ~(uint8_t)BoardStateFlags::CanBlackCastleQueen;
 			if (m_FirstBlackQueenRookMove == 0)
 				m_FirstBlackQueenRookMove = m_FullMoves;
 		}
-		if (move.capturePieceType.pieceType == (uint8_t)PieceType::BLACK_ROOK && move.targetSquare == 63)
+		if (GetPiece(MoveUtil::GetTargetSquare(move)) == (uint8_t)PieceType::BLACK_ROOK && MoveUtil::GetTargetSquare(move) == 63)
 		{
 			m_BoardState.boardStateFlags &= ~(uint8_t)BoardStateFlags::CanBlackCastleKing;
 			if (m_FirstBlackKingRookMove == 0)
@@ -420,16 +429,16 @@ void ChessBoard::MakeMove(Move move)
 		}
 
 
-		if (move.moveFlags & (uint8_t)MoveFlags::IS_EN_PASSANT)
+		if (MoveUtil::GetMoveFlags(move) & (uint8_t)MoveFlags::IS_EN_PASSANT)
 		{
-			uint8_t capturedPawnSquare = move.targetSquare + (move.movePieceType.pieceType == (uint8_t)PieceType::WHITE_PAWN ? -8 : 8);
-			m_BoardState.pieceBitboards[move.capturePieceType.pieceType] &= ~(1ULL << capturedPawnSquare);
+			uint8_t capturedPawnSquare = MoveUtil::GetTargetSquare(move) + (MoveUtil::GetMovePiece(move) == (uint8_t)PieceType::WHITE_PAWN ? -8 : 8);
+			m_BoardState.pieceBitboards[GetPiece(MoveUtil::GetTargetSquare(move))] &= ~(1ULL << capturedPawnSquare);
 		}
 	}
-	if (move.moveFlags & (uint8_t)MoveFlags::IS_PROMOTION)
+	if (MoveUtil::GetMoveFlags(move) & (uint8_t)MoveFlags::IS_PROMOTION)
 	{
-		m_BoardState.pieceBitboards[move.movePieceType.pieceType] &= ~(1ULL << move.targetSquare);
-		m_BoardState.pieceBitboards[move.promotionPieceType.pieceType] |= (1ULL << move.targetSquare);
+		m_BoardState.pieceBitboards[MoveUtil::GetMovePiece(move)] &= ~(1ULL << MoveUtil::GetTargetSquare(move));
+		m_BoardState.pieceBitboards[MoveUtil::GetPromoPiece(move)] |= (1ULL << MoveUtil::GetTargetSquare(move));
 	}
 	
 	
@@ -490,7 +499,7 @@ void ChessBoard::MakeMove(Move move)
 void ChessBoard::UndoMove(Move move)
 {
 
-	if (!(move.moveFlags & (uint8_t)MoveFlags::IS_VALID))
+	if (!(move))
 	{
 		m_Error = 1;
 		return;
@@ -501,9 +510,11 @@ void ChessBoard::UndoMove(Move move)
 		return;
 	}
 
+	UndoInfo info = m_UndoStack.pop();
+
 	m_GameOverFlags = 0; // Reset game over flags
 
-	bool whitesMove = move.movePieceType.IsWhite();
+	bool whitesMove = PieceUtil::IsWhite(MoveUtil::GetMovePiece(move));
 
 	if (!whitesMove)
 		m_FullMoves--;
@@ -515,40 +526,40 @@ void ChessBoard::UndoMove(Move move)
 
 	m_BoardState.boardStateFlags ^= (uint8_t)BoardStateFlags::WhiteToMove; // Toggle the turn
 
-	if (move.moveFlags & (uint8_t)MoveFlags::IS_PROMOTION)
+	if (MoveUtil::GetMoveFlags(move) & (uint8_t)MoveFlags::IS_PROMOTION)
 	{
-		m_BoardState.pieceBitboards[move.promotionPieceType.pieceType] &= ~(1ULL << move.targetSquare);
+		m_BoardState.pieceBitboards[MoveUtil::GetPromoPiece(move)] &= ~(1ULL << MoveUtil::GetTargetSquare(move));
 	}
-	if (move.moveFlags & (uint8_t)MoveFlags::IS_CAPTURE)
+	if (MoveUtil::GetMoveFlags(move) & (uint8_t)MoveFlags::IS_CAPTURE)
 	{
 		int maxSteps = (int)m_MovesPlayed.size(); 
 		m_HalfMoveClock = 0;
 
 		for (int index = maxSteps - 1; index >= 0; index--)
 		{
-			if (m_MovesPlayed[index].moveFlags & (uint8_t)MoveFlags::IS_CAPTURE ||
-				m_MovesPlayed[index].movePieceType.pieceType == (uint8_t)PieceType::WHITE_PAWN ||
-				m_MovesPlayed[index].movePieceType.pieceType == (uint8_t)PieceType::BLACK_PAWN)
+			if (MoveUtil::GetMoveFlags(m_MovesPlayed[index]) & (uint8_t)MoveFlags::IS_CAPTURE ||
+				MoveUtil::GetMovePiece(m_MovesPlayed[index]) == (uint8_t)PieceType::WHITE_PAWN ||
+				MoveUtil::GetMovePiece(m_MovesPlayed[index]) == (uint8_t)PieceType::BLACK_PAWN)
 				break;
 
 			m_HalfMoveClock++;
 		}
 
-		if (!(move.moveFlags & (uint8_t)MoveFlags::IS_EN_PASSANT))
+		if (!(MoveUtil::GetMoveFlags(move) & (uint8_t)MoveFlags::IS_EN_PASSANT))
 		{
-			m_BoardState.pieceBitboards[move.capturePieceType.pieceType] |= (1ULL << move.targetSquare);
+			m_BoardState.pieceBitboards[info.capturedPiece] |= (1ULL << MoveUtil::GetTargetSquare(move));
 		}
 			
 
-		if (move.moveFlags & (uint8_t)MoveFlags::IS_EN_PASSANT)
+		if (MoveUtil::GetMoveFlags(move) & (uint8_t)MoveFlags::IS_EN_PASSANT)
 		{
-			uint8_t capturedPawnSquare = move.targetSquare + (move.movePieceType.pieceType == (uint8_t)PieceType::WHITE_PAWN ? -8 : 8);
-			m_BoardState.pieceBitboards[move.capturePieceType.pieceType] |= 1ULL << capturedPawnSquare;
+			uint8_t capturedPawnSquare = MoveUtil::GetTargetSquare(move) + (MoveUtil::GetMovePiece(move) == (uint8_t)PieceType::WHITE_PAWN ? -8 : 8);
+			m_BoardState.pieceBitboards[info.capturedPiece] |= 1ULL << capturedPawnSquare;
 		}
 
 
-		if (move.capturePieceType.pieceType == (uint8_t)PieceType::WHITE_ROOK && 
-			move.targetSquare == 0 && 
+		if (info.capturedPiece == (uint8_t)PieceType::WHITE_ROOK &&
+			MoveUtil::GetTargetSquare(move) == 0 &&
 			m_FirstWhiteQueenRookMove == m_FullMoves 			
 			)
 		{
@@ -557,8 +568,8 @@ void ChessBoard::UndoMove(Move move)
 				m_BoardState.boardStateFlags |= (uint8_t)BoardStateFlags::CanWhiteCastleQueen;
 		}
 
-		if (move.capturePieceType.pieceType == (uint8_t)PieceType::WHITE_ROOK && 
-			move.targetSquare == 7 && 
+		if (info.capturedPiece == (uint8_t)PieceType::WHITE_ROOK &&
+			MoveUtil::GetTargetSquare(move) == 7 &&
 			m_FirstWhiteKingRookMove == m_FullMoves
 			)
 		{
@@ -567,8 +578,8 @@ void ChessBoard::UndoMove(Move move)
 				m_BoardState.boardStateFlags |= (uint8_t)BoardStateFlags::CanWhiteCastleKing;
 		}
 
-		if (move.capturePieceType.pieceType == (uint8_t)PieceType::BLACK_ROOK && 
-			move.targetSquare == 56 && 
+		if (info.capturedPiece == (uint8_t)PieceType::BLACK_ROOK &&
+			MoveUtil::GetTargetSquare(move) == 56 &&
 			m_FirstBlackQueenRookMove == m_FullMoves 
 			)
 		{
@@ -577,8 +588,8 @@ void ChessBoard::UndoMove(Move move)
 				m_BoardState.boardStateFlags |= (uint8_t)BoardStateFlags::CanBlackCastleQueen;
 		}
 
-		if (move.capturePieceType.pieceType == (uint8_t)PieceType::BLACK_ROOK && 
-			move.targetSquare == 63 && 
+		if (info.capturedPiece == (uint8_t)PieceType::BLACK_ROOK &&
+			MoveUtil::GetTargetSquare(move) == 63 &&
 			m_FirstBlackKingRookMove == m_FullMoves 
 			)
 		{
@@ -588,10 +599,10 @@ void ChessBoard::UndoMove(Move move)
 		}
 
 	}
-	if (m_MovesPlayed.size() > 0 && m_MovesPlayed.back().moveFlags & (uint8_t)MoveFlags::PAWN_TWO_UP)
+	if (m_MovesPlayed.size() > 0 && MoveUtil::GetMoveFlags(m_MovesPlayed.back()) & (uint8_t)MoveFlags::PAWN_TWO_UP)
 	{
 		m_BoardState.boardStateFlags |= (uint8_t)BoardStateFlags::CanEnPassent;
-		m_BoardState.enPassentFile = m_MovesPlayed.back().targetSquare % 8; // Set the en passant file to the file of the target square
+		m_BoardState.enPassentFile = MoveUtil::GetTargetSquare(m_MovesPlayed.back()) % 8; // Set the en passant file to the file of the target square
 	}
 	else
 	{
@@ -599,10 +610,10 @@ void ChessBoard::UndoMove(Move move)
 		m_BoardState.enPassentFile = 8; // Reset the en passant file
 	}
 
-	if (move.moveFlags & (uint8_t)MoveFlags::IS_CASTLES)
+	if (MoveUtil::GetMoveFlags(move) & (uint8_t)MoveFlags::IS_CASTLES)
 	{
 
-		bool queenSide = ChessUtil::SquareToFile(move.targetSquare) == 2;
+		bool queenSide = SquareUtil::GetFile(MoveUtil::GetTargetSquare(move)) == 2;
 
 		if (whitesMove)
 		{
@@ -666,16 +677,16 @@ void ChessBoard::UndoMove(Move move)
 
 	}
 
-	if (move.movePieceType.pieceType == (uint8_t)PieceType::WHITE_ROOK)
+	if (MoveUtil::GetMovePiece(move) == (uint8_t)PieceType::WHITE_ROOK)
 	{
 
-		if (move.startSquare == 0 && m_FirstWhiteQueenRookMove == m_FullMoves)
+		if (MoveUtil::GetFromSquare(move) == 0 && m_FirstWhiteQueenRookMove == m_FullMoves)
 		{
 			m_FirstWhiteQueenRookMove = 0;
 			if (m_FirstWhiteKingMove == 0)
 				m_BoardState.boardStateFlags |= (uint8_t)BoardStateFlags::CanWhiteCastleQueen;
 		}
-		else if (move.startSquare == 7 && m_FirstWhiteKingRookMove == m_FullMoves)
+		else if (MoveUtil::GetFromSquare(move) == 7 && m_FirstWhiteKingRookMove == m_FullMoves)
 		{
 			m_FirstWhiteKingRookMove = 0;
 			if (m_FirstWhiteKingMove == 0)
@@ -683,16 +694,16 @@ void ChessBoard::UndoMove(Move move)
 		}
 
 	}
-	else if (move.movePieceType.pieceType == (uint8_t)PieceType::BLACK_ROOK)
+	else if (MoveUtil::GetMovePiece(move) == (uint8_t)PieceType::BLACK_ROOK)
 	{
 
-		if (move.startSquare == 56 && m_FirstBlackQueenRookMove == m_FullMoves)
+		if (MoveUtil::GetFromSquare(move) == 56 && m_FirstBlackQueenRookMove == m_FullMoves)
 		{
 			m_FirstBlackQueenRookMove = 0;
 			if (m_FirstBlackKingMove == 0)
 				m_BoardState.boardStateFlags |= (uint8_t)BoardStateFlags::CanBlackCastleQueen;
 		}
-		else if (move.startSquare == 63 && m_FirstBlackKingRookMove == m_FullMoves)
+		else if (MoveUtil::GetFromSquare(move) == 63 && m_FirstBlackKingRookMove == m_FullMoves)
 		{
 			m_FirstBlackKingRookMove = 0;
 			if (m_FirstBlackKingMove == 0)
@@ -700,7 +711,7 @@ void ChessBoard::UndoMove(Move move)
 		}
 	}
 
-	if (move.movePieceType.pieceType == (uint8_t)PieceType::WHITE_KING && m_FirstWhiteKingMove == m_FullMoves)
+	if (MoveUtil::GetMovePiece(move) == (uint8_t)PieceType::WHITE_KING && m_FirstWhiteKingMove == m_FullMoves)
 	{
 		m_FirstWhiteKingMove = 0;
 		if (m_FirstWhiteQueenRookMove == 0)
@@ -708,7 +719,7 @@ void ChessBoard::UndoMove(Move move)
 		if (m_FirstWhiteKingRookMove == 0)
 			m_BoardState.boardStateFlags |= (uint8_t)BoardStateFlags::CanWhiteCastleKing;
 	}
-	else if (move.movePieceType.pieceType == (uint8_t)PieceType::BLACK_KING && m_FirstBlackKingMove == m_FullMoves)
+	else if (MoveUtil::GetMovePiece(move) == (uint8_t)PieceType::BLACK_KING && m_FirstBlackKingMove == m_FullMoves)
 	{
 		m_FirstBlackKingMove = 0;
 		if (m_FirstBlackQueenRookMove == 0)
@@ -716,16 +727,16 @@ void ChessBoard::UndoMove(Move move)
 		if (m_FirstBlackKingRookMove == 0)								 
 			m_BoardState.boardStateFlags |= (uint8_t)BoardStateFlags::CanBlackCastleKing;
 	}
-	if (move.movePieceType.pieceType == (uint8_t)PieceType::WHITE_PAWN || move.movePieceType.pieceType == (uint8_t)PieceType::BLACK_PAWN)
+	if (MoveUtil::GetMovePiece(move) == (uint8_t)PieceType::WHITE_PAWN || MoveUtil::GetMovePiece(move) == (uint8_t)PieceType::BLACK_PAWN)
 	{
 		int maxSteps = (int)m_MovesPlayed.size();
 		m_HalfMoveClock = 0;
 
 		for (int index = maxSteps - 1; index >= 0; index--)
 		{
-			if (m_MovesPlayed[index].moveFlags & (uint8_t)MoveFlags::IS_CAPTURE ||
-				m_MovesPlayed[index].movePieceType.pieceType == (uint8_t)PieceType::WHITE_PAWN ||
-				m_MovesPlayed[index].movePieceType.pieceType == (uint8_t)PieceType::BLACK_PAWN)
+			if (MoveUtil::GetMoveFlags(m_MovesPlayed[index]) & (uint8_t)MoveFlags::IS_CAPTURE ||
+				MoveUtil::GetMovePiece(m_MovesPlayed[index]) == (uint8_t)PieceType::WHITE_PAWN ||
+				MoveUtil::GetMovePiece(m_MovesPlayed[index]) == (uint8_t)PieceType::BLACK_PAWN)
 				break;
 
 			m_HalfMoveClock++;
@@ -733,8 +744,8 @@ void ChessBoard::UndoMove(Move move)
 	}
 
 	// restore the piece to the start square
-	m_BoardState.pieceBitboards[move.movePieceType.pieceType] |= (1ULL << move.startSquare);
-	m_BoardState.pieceBitboards[move.movePieceType.pieceType] &= ~(1ULL << move.targetSquare);
+	m_BoardState.pieceBitboards[MoveUtil::GetMovePiece(move)] |= (1ULL << MoveUtil::GetFromSquare(move));
+	m_BoardState.pieceBitboards[MoveUtil::GetMovePiece(move)] &= ~(1ULL << MoveUtil::GetTargetSquare(move));
 
 
 	m_GameOverFlags = 0;
@@ -760,8 +771,8 @@ void ChessBoard::RunPerformanceTest(ChessBoard board, int calcDepth)
 		//ChessBoard midBoard = board;
 		uint64_t perftResult = PerfTest(calcDepth - 1, board);
 		std::cout << 
-			ChessUtil::SquareAsString(move_list[i].startSquare) <<
-			ChessUtil::SquareAsString(move_list[i].targetSquare) <<
+			SquareUtil::SquareAsString(MoveUtil::GetFromSquare(move_list[i])) <<
+			SquareUtil::SquareAsString(MoveUtil::GetTargetSquare(move_list[i])) <<
 			": " << perftResult << "\n";
 		result += perftResult;
 		board.UndoMove(move_list[i]);
@@ -833,11 +844,24 @@ bool ChessBoard::InsufficentMaterial(ChessBoard board)
 	// Bishop vs bishop: is insufficient when bishops are same colour complex
 	if (numMinors == 2 && numWhiteBishops == 1 && numBlackBishops == 1)
 	{
-		bool whiteBishopIsLightSquare = ChessUtil::LightSquare(BitUtil::PopLSB(board.m_BoardState.pieceBitboards[(uint8_t)PieceType::WHITE_BISHOP]));
-		bool blackBishopIsLightSquare = ChessUtil::LightSquare(BitUtil::PopLSB(board.m_BoardState.pieceBitboards[(uint8_t)PieceType::BLACK_BISHOP]));
+		bool whiteBishopIsLightSquare = SquareUtil::LightSquare(BitUtil::PopLSB(board.m_BoardState.pieceBitboards[(uint8_t)PieceType::WHITE_BISHOP]));
+		bool blackBishopIsLightSquare = SquareUtil::LightSquare(BitUtil::PopLSB(board.m_BoardState.pieceBitboards[(uint8_t)PieceType::BLACK_BISHOP]));
 		return whiteBishopIsLightSquare == blackBishopIsLightSquare;
 	}
 
 	return false;
 }
 
+PieceType ChessBoard::GetPiece(uint8_t square)
+{
+
+	for (uint8_t board = 0; board < 12; board++)
+	{
+		if (m_BoardState.pieceBitboards[board] & 1ULL << square)
+		{
+			return (PieceType)board;
+		}
+	}
+
+	return PieceType::NO_PIECE;
+}

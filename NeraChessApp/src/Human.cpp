@@ -32,9 +32,9 @@ Move Human::GetNextMove(const ChessBoard& board)
         {
             m_PossibleMoves = 0ULL;
 
-            for (const Move& legalMove : legalMoves)
+            for (Move legalMove : legalMoves)
             {
-                if (legalMove.startSquare == startSquare && legalMove.targetSquare == targetSquare)
+                if (MoveUtil::GetFromSquare(legalMove) == startSquare && MoveUtil::GetTargetSquare(legalMove) == targetSquare)
                 {
                     return legalMove;
                 }
@@ -48,18 +48,18 @@ Move Human::GetNextMove(const ChessBoard& board)
         {
             if (!m_PossibleMoves)
             {
-                for (const Move& legalMove : legalMoves)
+                for (Move legalMove : legalMoves)
                 {
-                    if (legalMove.startSquare == startSquare)
+                    if (MoveUtil::GetFromSquare(legalMove) == startSquare)
                     {
                         std::lock_guard<std::mutex> lock(m_PossibleMovesMutex);
-                        m_PossibleMoves |= 1ULL << legalMove.targetSquare;
+                        m_PossibleMoves |= 1ULL << MoveUtil::GetTargetSquare(legalMove);
                     }
                 }
 
                 if (m_PossibleMoves == 0ULL)
                 {
-                    startSquare = 64; // Reset if no possible moves
+                    startSquare = 64;
 				}
             }
 
@@ -68,5 +68,5 @@ Move Human::GetNextMove(const ChessBoard& board)
 
     }
 
-    return Move(0);
+    return 0;
 }

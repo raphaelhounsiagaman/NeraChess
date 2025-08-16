@@ -48,6 +48,6 @@ private:
 	bool m_GameStarted = false;
 
 	std::mutex m_MovePlayedMutex;
-	Move m_MovePlayed{0};
+	Move m_MovePlayed = 0;
 
 };

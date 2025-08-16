@@ -169,35 +169,35 @@ void Renderer::DrawChessBoard()
 
             Piece piece = m_ChessBoard->GetPiece(rank * 8 + file);
 
-            if (piece.pieceType == (uint8_t)PieceType::NO_PIECE)
+            if (piece == PieceType::NO_PIECE)
                 continue;
 
             SDL_Rect source;
 
             source =
-                piece.pieceType == (uint8_t)PieceType::WHITE_PAWN ?
+                piece == (uint8_t)PieceType::WHITE_PAWN ?
                 m_WhitePawn :
-                piece.pieceType == (uint8_t)PieceType::WHITE_KNIGHT ?
+                piece == (uint8_t)PieceType::WHITE_KNIGHT ?
                 m_WhiteKnight :
-                piece.pieceType == (uint8_t)PieceType::WHITE_BISHOP ?
+                piece == (uint8_t)PieceType::WHITE_BISHOP ?
                 m_WhiteBishop :
-                piece.pieceType == (uint8_t)PieceType::WHITE_ROOK ?
+                piece == (uint8_t)PieceType::WHITE_ROOK ?
                 m_WhiteRook :
-                piece.pieceType == (uint8_t)PieceType::WHITE_QUEEN ?
+                piece == (uint8_t)PieceType::WHITE_QUEEN ?
                 m_WhiteQueen :
-                piece.pieceType == (uint8_t)PieceType::WHITE_KING ?
+                piece == (uint8_t)PieceType::WHITE_KING ?
                 m_WhiteKing :
-                piece.pieceType == (uint8_t)PieceType::BLACK_PAWN ?
+                piece == (uint8_t)PieceType::BLACK_PAWN ?
                 m_BlackPawn :
-                piece.pieceType == (uint8_t)PieceType::BLACK_KNIGHT ?
+                piece == (uint8_t)PieceType::BLACK_KNIGHT ?
                 m_BlackKnight :
-                piece.pieceType == (uint8_t)PieceType::BLACK_BISHOP ?
+                piece == (uint8_t)PieceType::BLACK_BISHOP ?
                 m_BlackBishop :
-                piece.pieceType == (uint8_t)PieceType::BLACK_ROOK ?
+                piece == (uint8_t)PieceType::BLACK_ROOK ?
                 m_BlackRook :
-                piece.pieceType == (uint8_t)PieceType::BLACK_QUEEN ?
+                piece == (uint8_t)PieceType::BLACK_QUEEN ?
                 m_BlackQueen :
-                piece.pieceType == (uint8_t)PieceType::BLACK_KING ?
+                piece == (uint8_t)PieceType::BLACK_KING ?
                 m_BlackKing :
                 SDL_Rect{ 0, 0, 0, 0};
 

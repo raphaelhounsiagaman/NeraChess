@@ -6,7 +6,9 @@
 
 #include "Util.h"
 #include "Piece.h"
+#include "Square.h"
 #include "Move.h"
+#include "Undo.h"
 #include "MoveList.h"
 #include "BoardState.h"
 #include "MoveGenerator.h"
@@ -58,11 +60,15 @@ private:
 
     static uint64_t PerfTest(int depth, ChessBoard board);
 
+    PieceType GetPiece(uint8_t square);
+
 	static bool InsufficentMaterial(ChessBoard board);
 
     mutable MoveGenerator m_MoveGenerator;
 
     BoardState m_BoardState{};
+
+	UndoStack m_UndoStack{};
 
     std::vector<Move> m_MovesPlayed{};
 

@@ -39,6 +39,8 @@ private:
 
 	bool InCheckAfterEnPassant(int startSquare, int targetSquare, int epCaptureSquare);
 
+	Bitboard PawnAttacks(Bitboard pawns, bool isWhite);
+
 private:
 
 	MoveList m_LegalMoves;
@@ -171,5 +173,4 @@ public:
 	// Align Mask for checking if a piece is aligned with the king
 	static std::array<std::array<Bitboard, 64>, 64> InitAlignMask();
 	static const std::array<std::array<Bitboard, 64>, 64> s_AlignMask;
-
 };

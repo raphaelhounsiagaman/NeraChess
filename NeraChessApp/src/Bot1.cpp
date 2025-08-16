@@ -8,9 +8,9 @@ Move Bot1::GetNextMove(const ChessBoard& board)
 
     std::mt19937 gen(rd());
 
-    std::uniform_int_distribution<> dist(0, (int)(board.GetLegalMoves().size() - 1));
+    std::uniform_int_distribution<> dist(0, (board.GetLegalMoves().size() - 1));
 
-    int moves = dist(gen);
+    uint16_t moveIndex = dist(gen);
 
-    return board.GetLegalMoves()[moves];
+    return board.GetLegalMoves()[moveIndex];
 }

@@ -25,7 +25,7 @@ void Application::Run()
 	Bitboard showBoard = 0ULL;
 	Bitboard possibleMoves = 0ULL;
 
-	//ChessBoard::RunPerformanceTest(ChessBoard(), 5);
+	ChessBoard::RunPerformanceTest(ChessBoard(), 5);
 
 	while (m_Running)
 	{
@@ -106,7 +106,7 @@ void Application::StartGame()
 
 	m_GameStarted = true;
 
-	m_MovePlayed = Move(0);
+	m_MovePlayed = 0;
 
 	m_ChessBoard = ChessBoard("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1");
 
@@ -171,7 +171,6 @@ void Application::ProcessGame()
 	std::thread getMoveThread(&Application::GetMoveFromPlayer, this, currentPlayer);
 	if (getMoveThread.joinable())
 		getMoveThread.detach();
-
 
 }
 
