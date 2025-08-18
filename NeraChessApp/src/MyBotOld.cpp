@@ -2,5 +2,5 @@
 
 Move MyBotOld::GetNextMove(const ChessBoard& board)
 {
-    return Move();
+    return board.GetLegalMoves()[0];
 }

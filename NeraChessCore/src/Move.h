@@ -24,11 +24,11 @@ enum MoveFlags : uint8_t
 {
 	NO_MOVE = 0,
 
-	IS_CAPTURE = 1, // Bit 1
-	IS_EN_PASSANT = 2, // Bit 2
-	IS_PROMOTION = 4, // Bit 3
-	IS_CASTLES = 8, // Bit 4
-	PAWN_TWO_UP = 16, // Bit 5
+	IS_CAPTURE = 1 << 0, // Bit 1
+	IS_EN_PASSANT = 1 << 1, // Bit 2
+	IS_PROMOTION = 1 << 2, // Bit 3
+	IS_CASTLES = 1 << 3, // Bit 4
+	PAWN_TWO_UP = 1 << 4, // Bit 5
 };
 
 namespace MoveUtil

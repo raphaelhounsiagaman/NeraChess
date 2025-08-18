@@ -29,7 +29,6 @@ namespace PieceUtil
 
 	bool IsDiagonalSlider(Piece piece);
 
-
 	bool IsOrthogonalSlider(Piece piece);
 
 }

@@ -1,19 +1,15 @@
 #include "Application.h"
 
-#include "ChessBoard.h"
-
 #include <iostream>
 #include <thread>
 #include <typeinfo>
 
-#include "InputHandler.h"
-#include "Renderer.h"
+#include "AllBots.h"
 
 Application::Application()
 {
 	m_Running = true;
 
-	m_Renderer.SetChessBoard(&m_ChessBoard);
 	m_Renderer.SetInputHandler(m_InputHandler);
 
 	if (m_Renderer.GetError()) 
@@ -25,12 +21,12 @@ void Application::Run()
 	Bitboard showBoard = 0ULL;
 	Bitboard possibleMoves = 0ULL;
 
-	ChessBoard::RunPerformanceTest(ChessBoard(), 5);
+	//ChessBoard testBoard = ChessBoard();
+	//ChessBoard::RunPerformanceTest(testBoard, 5);
 
 	while (m_Running)
 	{
 		m_InputHandler.Process();
-
 
 		InputEvent event;
 		while (m_InputHandler.PollInputEvent(event))
@@ -62,11 +58,10 @@ void Application::Run()
 							human->SetSelectedSquare(square);
 						}
 					}
-					
 					break;
 				case EventTypeStartGame:
 					if (!m_GameStarted)
-						StartGame<Human, Bot1>();
+						StartGame<Human, BotRandom>();
 					break;
 				case EventTypeStopGame:
 					
@@ -86,7 +81,7 @@ void Application::Run()
 			ProcessGame();
 
 		m_Renderer.SetBitboard(showBoard ? showBoard : possibleMoves);
-		m_Renderer.Render();
+		m_Renderer.Render(m_ChessBoard);
 	}
 }
 
@@ -133,7 +128,7 @@ void Application::ProcessGame()
 	m_ChessBoard.MakeMove(m_MovePlayed);
 	lock.unlock();
 
-	uint16_t gameOverFlags = m_ChessBoard.GetGameOverFlags();
+	uint16_t gameOverFlags = m_ChessBoard.GetGameOver();
 	if (gameOverFlags & (uint16_t)GameOverFlags::IS_GAME_OVER)
 	{
 		std::string gameOverReason = "";
@@ -171,7 +166,6 @@ void Application::ProcessGame()
 	std::thread getMoveThread(&Application::GetMoveFromPlayer, this, currentPlayer);
 	if (getMoveThread.joinable())
 		getMoveThread.detach();
-
 }
 
 void Application::GetMoveFromPlayer(ChessPlayer* player)

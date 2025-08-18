@@ -33,9 +33,8 @@ namespace BitUtil
 
 	uint64_t Shift(uint64_t value, int numSquaresToShift)
 	{
-		const uint64_t mask = -(numSquaresToShift >= 0); // 0xFFFFFFFFFFFFFFFF if true, 0 otherwise
-		return (value << (numSquaresToShift & mask)) |
-			(value >> ((-numSquaresToShift) & ~mask));
+		return (numSquaresToShift >= 0) ? (value << numSquaresToShift)
+			: (value >> -numSquaresToShift);
 
 	}
 

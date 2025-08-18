@@ -1,8 +1,8 @@
-#include "Bot1.h"
+#include "BotRandom.h"
 
 #include <random>
 
-Move Bot1::GetNextMove(const ChessBoard& board)
+Move BotRandom::GetNextMove(const ChessBoard& board)
 {
     std::random_device rd;
 
@@ -10,7 +10,7 @@ Move Bot1::GetNextMove(const ChessBoard& board)
 
     std::uniform_int_distribution<> dist(0, (board.GetLegalMoves().size() - 1));
 
-    uint16_t moveIndex = dist(gen);
+    uint8_t moveIndex = dist(gen);
 
     return board.GetLegalMoves()[moveIndex];
 }

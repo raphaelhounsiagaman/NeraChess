@@ -160,7 +160,7 @@ public:
 	static std::array<std::array<int, 8>, 64> InitSquaresToEdge();
 	static const std::array<std::array<int, 8>, 64> s_SquaresToEdge;
 
-
+	// Castling Masks
 	static const Bitboard s_WhiteKingsideMask;
 	static const Bitboard s_BlackKingsideMask;
 

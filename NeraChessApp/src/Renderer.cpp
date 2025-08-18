@@ -80,9 +80,6 @@ void Renderer::InitDearImGui()
     m_IO->ConfigFlags |= ImGuiConfigFlags_NavEnableGamepad;      
     m_IO->ConfigFlags |= ImGuiConfigFlags_DockingEnable;         
 
-    //m_IO->ConfigViewportsNoAutoMerge = true;
-    //m_IO->ConfigViewportsNoTaskBarIcon = true;
-
     ImGui::StyleColorsDark();
 
     m_Style = &ImGui::GetStyle();
@@ -126,7 +123,7 @@ void Renderer::InitPieceRects()
     m_BlackPawn = { pieceWidth * 5, pieceHeight, pieceWidth, pieceHeight };
 }
 
-void Renderer::Render()
+void Renderer::Render(const ChessBoard& board)
 {
     if (SDL_GetWindowFlags(m_SDLWindow) & SDL_WINDOW_MINIMIZED)
     {
@@ -134,7 +131,7 @@ void Renderer::Render()
         return;
     }
     
-    DrawChessBoard();
+    DrawChessBoard(board);
     DrawUI();
 
     SDL_RenderPresent(m_SDLRenderer);
@@ -149,7 +146,7 @@ void Renderer::SetInputHandler(InputHandler& inputHandler)
     m_InputHandler->SetImGuiIO(m_IO);
 }
 
-void Renderer::DrawChessBoard()
+void Renderer::DrawChessBoard(const ChessBoard& board)
 {
     for (int rank = 0; rank < 8; rank++)
     {
@@ -167,7 +164,7 @@ void Renderer::DrawChessBoard()
             SDL_Rect tile = { file * m_TileSize + m_Margin, (7 - rank) * m_TileSize + m_Margin, m_TileSize, m_TileSize };
             SDL_RenderFillRect(m_SDLRenderer, &tile);
 
-            Piece piece = m_ChessBoard->GetPiece(rank * 8 + file);
+            Piece piece = board.GetPiece(rank * 8 + file);
 
             if (piece == PieceType::NO_PIECE)
                 continue;
@@ -231,10 +228,8 @@ void Renderer::ImGuiWindow()
 
 	if(ImGui::Button("Start Game"))
 		m_InputHandler->AddInputEvent(InputEvent(EventTypeStartGame));
-	if(ImGui::Button("Stop Game"))
+	if(ImGui::Button("Stop Game (Not implemented yet)"))
 		m_InputHandler->AddInputEvent(InputEvent(EventTypeStopGame));
-
-    //ImGui::InputInt("input int", &i0);
 
     ImGui::End();
 }
@@ -265,9 +260,7 @@ void Renderer::UpdateWindowSize()
 
     bool isHorizontalWindow = windowWidth > windowHeight;
 
-    // Margin between window border and chess board.
-    m_Margin = int(m_MarginPortion * (isHorizontalWindow ? windowHeight : windowWidth));
+    m_Margin = (int)m_MarginPortion * (isHorizontalWindow ? windowHeight : windowWidth);
 
-    // Tile size based on the window size.
     m_TileSize = isHorizontalWindow ? (windowHeight - 2 * m_Margin) / 8 : (windowWidth - 2 * m_Margin) / 8;
 }

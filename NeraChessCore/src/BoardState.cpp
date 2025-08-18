@@ -8,18 +8,8 @@ bool BoardState::operator==(const BoardState& other) const
 		same = false;
 	if (boardStateFlags != other.boardStateFlags)
 		same = false;
-	if (0 != (boardStateFlags & (uint8_t)BoardStateFlags::CanEnPassent) && enPassentFile != other.enPassentFile)
+	if (boardStateFlags & BoardStateFlags::CanEnPassent && enPassentFile != other.enPassentFile)
 		same = false;
-
-	/*
-    if (
-		pieceBitboards == other.pieceBitboards &&
-		boardStateFlags == other.boardStateFlags &&
-		enPassentFile == other.enPassentFile
-        )
-		return true;
-	*/
-
 
     return same;
 }

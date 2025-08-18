@@ -3,15 +3,11 @@
 #include "ChessBoard.h"
 
 #include <memory>
-#include <thread>
 #include <mutex>
 
 #include "InputHandler.h"
 #include "Renderer.h"
 #include "ChessPLayer.h"
-
-#include "Bot1.h"
-#include "Human.h"
 
 class Application
 {

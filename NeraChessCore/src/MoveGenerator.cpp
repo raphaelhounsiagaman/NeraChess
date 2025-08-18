@@ -9,11 +9,9 @@ Bitboard MoveGenerator::GetStraightSlidingMask(uint8_t square)
 {
 	Bitboard mask = 0ULL;
 
-	// Get rank and file
 	int rank = square / 8;
 	int file = square % 8;
 
-	// Horizontal directions
 	for (int r = rank + 1; r < 7; r++)
 		mask |= (1ULL << (r * 8 + file)); // N
 	for (int f = file + 1; f < 7; f++)
@@ -29,11 +27,9 @@ Bitboard MoveGenerator::GetDiagonalSlidingMask(uint8_t square)
 {
 	Bitboard mask = 0ULL;
 
-	// Get rank and file
 	int rank = square / 8;
 	int file = square % 8;
 
-	// Diagonal directions
 	for (int r = rank + 1, f = file + 1; r < 7 && f < 7; r++, f++)
 		mask |= (1ULL << (r * 8 + f)); // NE
 	for (int r = rank + 1, f = file - 1; r < 7 && f > 0; r++, f--)
@@ -48,7 +44,7 @@ Bitboard MoveGenerator::GetDiagonalSlidingMask(uint8_t square)
 
 std::vector<Bitboard> MoveGenerator::CreateAllBlockerBitboards(Bitboard mask)
 {
-	std::vector<uint8_t> moveSquareIndices{}; // List of indices of squares that are set in the mask
+	std::vector<uint8_t> moveSquareIndices{};
 	moveSquareIndices.reserve(15);
 	for (uint8_t square = 0; square < 64; square++)
 	{
@@ -56,8 +52,8 @@ std::vector<Bitboard> MoveGenerator::CreateAllBlockerBitboards(Bitboard mask)
 			moveSquareIndices.push_back(square);
 	}
 
-	int numPatterns = 1 << moveSquareIndices.size(); // Number of possible blocker patterns (2^n, where n is the number of squares in the mask)
-	std::vector<Bitboard> blockerBitboards; // Reserve space for blocker bitboards
+	int numPatterns = 1 << moveSquareIndices.size();
+	std::vector<Bitboard> blockerBitboards;
 	blockerBitboards.reserve(numPatterns);
 
 	for (int patternIndex = 0; patternIndex < numPatterns; patternIndex++)
@@ -82,14 +78,9 @@ Bitboard MoveGenerator::CalculatePossibleRookMoves(uint8_t from_square, Bitboard
 {
 	Bitboard moves = 0ULL;
 
-	// Get rank and file
 	int rank = from_square / 8;
 	int file = from_square % 8;
 
-	// N = 0
-	// E = 1
-	// S = 2
-	// W = 3
 	for (uint8_t dir = 0; dir < 4; dir++)
 	{
 		for (uint8_t dst = 1; dst < 8; dst++)
@@ -123,14 +114,9 @@ Bitboard MoveGenerator::CalculatePossibleBishopMoves(uint8_t from_square, Bitboa
 {
 	Bitboard moves = 0ULL;
 
-	// Get rank and file
 	int rank = from_square / 8;
 	int file = from_square % 8;
 
-	// NE = 0
-	// SE = 1
-	// SW = 2
-	// NW = 3
 	for (uint8_t dir = 0; dir < 4; dir++)
 	{
 		for (uint8_t dst = 1; dst < 8; dst++)
@@ -186,7 +172,6 @@ std::unique_ptr<Bitboard[]> MoveGenerator::InitRookMoveMasks()
 
 	for (uint8_t square = 0; square < 64; square++)
 	{
-		// Rook
 		std::vector<Bitboard> possibleRookBlockers = CreateAllBlockerBitboards(GetStraightSlidingMask(square));
 		for (Bitboard currentRookBlocker : possibleRookBlockers)
 		{
@@ -204,7 +189,6 @@ std::unique_ptr<Bitboard[]> MoveGenerator::InitBishopMoveMasks()
 
 	for (uint8_t square = 0; square < 64; square++)
 	{
-		// Bishop
 		std::vector<Bitboard> possibleBishopBlockers = CreateAllBlockerBitboards(GetDiagonalSlidingMask(square));
 		for (Bitboard currentBishopBlocker : possibleBishopBlockers)
 		{
@@ -225,7 +209,6 @@ std::array<Bitboard, 64> MoveGenerator::InitKingMoveMask()
 		const int file = SquareUtil::GetFile(square);
 		const int rank = SquareUtil::GetRank(square);
 
-		// Orthogonal and diagonal directions
 		for (std::array<int, 2> dir : s_DirectionOffsets2D)
 		{			
 			int f = file + dir[0];
@@ -262,7 +245,6 @@ std::array<Bitboard, 64> MoveGenerator::InitKnightMoveMask()
 			{-1, -2}
 		} };
 
-		// Knight jumps
 		for (int i = 0; i < knightJumps.size(); i++)
 		{
 			int knightX = file + knightJumps[i][0];
@@ -308,8 +290,8 @@ std::array<Bitboard, 64> MoveGenerator::InitBlackPawnAttackMasks()
 
 	for (uint8_t square = 0; square < 64; square++)
 	{
-		const int file = SquareUtil::GetFile(square);
-		const int rank = SquareUtil::GetRank(square);
+		const uint8_t file = SquareUtil::GetFile(square);
+		const uint8_t rank = SquareUtil::GetRank(square);
 		
 		if (SquareUtil::IsValidCoordinate(file + 1, rank - 1))
 		{
@@ -736,7 +718,6 @@ void MoveGenerator::GenSlidingAttacks()
 	}
 }
 
-
 void MoveGenerator::CalculateKingMoves()
 {
 	Bitboard legalMask = ~(m_OpponentAttackMap | m_FriendlyPieces);
@@ -836,7 +817,6 @@ void MoveGenerator::CalculateSlidingMoves()
 		}
 	}
 
-	// Diag
 	while (diagonalSliders != 0)
 	{
 		int startSquare = BitUtil::PopLSB(diagonalSliders);
@@ -856,7 +836,7 @@ void MoveGenerator::CalculateSlidingMoves()
 				targetSquare,
 				GetPiece(startSquare),
 				0,
-				GetPiece(targetSquare) == PieceType::NO_PIECE ? 0 : (uint8_t)MoveFlags::IS_CAPTURE
+				GetPiece(targetSquare) == PieceType::NO_PIECE ? 0 : MoveFlags::IS_CAPTURE
 			));
 		}
 	}

@@ -9,29 +9,35 @@ struct MoveList
 {
 public:
 	
-    inline void push(Move m) noexcept {
-        assert(m_MoveCount < m_Moves.size()); // debug safety
-        m_Moves[m_MoveCount++] = m;
+    void push(Move move) 
+    {
+        assert(m_MoveCount < m_Moves.size());
+        m_Moves[m_MoveCount++] = move;
     }
 
-    inline void pop() noexcept {
-        assert(m_MoveCount > 0); // debug safety
+    void pop() 
+    {
+        assert(m_MoveCount > 0);
         --m_MoveCount;
 	}
 
-    inline Move& operator[](uint16_t i) noexcept {
+    Move& operator[](uint8_t i) 
+    {
         return m_Moves[i];
     }
 
-    inline const Move& operator[](uint16_t i) const noexcept {
+    const Move& operator[](uint8_t i) const 
+    {
         return m_Moves[i];
     }
 
-    inline uint16_t size() const noexcept {
+    uint8_t size() const 
+    {
         return m_MoveCount;
     }
 
-    inline void clear() noexcept {
+    void clear()
+    {
         m_MoveCount = 0;
     }
 

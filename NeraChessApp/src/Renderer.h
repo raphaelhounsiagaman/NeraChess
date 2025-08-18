@@ -16,10 +16,9 @@ public:
 	Renderer();
 	~Renderer();
 
-	void Render();
+	void Render(const ChessBoard& board);
 	
 	void SetInputHandler(InputHandler& inputHandler);
-	void SetChessBoard(const ChessBoard* chessBoard) { m_ChessBoard = chessBoard; }
 	void SetBitboard(Bitboard board) { m_DebugBitboard = board; }
 
 	uint8_t GetSquareFromPos(int x, int y) const;
@@ -34,14 +33,13 @@ private:
 	void InitPieceRects();
 
 	void DrawUI();
-	void DrawChessBoard();
+	void DrawChessBoard(const ChessBoard& board);
 
 	void ImGuiWindow();
 
 private:
 
 	const std::string m_WindowName = "NeraChess";
-	const ChessBoard* m_ChessBoard = nullptr;
 
 	const SDL_Color m_BackgroundColor = { 45, 45, 50, 255 };
 	const SDL_Color m_BoardWhite = { 210, 200, 180, 255 };
@@ -49,9 +47,6 @@ private:
 		
 	const SDL_Color m_DebugWhite = { 161, 96, 96, 255 };
 	const SDL_Color m_DebugBlack = { 87, 36, 36, 255 };
-
-	//const SDL_Color m_SelectedWhite = { 28, 135, 217, 255 };
-	//const SDL_Color m_SelectedBlack = { 25, 77, 117, 255 };
 
 	const float m_MarginPortion = 0.05f;
 

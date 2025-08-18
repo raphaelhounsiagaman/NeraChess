@@ -39,7 +39,7 @@ Move Human::GetNextMove(const ChessBoard& board)
                     return legalMove;
                 }
             }
-            // If no valid move found, reset squares
+
             startSquare = 64;
             targetSquare = 64;
 
@@ -66,7 +66,8 @@ Move Human::GetNextMove(const ChessBoard& board)
         }
 
 
-    }
 
+
+    }
     return 0;
 }
