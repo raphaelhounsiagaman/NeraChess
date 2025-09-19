@@ -9,9 +9,10 @@
 #include <chrono>
 
 #include "MoveGenerator.h"
+	
+#include "ChessUtil.h"
 
-#include "Util.h"
-
+#include "Zobrist.h"
 #include "Piece.h"
 #include "Move.h"
 
@@ -173,28 +174,35 @@ ChessBoard::ChessBoard(const std::string& fen)
 		else
 		{
 			m_BoardState.boardStateFlags |= (uint8_t)BoardStateFlags::CanEnPassent;
-			m_BoardState.enPassentFile = file;
+			m_BoardState.enPassantFile = file;
 		}
 	}
 
 	m_HalfMoveClock = std::stoi(fenParts[4]);
 
 	m_FullMoves = std::stoi(fenParts[5]);
+
+	m_RepetitionTable.AddEntry(m_BoardState.pieceBitboards);
+
+	m_ZobristKey = Zobrist::CalculateZobristKey(*this);
+
 }
 
 bool ChessBoard::operator==(const ChessBoard& other) const
 {
 	bool same = true;
 
-	if (m_BoardState != other.m_BoardState)
+	if (m_RepetitionTable != m_RepetitionTable)
 		same = false;
-	if (m_MovesPlayed != other.m_MovesPlayed)
+	else if (m_BoardState != other.m_BoardState)
 		same = false;
-	if (m_GameOverFlags != other.m_GameOverFlags)
+	else if (m_MovesPlayed != other.m_MovesPlayed)
 		same = false;
-	if (m_HalfMoveClock != other.m_HalfMoveClock)
+	else if (m_GameOverFlags != other.m_GameOverFlags)
 		same = false;
-	if (m_FullMoves != other.m_FullMoves)
+	else if (m_HalfMoveClock != other.m_HalfMoveClock)
+		same = false;
+	else if (m_FullMoves != other.m_FullMoves)
 		same = false;
 
 	return same;
@@ -220,13 +228,18 @@ Piece ChessBoard::GetPiece(const uint8_t square) const
 		PieceType::NO_PIECE;
 }
 
-void ChessBoard::MakeMove(Move move)
+void ChessBoard::MakeMove(Move move, bool gameMove)
 {
 	if (!move)
 	{
 		m_Error = 1;
 		return;
 	}
+
+
+	m_ZobristKeySet = false;
+
+	m_WasBoardStateChanged = true;
 
 	const Square startSquare = MoveUtil::GetFromSquare(move);
 	const Square targetSquare = MoveUtil::GetTargetSquare(move);
@@ -245,13 +258,13 @@ void ChessBoard::MakeMove(Move move)
 		: GetPiece(MoveUtil::GetTargetSquare(move));
 
 	UndoInfo info{};
-	info.move = move;
 	info.capturedPiece = capturedPiece;
 	info.castlingRights = m_BoardState.GetCastlingRights();
-	info.enPassantFile = m_BoardState.HasFlag(BoardStateFlags::CanEnPassent) ? m_BoardState.enPassentFile : 8;
+	info.enPassantFile = m_BoardState.HasFlag(BoardStateFlags::CanEnPassent) ? m_BoardState.enPassantFile : 8;
 	info.halfmoveClock = m_HalfMoveClock;
 
-	m_UndoStack.push(info);
+	if (!gameMove)
+		m_UndoStack.push(info);
 
 	// remove the piece from the start square
 	m_BoardState.pieceBitboards[movePiece] &= ~startSquareBitboard;
@@ -263,7 +276,11 @@ void ChessBoard::MakeMove(Move move)
 
 	m_HalfMoveClock++;
 	if (movePiece == PieceType::WHITE_PAWN || movePiece == PieceType::BLACK_PAWN || (moveFlags & MoveFlags::IS_CAPTURE))
+	{
 		m_HalfMoveClock = 0;
+		if (gameMove)
+			m_RepetitionTable.Clear();
+	}
 
 	if (moveFlags & MoveFlags::IS_CAPTURE)
 	{
@@ -370,12 +387,12 @@ void ChessBoard::MakeMove(Move move)
 	if (moveFlags & MoveFlags::PAWN_TWO_UP)
 	{
 		m_BoardState.boardStateFlags |= BoardStateFlags::CanEnPassent;
-		m_BoardState.enPassentFile = targetSquare % 8;
+		m_BoardState.enPassantFile = targetSquare % 8;
 	}
 	else
 	{
 		m_BoardState.boardStateFlags &= ~BoardStateFlags::CanEnPassent;
-		m_BoardState.enPassentFile = 8;
+		m_BoardState.enPassantFile = 8;
 	}
 	
 	if (moveFlags & MoveFlags::IS_PROMOTION)
@@ -385,6 +402,9 @@ void ChessBoard::MakeMove(Move move)
 	}
 	
 	m_MovesPlayed.push_back(move);
+	
+	if (gameMove)
+		m_RepetitionTable.AddEntry(m_BoardState.pieceBitboards);
 
 	if (!whitesMove)
 		m_FullMoves++;
@@ -400,6 +420,10 @@ void ChessBoard::UndoMove(Move move)
 		m_Error = 1;
 		return;
 	}
+
+	m_ZobristKeySet = false;
+
+	m_WasBoardStateChanged = true;
 
 	m_MovesPlayed.pop_back();
 	UndoInfo info = m_UndoStack.pop();
@@ -480,12 +504,12 @@ void ChessBoard::UndoMove(Move move)
 	if (info.enPassantFile != 8)
 	{
 		m_BoardState.boardStateFlags |= BoardStateFlags::CanEnPassent;
-		m_BoardState.enPassentFile = info.enPassantFile;
+		m_BoardState.enPassantFile = info.enPassantFile;
 	}
 	else
 	{
 		m_BoardState.boardStateFlags &= ~BoardStateFlags::CanEnPassent;
-		m_BoardState.enPassentFile = 8;
+		m_BoardState.enPassantFile = 8;
 	}
 	if (moveFlags & MoveFlags::IS_PROMOTION)
 	{
@@ -494,13 +518,27 @@ void ChessBoard::UndoMove(Move move)
 	
 }
 
-uint16_t ChessBoard::GetGameOver()
+MoveList ChessBoard::GetLegalMoves() const
 {
-	uint8_t movesCount = m_MoveGenerator.GenerateMoves(m_BoardState).size();
+	if (m_WasBoardStateChanged)
+	{
+		m_LegalMoves = m_MoveGenerator.GenerateMoves(m_BoardState);
+		m_WasBoardStateChanged = false;
+	}
+	return m_LegalMoves;
+}
+
+uint16_t ChessBoard::GetGameOver(bool gameCheck)
+{
+	if (m_WasBoardStateChanged)
+	{
+		m_LegalMoves = m_MoveGenerator.GenerateMoves(m_BoardState);
+		m_WasBoardStateChanged = false;
+	}	
 	
 	m_GameOverFlags |= GameOverFlags::IS_GAME_OVER;
 
-	if (movesCount == 0)
+	if (m_LegalMoves.size() == 0)
 	{
 
 		if (m_MoveGenerator.InCheck())
@@ -513,15 +551,13 @@ uint16_t ChessBoard::GetGameOver()
 		return m_GameOverFlags;
 	}
 
-
 	if (m_HalfMoveClock >= 50)
 	{
 		m_GameOverFlags |= GameOverFlags::IS_50MOVE_RULE;
 		return m_GameOverFlags;
 	}
 
-	int repCount = 2; // TODO: Add Repetition Check Here
-	if (repCount == 3)
+	if (gameCheck && m_RepetitionTable.GetRepetitionCount(m_BoardState.pieceBitboards) >= 3)
 	{
 		m_GameOverFlags |= GameOverFlags::IS_REPETITION;
 		return m_GameOverFlags;
@@ -537,6 +573,15 @@ uint16_t ChessBoard::GetGameOver()
 	return m_GameOverFlags;
 }
 
+uint64_t ChessBoard::GetZobristKey() const
+{
+	if (m_ZobristKeySet)
+		return m_ZobristKey;
+
+	m_ZobristKey = Zobrist::CalculateZobristKey(*this);
+	m_ZobristKeySet = true;
+	return m_ZobristKey;
+}
 
 void ChessBoard::RunPerformanceTest(ChessBoard& board, int calcDepth)
 {
@@ -668,4 +713,14 @@ bool ChessBoard::InsufficentMaterial(ChessBoard board)
 	}
 
 	return false;
+}
+
+bool ChessBoard::IsInCheck()
+{
+	if (m_WasBoardStateChanged)
+	{
+		m_LegalMoves = m_MoveGenerator.GenerateMoves(m_BoardState);
+		m_WasBoardStateChanged = false;
+	}
+	return m_MoveGenerator.InCheck();
 }

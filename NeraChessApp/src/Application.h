@@ -7,7 +7,7 @@
 
 #include "InputHandler.h"
 #include "Renderer.h"
-#include "ChessPLayer.h"
+#include "ChessPlayers/ChessPLayer.h"
 
 class Application
 {
@@ -34,6 +34,7 @@ private:
 	Renderer m_Renderer{};
 
 	ChessBoard m_ChessBoard{};
+	Timer m_Timer{};
 
 	std::unique_ptr<ChessPlayer> m_Player1;
 	std::unique_ptr<ChessPlayer> m_Player2;
@@ -41,6 +42,7 @@ private:
 	bool m_Player1IsWhite = false;
 	bool m_Player1Turn = false;
 
+	bool m_GameStopRequested = false;
 	bool m_GameStarted = false;
 
 	std::mutex m_MovePlayedMutex;

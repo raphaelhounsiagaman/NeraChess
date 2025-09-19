@@ -4,13 +4,14 @@
 #include <string>
 #include <vector>
 
-#include "Util.h"
+#include "ChessUtil.h"
 #include "Piece.h"
 #include "Square.h"
 #include "Move.h"
 #include "Undo.h"
 #include "MoveList.h"
 #include "BoardState.h"
+#include "RepetitionTable.h"
 #include "MoveGenerator.h"
 
 using  Bitboard = uint64_t;
@@ -22,16 +23,17 @@ enum  GameOverFlags : uint16_t
     IS_GAME_OVER = 1 << 0, // Bit 1
 
     IS_WHITE_WIN = 1 << 1, // Bit 2
+	IS_DRAW = 1 << 2, // Bit 3
 
-    IS_CHECKMATE = 1 << 2, // Bit 3
-    IS_RESIGN =  1 << 3, // Bit 4
-    IS_TIMEOUT = 1 << 4, // Bit 5
+    IS_CHECKMATE = 1 << 3, // Bit 4
+    IS_RESIGN =  1 << 4, // Bit 5
+    IS_TIMEOUT = 1 << 5, // Bit 6
 
-    IS_STALEMATE = 1 << 5, // Bit 6
-    IS_REPETITION = 1 << 6, // Bit 7
-    IS_50MOVE_RULE = 1 << 7, // Bit 8
-    IS_INSUFFICIENT_MATERIAL = 1 << 8, // Bit 9
-    IS_AGREE_ON_DRAW = 1 << 9, // Bit 10
+    IS_STALEMATE = 1 << 6, // Bit 7
+    IS_REPETITION = 1 << 7, // Bit 8
+    IS_50MOVE_RULE = 1 << 8, // Bit 9
+    IS_INSUFFICIENT_MATERIAL = 1 << 9, // Bit 10
+    IS_AGREE_ON_DRAW = 1 << 10, // Bit 11
 };
 
 class ChessBoard
@@ -42,13 +44,18 @@ public:
 
     static void RunPerformanceTest(ChessBoard& board, int calcDepth = 1);
 
-    MoveList GetLegalMoves() const { return m_MoveGenerator.GenerateMoves(m_BoardState); }
+    MoveList GetLegalMoves() const;
 
-    void MakeMove(Move move);
+    void MakeMove(Move move, bool gameMove = false);
 	void UndoMove(Move move);
 
+	const BoardState& GetBoardState() const { return m_BoardState; }
+
+	uint8_t GetHalfMoveClock() const{ return m_HalfMoveClock; }
     Piece GetPiece(const uint8_t square) const;
-    uint16_t GetGameOver();
+    bool IsInCheck();
+    uint16_t GetGameOver(bool gameCheck = false);
+    uint64_t GetZobristKey() const;
 
     uint8_t GetError() const { return m_Error; }
 
@@ -64,11 +71,18 @@ private:
 
     mutable MoveGenerator m_MoveGenerator;
 
+	mutable MoveList m_LegalMoves{};
+	mutable bool m_WasBoardStateChanged = true;
+
+	mutable uint64_t m_ZobristKey = 0;
+    mutable bool m_ZobristKeySet = true;
+
     BoardState m_BoardState{};
 
-    std::vector<Move> m_MovesPlayed{};
-
+	RepetitionTable m_RepetitionTable{};
 	UndoStack m_UndoStack{};
+
+    std::vector<Move> m_MovesPlayed{};
 
     uint16_t m_GameOverFlags = 0;
 

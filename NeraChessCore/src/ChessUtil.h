@@ -12,9 +12,9 @@ namespace BitUtil
     bool IsPow2(uint64_t value);
 
     uint8_t PopLSB(uint64_t& value);
-    uint8_t GetLSBIndex(uint64_t value);
+    uint8_t GetLSBIndex(const uint64_t value);
 
-    uint8_t PopCnt(uint64_t value);
+    uint8_t PopCnt(const uint64_t value);
 
     uint64_t Shift(uint64_t value, int numSquaresToShift);
 

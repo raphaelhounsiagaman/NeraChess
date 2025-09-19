@@ -23,7 +23,7 @@ struct BoardState
 {
     std::array<Bitboard, 12> pieceBitboards{};
     uint8_t boardStateFlags = 0;
-    uint8_t enPassentFile = 8;
+    uint8_t enPassantFile = 8;
 
     bool operator==(const BoardState& other) const;
 

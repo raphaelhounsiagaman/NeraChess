@@ -18,6 +18,7 @@ public:
 
 	void Render(const ChessBoard& board);
 	
+	void SetWhiteBottom(bool whiteBottom) { m_WhiteBottom = whiteBottom; }
 	void SetInputHandler(InputHandler& inputHandler);
 	void SetBitboard(Bitboard board) { m_DebugBitboard = board; }
 
@@ -49,6 +50,8 @@ private:
 	const SDL_Color m_DebugBlack = { 87, 36, 36, 255 };
 
 	const float m_MarginPortion = 0.05f;
+
+	bool m_WhiteBottom = true;
 
 	Bitboard m_DebugBitboard = 0ULL;
 	InputHandler* m_InputHandler = nullptr;

@@ -1,4 +1,4 @@
-#include "Util.h"
+#include "ChessUtil.h"
 
 #include <bit>
 
@@ -21,12 +21,12 @@ namespace BitUtil
 		return i;
 	}
 
-	uint8_t GetLSBIndex(uint64_t value)
+	uint8_t GetLSBIndex(const uint64_t value)
 	{
 		return TrailingZeroCount(value);
 	}
 
-	uint8_t PopCnt(uint64_t value)
+	uint8_t PopCnt(const uint64_t value)
 	{
 		return std::popcount(value);
 	}

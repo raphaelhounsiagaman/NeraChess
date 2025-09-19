@@ -21,7 +21,9 @@ void InputHandler::Process()
     {
 		ImGui_ImplSDL2_ProcessEvent(&event);
 		if (IsImGuiWantCapture())
-			continue;
+		{
+			//continue;
+		}
 
 		if (event.type == SDL_QUIT)
 		{

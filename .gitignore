@@ -13,4 +13,6 @@ NeraChessApp/imgui.ini
 
 # Exclude
 !vendor
-!NeraChessApp/vendor
+!NeraChessApp/vendor/DearImGUI
+!NeraChessApp/vendor/SDL2
+!NeraChessApp/vendor/SDL2_image

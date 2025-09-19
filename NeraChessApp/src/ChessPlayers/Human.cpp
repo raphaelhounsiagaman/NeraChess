@@ -2,7 +2,7 @@
 
 #include <vector>
 
-Move Human::GetNextMove(const ChessBoard& board)
+Move Human::GetNextMove(const ChessBoard& board, Timer timer)
 {
 	MoveList legalMoves = board.GetLegalMoves();
 
@@ -70,4 +70,16 @@ Move Human::GetNextMove(const ChessBoard& board)
 
     }
     return 0;
+}
+
+Bitboard Human::GetPossibleMoves()
+{
+    std::lock_guard<std::mutex> lock(m_PossibleMovesMutex);
+    return m_PossibleMoves;
+}
+
+void Human::SetSelectedSquare(uint8_t square)
+{
+    std::lock_guard<std::mutex> lock(m_SelectedSquareMutex);
+    m_SelectedSquare = square;
 }

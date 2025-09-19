@@ -3,7 +3,7 @@
 #include <memory>
 #include <algorithm>
 
-#include "Util.h"
+#include "ChessUtil.h"
 
 Bitboard MoveGenerator::GetStraightSlidingMask(uint8_t square)
 {
@@ -1004,9 +1004,9 @@ void MoveGenerator::CalculatePawnMoves()
 	}
 
 	// En passant
-	if (m_BoardState.enPassentFile < 8)
+	if (m_BoardState.enPassantFile < 8)
 	{
-		int epFileIndex = m_BoardState.enPassentFile;
+		int epFileIndex = m_BoardState.enPassantFile;
 		int epRankIndex = m_WhiteToMove ? 5 : 2;
 		uint8_t targetSquare = epRankIndex * 8 + epFileIndex;
 		int capturedPawnSquare = targetSquare - pushOffset;
@@ -1042,6 +1042,22 @@ void MoveGenerator::GeneratePromotions(uint8_t startSquare, uint8_t targetSquare
 {
 
 	m_LegalMoves.push(MoveUtil::CreateMove(
+		startSquare,
+		targetSquare,
+		m_WhiteToMove ? PieceType::WHITE_PAWN : PieceType::BLACK_PAWN,
+		m_WhiteToMove ? PieceType::WHITE_QUEEN : PieceType::BLACK_QUEEN,
+		MoveFlags::IS_PROMOTION | (GetPiece(targetSquare) == PieceType::NO_PIECE ? 0 : MoveFlags::IS_CAPTURE)
+	));
+
+	m_LegalMoves.push(MoveUtil::CreateMove(
+		startSquare,
+		targetSquare,
+		m_WhiteToMove ? PieceType::WHITE_PAWN : PieceType::BLACK_PAWN,
+		m_WhiteToMove ? PieceType::WHITE_ROOK : PieceType::BLACK_ROOK,
+		MoveFlags::IS_PROMOTION | (GetPiece(targetSquare) == PieceType::NO_PIECE ? 0 : MoveFlags::IS_CAPTURE)
+	));
+
+	m_LegalMoves.push(MoveUtil::CreateMove(
 		startSquare, 
 		targetSquare, 
 		m_WhiteToMove ? PieceType::WHITE_PAWN   : PieceType::BLACK_PAWN ,
@@ -1057,21 +1073,7 @@ void MoveGenerator::GeneratePromotions(uint8_t startSquare, uint8_t targetSquare
 		MoveFlags::IS_PROMOTION | (GetPiece(targetSquare) == PieceType::NO_PIECE ? 0 : MoveFlags::IS_CAPTURE)
 	));
 
-	m_LegalMoves.push(MoveUtil::CreateMove(
-		startSquare,
-		targetSquare,
-		m_WhiteToMove ? PieceType::WHITE_PAWN :PieceType::BLACK_PAWN,
-		m_WhiteToMove ? PieceType::WHITE_ROOK :PieceType::BLACK_ROOK,
-		MoveFlags::IS_PROMOTION | (GetPiece(targetSquare) == PieceType::NO_PIECE ? 0 : MoveFlags::IS_CAPTURE)
-	));
 
-	m_LegalMoves.push(MoveUtil::CreateMove(
-		startSquare,
-		targetSquare,
-		m_WhiteToMove ? PieceType::WHITE_PAWN : PieceType::BLACK_PAWN,
-		m_WhiteToMove ? PieceType::WHITE_QUEEN : PieceType::BLACK_QUEEN,
-		MoveFlags::IS_PROMOTION | (GetPiece(targetSquare) == PieceType::NO_PIECE ? 0 : MoveFlags::IS_CAPTURE)
-	));
 }
 
 Bitboard MoveGenerator::GetSlidingAttacks(uint8_t square, Bitboard blockers, bool orthogonal)

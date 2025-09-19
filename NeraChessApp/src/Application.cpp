@@ -4,7 +4,7 @@
 #include <thread>
 #include <typeinfo>
 
-#include "AllBots.h"
+#include "ChessPlayers/AllBots.h"
 
 Application::Application()
 {
@@ -61,10 +61,9 @@ void Application::Run()
 					break;
 				case EventTypeStartGame:
 					if (!m_GameStarted)
-						StartGame<Human, BotRandom>();
-					break;
-				case EventTypeStopGame:
-					
+						StartGame<Human, MyBotOld>();
+					else 
+						m_GameStopRequested = true;
 					break;
 				default:
 					break;
@@ -94,6 +93,7 @@ void Application::StartGame()
 		"player2Type must be derived from BasePlayerTypeClass");
 
 	m_Player1IsWhite = !m_Player1IsWhite;
+	m_Renderer.SetWhiteBottom(m_Player1IsWhite);
 	m_Player1Turn = m_Player1IsWhite;
 
 	m_Player1 = std::make_unique<player1Type>();
@@ -103,7 +103,7 @@ void Application::StartGame()
 
 	m_MovePlayed = 0;
 
-	m_ChessBoard = ChessBoard("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1");
+	m_ChessBoard = ChessBoard();
 
 	ChessPlayer* currentPlayer = m_Player1Turn ? m_Player1.get() : m_Player2.get();
 
@@ -119,16 +119,26 @@ void Application::ProcessGame()
 	if (!m_MovePlayed)
 		return;
 
+	if (m_GameStopRequested)
+	{
+		std::cout << "Game stop requested, resetting board.\n\n";
+		m_GameStarted = false;
+		m_ChessBoard = ChessBoard(); 
+		m_Renderer.SetWhiteBottom(true);
+		m_GameStopRequested = false;
+		return;
+	}
+
 	assert(m_Player1 != nullptr && m_Player2 != nullptr);
-	MoveList legalMoves = m_ChessBoard.GetLegalMoves();
-	std::unique_lock<std::mutex> lock(m_MovePlayedMutex);
-	assert(std::find(legalMoves.begin(), legalMoves.end(), m_MovePlayed) != legalMoves.end());
 
-	std::this_thread::sleep_for(std::chrono::milliseconds(5));
-	m_ChessBoard.MakeMove(m_MovePlayed);
-	lock.unlock();
+	std::cout << "Move Played: " 
+		<< SquareUtil::SquareAsString(MoveUtil::GetFromSquare(m_MovePlayed)) 
+		<< SquareUtil::SquareAsString(MoveUtil::GetTargetSquare(m_MovePlayed))
+		<< "\n";
 
-	uint16_t gameOverFlags = m_ChessBoard.GetGameOver();
+	m_ChessBoard.MakeMove(m_MovePlayed, true);
+
+	uint16_t gameOverFlags = m_ChessBoard.GetGameOver(true);
 	if (gameOverFlags & (uint16_t)GameOverFlags::IS_GAME_OVER)
 	{
 		std::string gameOverReason = "";
@@ -150,29 +160,32 @@ void Application::ProcessGame()
 		else if (gameOverFlags & (uint16_t)GameOverFlags::IS_AGREE_ON_DRAW)
 			gameOverReason = "Agree on Draw";
 
-		std::cout << "Game over, " << (m_Player1Turn ? "Player1" : "Player2") << " wins by " << gameOverReason << "\n";
+		std::cout << "Game over, " << (m_Player1Turn ? "Player1" : "Player2") << " ends the game by " << gameOverReason << "\n\n";
 		m_GameStarted = false;
 		return;
 	}
 
 	m_Player1Turn = !m_Player1Turn;
-
-	std::unique_lock<std::mutex> lock2(m_MovePlayedMutex);
 	m_MovePlayed = Move(0);
-	lock2.unlock();
 
 	ChessPlayer* currentPlayer = m_Player1Turn ? m_Player1.get() : m_Player2.get();
 
 	std::thread getMoveThread(&Application::GetMoveFromPlayer, this, currentPlayer);
-	if (getMoveThread.joinable())
-		getMoveThread.detach();
+	getMoveThread.detach();		
 }
 
 void Application::GetMoveFromPlayer(ChessPlayer* player)
 {
-	Move move = player->GetNextMove(m_ChessBoard);
+	Move move = player->GetNextMove(m_ChessBoard, m_Timer);
 	std::lock_guard<std::mutex> lock(m_MovePlayedMutex);
 	m_MovePlayed = move;
+	MoveList legalMoves = m_ChessBoard.GetLegalMoves();
+	if (std::find(legalMoves.begin(), legalMoves.end(), m_MovePlayed) == legalMoves.end())
+	{
+		std::cout << "Player wants to play illegal move: " << move << "\n";
+		m_ChessBoard = ChessBoard();
+		m_GameStarted = false;
+	}
 }
 
 

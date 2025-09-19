@@ -152,19 +152,33 @@ void Renderer::DrawChessBoard(const ChessBoard& board)
     {
         for (int file = 0; file < 8; file++)
         {
-            (rank + file) % 2 == 0 ?
+            (rank + file) % 2 != 0 ?
                 SDL_SetRenderDrawColor(m_SDLRenderer, m_BoardWhite.r, m_BoardWhite.g, m_BoardWhite.b, m_BoardWhite.a) :
                 SDL_SetRenderDrawColor(m_SDLRenderer, m_BoardBlack.r, m_BoardBlack.g, m_BoardBlack.b, m_BoardBlack.a);
 
-            if (m_DebugBitboard && ((m_DebugBitboard >> (rank * 8 + file)) & 1U))
-                (rank + file) % 2 == 0 ?
+            if (m_WhiteBottom)
+            {
+                if (m_DebugBitboard && ((m_DebugBitboard >> (rank * 8 + file)) & 1U))
+                    (rank + file) % 2 != 0 ?
                     SDL_SetRenderDrawColor(m_SDLRenderer, m_DebugWhite.r, m_DebugWhite.g, m_DebugWhite.b, m_DebugWhite.a) :
                     SDL_SetRenderDrawColor(m_SDLRenderer, m_DebugBlack.r, m_DebugBlack.g, m_DebugBlack.b, m_DebugBlack.a);
-
+            }
+            else
+            {
+                if (m_DebugBitboard && ((m_DebugBitboard >> ((7 - rank) * 8 + 7 - file)) & 1U))
+                    ((7 - rank)+ 7 - file) % 2 != 0 ?
+                    SDL_SetRenderDrawColor(m_SDLRenderer, m_DebugWhite.r, m_DebugWhite.g, m_DebugWhite.b, m_DebugWhite.a) :
+                    SDL_SetRenderDrawColor(m_SDLRenderer, m_DebugBlack.r, m_DebugBlack.g, m_DebugBlack.b, m_DebugBlack.a);
+            }
+            
             SDL_Rect tile = { file * m_TileSize + m_Margin, (7 - rank) * m_TileSize + m_Margin, m_TileSize, m_TileSize };
             SDL_RenderFillRect(m_SDLRenderer, &tile);
 
-            Piece piece = board.GetPiece(rank * 8 + file);
+            Piece piece;
+            if (m_WhiteBottom)
+                piece = board.GetPiece(rank * 8 + file);
+            else
+                piece = board.GetPiece((7 - rank) * 8 + 7 - file);
 
             if (piece == PieceType::NO_PIECE)
                 continue;
@@ -223,13 +237,8 @@ void Renderer::ImGuiWindow()
 {
     ImGui::Begin("Settings");
 
-	static bool test_checkbox = true;
-	ImGui::Checkbox("Test Checkbox", &test_checkbox);
-
 	if(ImGui::Button("Start Game"))
 		m_InputHandler->AddInputEvent(InputEvent(EventTypeStartGame));
-	if(ImGui::Button("Stop Game (Not implemented yet)"))
-		m_InputHandler->AddInputEvent(InputEvent(EventTypeStopGame));
 
     ImGui::End();
 }
@@ -247,7 +256,12 @@ uint8_t Renderer::GetSquareFromPos(int x, int y) const
     uint8_t file = (x - m_Margin) / m_TileSize;
     uint8_t rank = 7 - ((y - m_Margin) / m_TileSize);
 
-	uint8_t square = rank * 8 + file;
+    uint8_t square = 64;
+
+    if (m_WhiteBottom)
+	    square = rank * 8 + file;
+    else 
+        square = (7 - rank) * 8 + 7 - file;
 
     return square;
 }
@@ -260,7 +274,7 @@ void Renderer::UpdateWindowSize()
 
     bool isHorizontalWindow = windowWidth > windowHeight;
 
-    m_Margin = (int)m_MarginPortion * (isHorizontalWindow ? windowHeight : windowWidth);
+    m_Margin = (int)(m_MarginPortion * (isHorizontalWindow ? windowHeight : windowWidth));
 
     m_TileSize = isHorizontalWindow ? (windowHeight - 2 * m_Margin) / 8 : (windowWidth - 2 * m_Margin) / 8;
 }

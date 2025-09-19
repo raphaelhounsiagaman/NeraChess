@@ -4,13 +4,7 @@ namespace PieceUtil
 {
 	bool IsWhite(Piece piece)
 	{
-		return
-			piece == WHITE_PAWN ||
-			piece == WHITE_KNIGHT ||
-			piece == WHITE_BISHOP ||
-			piece == WHITE_ROOK ||
-			piece == WHITE_QUEEN ||
-			piece == WHITE_KING;
+		return !((piece & 0b1000) || ((piece & 0b0110) == 0b0110));
 	}
 
 	bool IsDiagonalSlider(Piece piece)

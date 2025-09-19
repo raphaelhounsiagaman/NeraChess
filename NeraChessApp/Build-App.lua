@@ -2,9 +2,9 @@ project "NeraChessApp"
     kind "ConsoleApp"
     language "C++"
     cppdialect "C++20"
+    staticruntime "off"
     targetdir ("../bin/%{cfg.buildcfg}/%{prj.name}")
     objdir ("../bin/Intermediates/%{cfg.buildcfg}/%{prj.name}")
-    staticruntime "off"
 
     files
     {
@@ -41,7 +41,7 @@ project "NeraChessApp"
         
         "SDL2",
         "SDL2main",
-        "SDL2_image"
+        "SDL2_image",
     }
 
     defines
@@ -63,6 +63,9 @@ project "NeraChessApp"
     filter "system:macosx"
         links { "OpenGL.framework" } -- opengl stuff
 
+    filter {}
+
+
     -- COMPILER SPECIFICS
 
     filter "toolset:gcc"
@@ -73,6 +76,14 @@ project "NeraChessApp"
 
     filter "toolset:msc" 
         defines { "USING_MSVC" }
+
+    filter {}
+    
+    -- PLATFORM SPECIFICS
+
+    filter "platforms:x64"
+      architecture "x86_64"
+    filter {}
 
     -- CONFIG SPECIFICS
 
@@ -92,5 +103,6 @@ project "NeraChessApp"
         runtime "Release"
         optimize "On"
         symbols "Off"
+
     filter {}
     

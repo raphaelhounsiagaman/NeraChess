@@ -5,7 +5,6 @@
 
 struct UndoInfo 
 {
-    uint16_t move;          // the move made (our 32-bit packed Move)
     uint8_t capturedPiece;  // piece that was captured, 0 if none
     uint8_t castlingRights; // old castling rights
     uint8_t  enPassantFile;// old en passant square, -1 if none

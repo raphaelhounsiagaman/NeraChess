@@ -8,7 +8,7 @@ bool BoardState::operator==(const BoardState& other) const
 		same = false;
 	if (boardStateFlags != other.boardStateFlags)
 		same = false;
-	if (boardStateFlags & BoardStateFlags::CanEnPassent && enPassentFile != other.enPassentFile)
+	if (boardStateFlags & BoardStateFlags::CanEnPassent && enPassantFile != other.enPassantFile)
 		same = false;
 
     return same;

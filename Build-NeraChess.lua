@@ -1,4 +1,3 @@
-
 workspace "NeraChess"
    architecture "x64"
    configurations { "Debug", "Release", "Dist" }
@@ -11,4 +10,3 @@ workspace "NeraChess"
 include "NeraChessCore/Build-Core.lua"
 
 include "NeraChessApp/Build-App.lua"
-
