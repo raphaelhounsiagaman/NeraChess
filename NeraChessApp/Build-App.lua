@@ -16,7 +16,7 @@ project "NeraChessApp"
         "src/**.h",
 
         "vendor/DearImGui/**.h",
-        "vendor/DearImGui/**.cpp"
+        "vendor/DearImGui/**.cpp",
     }
 
     includedirs 
@@ -26,13 +26,17 @@ project "NeraChessApp"
 
         "vendor/SDL2/include",
         "vendor/SDL2_image/include",
-        "vendor/DearImGui"
+        "vendor/DearImGui",
+
+        "vendor/onnxruntime-win-x64-gpu-1.23.2/include",
     }
 
     libdirs
     {
         "vendor/SDL2/lib",
-        "vendor/SDL2_image/lib"
+        "vendor/SDL2_image/lib",
+
+        "vendor/onnxruntime-win-x64-gpu-1.23.2/lib",
     }
 
     links
@@ -42,6 +46,11 @@ project "NeraChessApp"
         "SDL2",
         "SDL2main",
         "SDL2_image",
+        
+        "onnxruntime",
+        "onnxruntime_providers_cuda",
+        "onnxruntime_providers_shared",
+        "onnxruntime_providers_tensorrt",
     }
 
     defines
@@ -49,19 +58,26 @@ project "NeraChessApp"
         "SDL_MAIN_HANDLED"
     }
 
+    postbuildcommands 
+    {
+        '{COPY} "%{prj.location}/vendor/SDL2/lib/*.dll" "%{cfg.targetdir}"',
+        '{COPY} "%{prj.location}/vendor/SDL2_image/lib/*.dll" "%{cfg.targetdir}"',
+
+        '{COPY} "%{prj.location}/vendor/onnxruntime-win-x64-gpu-1.23.2/lib/*.dll" "%{cfg.targetdir}"',
+    }
 
     -- SYSTEM SPECIFICS
 
     filter "system:windows"
         systemversion "latest"
         defines { "WINDOWS" }
-        links { "opengl32" } -- opengl stuff
+        links { "opengl32" }
 
     filter "system:linux"
-        links { "GL", "pthread", "dl" } -- opengl stuff
+        links { "GL", "pthread", "dl" }
 
     filter "system:macosx"
-        links { "OpenGL.framework" } -- opengl stuff
+        links { "OpenGL.framework" }
 
     filter {}
 
