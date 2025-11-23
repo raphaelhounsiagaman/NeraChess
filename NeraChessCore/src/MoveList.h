@@ -5,10 +5,27 @@
 
 #include "Move.h"
 
+template<size_t maxMoves>
 struct MoveList
 {
 public:
 	
+    MoveList() = default;
+    MoveList(Move move)
+    {
+        push(move);
+    }
+
+    MoveList operator+(MoveList& other)
+    {
+        MoveList<maxMoves> result;
+        for (size_t i = 0; i < this->size(); i++)
+            result.push((*this)[i]);
+        for (size_t i = 0; i < other.size(); i++)
+            result.push(other[i]);
+		return result;
+    }
+
     void push(Move move) 
     {
         assert(m_MoveCount < m_Moves.size());
@@ -21,17 +38,17 @@ public:
         --m_MoveCount;
 	}
 
-    Move& operator[](uint8_t i) 
+    Move& operator[](size_t i)
     {
         return m_Moves[i];
     }
 
-    const Move& operator[](uint8_t i) const 
+    const Move& operator[](size_t i) const
     {
         return m_Moves[i];
     }
 
-    uint8_t size() const 
+    size_t size() const
     {
         return m_MoveCount;
     }
@@ -49,7 +66,7 @@ public:
 
 private:
 
-	std::array<Move, 218> m_Moves;
-	uint8_t m_MoveCount = 0;
+    std::array<Move, maxMoves> m_Moves{};
+	size_t m_MoveCount = 0;
 
 };

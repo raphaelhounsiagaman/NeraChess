@@ -28,7 +28,7 @@ void RepetitionTable::RemoveEntry(const std::array<Bitboard, 12>& pieceBitboards
 	{
 		if (entry.pieceBitboards == pieceBitboards)
 		{
-			entry.repetitionCount -= 1;
+			entry.repetitionCount = std::max(0, entry.repetitionCount - 1);
 			return;
 		}
 	}

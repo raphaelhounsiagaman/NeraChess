@@ -4,7 +4,7 @@
 
 Move Human::GetNextMove(const ChessBoard& board, Timer timer)
 {
-	MoveList legalMoves = board.GetLegalMoves();
+	MoveList<218> legalMoves = board.GetLegalMoves();
 
 	uint8_t startSquare = 64;
 	uint8_t targetSquare = 64;

@@ -458,7 +458,7 @@ const Bitboard MoveGenerator::s_BlackQueensideMask = 1ULL << SquareUtil::d8 | 1U
 
 const std::array<std::array<Bitboard, 64>, 64> MoveGenerator::s_AlignMask = InitAlignMask();
 
-MoveList MoveGenerator::GenerateMoves(const BoardState& board)
+MoveList<218> MoveGenerator::GenerateMoves(const BoardState& board)
 {
 	m_BoardState = board;
 

@@ -179,7 +179,7 @@ void Application::GetMoveFromPlayer(ChessPlayer* player)
 	Move move = player->GetNextMove(m_ChessBoard, m_Timer);
 	std::lock_guard<std::mutex> lock(m_MovePlayedMutex);
 	m_MovePlayed = move;
-	MoveList legalMoves = m_ChessBoard.GetLegalMoves();
+	MoveList<218> legalMoves = m_ChessBoard.GetLegalMoves();
 	if (std::find(legalMoves.begin(), legalMoves.end(), m_MovePlayed) == legalMoves.end())
 	{
 		std::cout << "Player wants to play illegal move: " << move << "\n";

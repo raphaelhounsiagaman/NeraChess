@@ -518,7 +518,7 @@ void ChessBoard::UndoMove(Move move)
 	
 }
 
-MoveList ChessBoard::GetLegalMoves() const
+MoveList<218> ChessBoard::GetLegalMoves() const
 {
 	if (m_WasBoardStateChanged)
 	{
@@ -593,7 +593,7 @@ void ChessBoard::RunPerformanceTest(ChessBoard& board, int calcDepth)
 
 	auto start = std::chrono::steady_clock::now();
 
-	MoveList move_list = board.GetLegalMoves();
+	MoveList<218> move_list = board.GetLegalMoves();
 	uint64_t result = 0;
 
 	if (calcDepth == 1)
@@ -653,13 +653,13 @@ void ChessBoard::RunPerformanceTest(ChessBoard& board, int calcDepth)
 
 uint64_t ChessBoard::PerfTest(int depth, ChessBoard& board)
 {
-	MoveList moveList = board.GetLegalMoves(); 
+	MoveList<218> moveList = board.GetLegalMoves(); 
 	uint64_t nodes = 0;
 
 	if (depth == 1)
 		return moveList.size();
 
-	for (int i = 0; i < moveList.size(); i++) {
+	for (uint32_t i = 0; i < moveList.size(); i++) {
 #ifdef DEBUG
 		ChessBoard temp_board = board;
 #endif // DEBUG

@@ -44,7 +44,7 @@ public:
 
     static void RunPerformanceTest(ChessBoard& board, int calcDepth = 1);
 
-    MoveList GetLegalMoves() const;
+    MoveList<218> GetLegalMoves() const;
 
     void MakeMove(Move move, bool gameMove = false);
 	void UndoMove(Move move);
@@ -71,7 +71,7 @@ private:
 
     mutable MoveGenerator m_MoveGenerator;
 
-	mutable MoveList m_LegalMoves{};
+	mutable MoveList<218> m_LegalMoves{};
 	mutable bool m_WasBoardStateChanged = true;
 
 	mutable uint64_t m_ZobristKey = 0;

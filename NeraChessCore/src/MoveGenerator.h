@@ -13,7 +13,7 @@ public:
 	MoveGenerator() = default;
 	~MoveGenerator() = default;
 
-	MoveList GenerateMoves(const BoardState& board);
+	MoveList<218> GenerateMoves(const BoardState& board);
 
 	bool InCheck() const { return m_InCheck; };
 
@@ -43,7 +43,7 @@ private:
 
 private:
 
-	MoveList m_LegalMoves;
+	MoveList<218> m_LegalMoves;
 	
 	BoardState m_BoardState{}; // check
 

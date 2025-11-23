@@ -11,9 +11,9 @@ FirstNNBot::FirstNNBot()
 Move FirstNNBot::GetNextMove(const ChessBoard& givenBoard, Timer timer)
 {
 	ChessBoard board = givenBoard;
-
-	MoveList legalMoves = board.GetLegalMoves();
-	if (legalMoves.size() < 2)
+	
+	MoveList<218> legalMoves = board.GetLegalMoves();
+	if (legalMoves.size() == 1)
 		return legalMoves[0];
 
 	SortMoves(board, legalMoves);
@@ -63,7 +63,7 @@ double FirstNNBot::Minimax(ChessBoard& board, int depth, bool whiteMaximizingPla
 		return EvaluateBoard(board, whiteMaximizingPlayer);
 	}
 
-	MoveList legalMoves = board.GetLegalMoves();
+	MoveList<218> legalMoves = board.GetLegalMoves();
 
 	if (whiteMaximizingPlayer)
 	{
@@ -113,7 +113,7 @@ double FirstNNBot::EvaluateBoard(const ChessBoard& board, bool whiteToMove) cons
 	return 0;
 }
 
-void FirstNNBot::SortMoves(const ChessBoard& board, MoveList& moves)
+void FirstNNBot::SortMoves(const ChessBoard& board, MoveList<218>& moves)
 {
 	std::array<float, 218> moveValues{};
 
@@ -145,7 +145,7 @@ void FirstNNBot::SortMoves(const ChessBoard& board, MoveList& moves)
 	std::vector<MoveValuePair> moveValuePairs;
 	moveValuePairs.reserve(moves.size());
 
-	for (int i = 0; i < moves.size(); i++)
+	for (uint32_t i = 0; i < moves.size(); i++)
 	{
 		moveValuePairs.emplace_back(moves[i], moveValues[i]);
 	}
@@ -155,7 +155,7 @@ void FirstNNBot::SortMoves(const ChessBoard& board, MoveList& moves)
 			return a.value > b.value;
 		});
 
-	for (int i = 0; i < moves.size(); i++)
+	for (uint32_t i = 0; i < moves.size(); i++)
 	{
 		moves[i] = moveValuePairs[i].move;
 	}
