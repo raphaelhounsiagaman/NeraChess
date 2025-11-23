@@ -49,12 +49,16 @@ public:
     void MakeMove(Move move, bool gameMove = false);
 	void UndoMove(Move move);
 
+	void MakeNullMove();
+	void UndoNullMove();
+
 	const BoardState& GetBoardState() const { return m_BoardState; }
 
 	uint8_t GetHalfMoveClock() const{ return m_HalfMoveClock; }
+	uint16_t GetFullMoveClock() const { return m_FullMoves; }
     Piece GetPiece(const uint8_t square) const;
-    bool IsInCheck();
-    uint16_t GetGameOver(bool gameCheck = false);
+    bool IsInCheck() const;
+    uint16_t GetGameOver(bool gameCheck = false) const;
     uint64_t GetZobristKey() const;
 
     uint8_t GetError() const { return m_Error; }
@@ -77,14 +81,14 @@ private:
 	mutable uint64_t m_ZobristKey = 0;
     mutable bool m_ZobristKeySet = true;
 
+    mutable uint16_t m_GameOverFlags = 0;
+
     BoardState m_BoardState{};
 
 	RepetitionTable m_RepetitionTable{};
 	UndoStack m_UndoStack{};
 
     std::vector<Move> m_MovesPlayed{};
-
-    uint16_t m_GameOverFlags = 0;
 
     uint8_t m_HalfMoveClock = 0;
     uint16_t m_FullMoves = 1;

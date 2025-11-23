@@ -403,8 +403,8 @@ void ChessBoard::MakeMove(Move move, bool gameMove)
 	
 	m_MovesPlayed.push_back(move);
 	
-	if (gameMove)
-		m_RepetitionTable.AddEntry(m_BoardState.pieceBitboards);
+
+	m_RepetitionTable.AddEntry(m_BoardState.pieceBitboards);
 
 	if (!whitesMove)
 		m_FullMoves++;
@@ -427,6 +427,8 @@ void ChessBoard::UndoMove(Move move)
 
 	m_MovesPlayed.pop_back();
 	UndoInfo info = m_UndoStack.pop();
+
+	m_RepetitionTable.RemoveEntry(m_BoardState.pieceBitboards);
 
 	const bool whitesMove = PieceUtil::IsWhite(MoveUtil::GetMovePiece(move));
 
@@ -518,6 +520,16 @@ void ChessBoard::UndoMove(Move move)
 	
 }
 
+void ChessBoard::MakeNullMove()
+{
+	m_BoardState.boardStateFlags ^= BoardStateFlags::WhiteToMove;
+}
+
+void ChessBoard::UndoNullMove()
+{
+	m_BoardState.boardStateFlags ^= BoardStateFlags::WhiteToMove;
+}
+
 MoveList<218> ChessBoard::GetLegalMoves() const
 {
 	if (m_WasBoardStateChanged)
@@ -528,7 +540,7 @@ MoveList<218> ChessBoard::GetLegalMoves() const
 	return m_LegalMoves;
 }
 
-uint16_t ChessBoard::GetGameOver(bool gameCheck)
+uint16_t ChessBoard::GetGameOver(bool gameCheck) const
 {
 	if (m_WasBoardStateChanged)
 	{
@@ -598,7 +610,7 @@ void ChessBoard::RunPerformanceTest(ChessBoard& board, int calcDepth)
 
 	if (calcDepth == 1)
 	{
-		for (int i = 0; i < move_list.size(); i++)
+		for (uint32_t i = 0; i < move_list.size(); i++)
 		{
 			std::cout <<
 				SquareUtil::SquareAsString(MoveUtil::GetFromSquare(move_list[i])) <<
@@ -616,7 +628,7 @@ void ChessBoard::RunPerformanceTest(ChessBoard& board, int calcDepth)
 		return;
 	}
 
-	for (int i = 0; i < move_list.size(); i++)
+	for (uint32_t i = 0; i < move_list.size(); i++)
 	{
 #ifdef DEBUG
 		ChessBoard temp_board = board;
@@ -715,7 +727,7 @@ bool ChessBoard::InsufficentMaterial(ChessBoard board)
 	return false;
 }
 
-bool ChessBoard::IsInCheck()
+bool ChessBoard::IsInCheck() const
 {
 	if (m_WasBoardStateChanged)
 	{
