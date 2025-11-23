@@ -61,7 +61,7 @@ void Application::Run()
 					break;
 				case EventTypeStartGame:
 					if (!m_GameStarted)
-						StartGame<Human, MyBotOld>();
+						StartGame<Human, NeraChessBot>();
 					else 
 						m_GameStopRequested = true;
 					break;

@@ -5,3 +5,4 @@
 #include "Bots/BotRandom.h"
 #include "Bots/MyBotOld.h"
 #include "Bots/FirstNNBot.h"
+#include "Bots/NeraChessBot.h"

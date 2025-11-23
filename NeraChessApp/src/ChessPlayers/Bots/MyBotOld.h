@@ -5,28 +5,27 @@
 
 #include <unordered_map>
 
-enum NodeType : uint8_t
+enum class EntryFlagMyBotOld : uint8_t
 {
 	Exact,
-	LowerBound,  
+	LowerBound,
 	UpperBound
 };
 
-struct TranspositionTableEntry
+struct TTEntryMyBotOld
 {
 	double evaluation = 0;
 
 	uint8_t depth = 0;
-	NodeType type = NodeType::Exact;
+	EntryFlagMyBotOld type = EntryFlagMyBotOld::Exact;
 
-		//public Move BestMove { get; set; }  // Best move found from this position
 };
 
-struct TranspositionTable
+struct TranspositionTableOldMyBotOld
 {
-	std::unordered_map<uint64_t, TranspositionTableEntry> table{};
+	std::unordered_map<uint64_t, TTEntryMyBotOld> table{};
 
-	bool TryGetValue(uint64_t zobristKey, TranspositionTableEntry& entry)
+	bool TryGetValue(uint64_t zobristKey, TTEntryMyBotOld& entry)
 	{
 		auto it = table.find(zobristKey);
 		if (it != table.end())
@@ -37,7 +36,7 @@ struct TranspositionTable
 		return false;
 	}
 
-	void StoreEntry(uint64_t zobristKey, const TranspositionTableEntry& entry)
+	void StoreEntry(uint64_t zobristKey, const TTEntryMyBotOld& entry)
 	{
 		table[zobristKey] = entry;
 	}
@@ -56,11 +55,11 @@ private:
 
 	double EvaluateBoard(const BoardState& board, bool whiteToMove) const;
 
-	static void SortMoves(const ChessBoard& board, MoveList& moves);
+	static void SortMoves(const ChessBoard& board, MoveList<218>& moves);
 
 private:
 
-	TranspositionTable m_TranspositionTable{};
+	TranspositionTableOldMyBotOld m_TranspositionTable{};
 
 	static constexpr float m_PieceValues[12] = {
 		10.0f, // WHITE_PAWN

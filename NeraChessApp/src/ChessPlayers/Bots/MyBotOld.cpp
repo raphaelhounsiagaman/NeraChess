@@ -7,7 +7,7 @@ Move MyBotOld::GetNextMove(const ChessBoard& givenBoard, Timer timer)
 {
 	ChessBoard board = givenBoard;
 
-	MoveList legalMoves = board.GetLegalMoves();
+	MoveList<218> legalMoves = board.GetLegalMoves();
 	if (legalMoves.size() < 2)
 		return legalMoves[0];
 
@@ -59,22 +59,22 @@ double MyBotOld::Minimax(ChessBoard& board, int depth, bool whiteMaximizingPlaye
 	}
 
 	uint64_t zobristKey = board.GetZobristKey();
-	TranspositionTableEntry entry;
+	TTEntryMyBotOld entry;
 
 	if (m_TranspositionTable.TryGetValue(zobristKey, entry))
 	{
 		// If the stored depth is greater or equal to the current depth, use the stored evaluation
 		if (entry.depth >= depth)
 		{
-			if (entry.type == NodeType::Exact)
+			if (entry.type == EntryFlagMyBotOld::Exact)
 			{
 				return entry.evaluation;
 			}
-			else if (entry.type == NodeType::LowerBound && entry.evaluation > alpha)
+			else if (entry.type == EntryFlagMyBotOld::LowerBound && entry.evaluation > alpha)
 			{
 				alpha = entry.evaluation;
 			}
-			else if (entry.type == NodeType::UpperBound && entry.evaluation < beta)
+			else if (entry.type == EntryFlagMyBotOld::UpperBound && entry.evaluation < beta)
 			{
 				beta = entry.evaluation;
 			}
@@ -86,7 +86,7 @@ double MyBotOld::Minimax(ChessBoard& board, int depth, bool whiteMaximizingPlaye
 		}
 	}
 
-	MoveList legalMoves = board.GetLegalMoves();
+	MoveList<218> legalMoves = board.GetLegalMoves();
 
 
 	double bestEval = whiteMaximizingPlayer ? -99999 : 99999;
@@ -108,22 +108,22 @@ double MyBotOld::Minimax(ChessBoard& board, int depth, bool whiteMaximizingPlaye
 			break;
 	}
 
-	NodeType type;
+	EntryFlagMyBotOld type;
 	if (bestEval <= originAlpha)
 	{
-		type = NodeType::UpperBound;
+		type = EntryFlagMyBotOld::UpperBound;
 	}
 	else if (bestEval >= originBeta)
 	{
-		type = NodeType::LowerBound;
+		type = EntryFlagMyBotOld::LowerBound;
 	}
 	else
 	{
-		type = NodeType::Exact;
+		type = EntryFlagMyBotOld::Exact;
 	}
 
 	// Store the result in the transposition table
-	m_TranspositionTable.StoreEntry(zobristKey, TranspositionTableEntry
+	m_TranspositionTable.StoreEntry(zobristKey, TTEntryMyBotOld
 		(
 			bestEval,
 			depth,
@@ -223,7 +223,7 @@ double MyBotOld::EvaluateBoard(const BoardState& boardState, bool whiteToMove) c
 	return evaluation;
 }
 
-void MyBotOld::SortMoves(const ChessBoard& board, MoveList& moves)
+void MyBotOld::SortMoves(const ChessBoard& board, MoveList<218>& moves)
 {
 	std::array<float, 218> moveValues{};
 
@@ -255,7 +255,7 @@ void MyBotOld::SortMoves(const ChessBoard& board, MoveList& moves)
 	std::vector<MoveValuePair> moveValuePairs;
 	moveValuePairs.reserve(moves.size());
 
-	for (int i = 0; i < moves.size(); i++)
+	for (uint32_t i = 0; i < moves.size(); i++)
 	{
 		moveValuePairs.emplace_back(moves[i], moveValues[i]);
 	}
@@ -265,7 +265,7 @@ void MyBotOld::SortMoves(const ChessBoard& board, MoveList& moves)
 			return a.value > b.value;
 		});
 
-	for (int i = 0; i < moves.size(); i++)
+	for (uint32_t i = 0; i < moves.size(); i++)
 	{
 		moves[i] = moveValuePairs[i].move;
 	}
