@@ -1,6 +1,7 @@
 # Directories
 .vs/
 bin/
+NeraChessAITraining/data
 
 # Files
 *.vcxproj

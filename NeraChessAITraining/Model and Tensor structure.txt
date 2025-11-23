@@ -1,0 +1,53 @@
+Chessboard Representation as Tensor of Size (19, 8, 8)
+
+Channel 0: White Pawn
+Channel 1: White Knight
+Channel 2: White Bishop
+Channel 3: White Rook
+Channel 4: White Queen
+Channel 5: White King
+
+Channel 6: Black Pawn
+Channel 7: Black Knight
+Channel 8: Black Bishop
+Channel 9: Black Rook
+Channel 10: Black Queen
+Channel 11: Black King
+
+Channel 12: Whites move
+
+Channel 13: can white castle king
+Channel 14: can white castle queen
+Channel 15: can black castle king
+Channel 16: can black castle queen
+
+Channel 17: en passent file / square
+
+Channel 19: half move clock
+
+
+Neural Network structure:
+
+
+1. Convolutional Layer : (in = 19, out = 128, kernelsize = 3, padding = 1)
+2. Batch Normalization : (channels = 128)
+3. Activation (relu)   :
+
+Residual Blocks (8/15x):
+
+4.1 Convolutional Layer : (in = 128, out = 128, kernelsize = 3, padding = 1)
+4.2 Batch Normalization : (channels = 128)
+4.3 Activation (relu)   :
+4.4 Convolutional Layer : (in = 128, out = 128, kernelsize = 3, padding = 1)
+4.5 Batch Normalization : (channels = 128)
+4.6 Skip add
+4.7 Activation (relu)   :
+
+
+5. Convolutional Layer : (in = 128, out = 64, kernelsize = 1, padding = 0)
+6. Batch Normalization : (channels = 64)
+7. Activation (relu)   :
+8. Flatten
+9. Fully Connected     : (in = 8*8*64, out = 128)
+10.Activation (relu)   :
+11.Fully Connected     : (in = 128, out = 1)
