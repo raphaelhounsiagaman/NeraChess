@@ -69,23 +69,6 @@ void TranspositionTable::Store(
 	Write(cluster[victim], zobristKey, value, depth, flag, bestMove, age);
 }
 
-PrincipleVariation TranspositionTable::GetPVFromEntry(TTEntry* entryPtr, ChessBoard board)
-{
-	PrincipleVariation pv;
-	pv.score = entryPtr->value;
-
-	for (uint8_t depth = 0; depth <= entryPtr->depth; depth++)
-	{
-		pv.principleVariation.push(entryPtr->bestMove);
-		board.MakeMove(entryPtr->bestMove);
-		entryPtr = Probe(board.GetZobristKey());
-
-		if (entryPtr == nullptr || entryPtr->bestMove == 0)
-			break;
-	}
-	return pv;
-}
-
 inline size_t TranspositionTable::GetClusterIndex(uint64_t zobristKey) const
 {
 	return zobristKey % m_NumClusters;

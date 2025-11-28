@@ -1,6 +1,5 @@
 #pragma once
 #include "ChessBoard.h"
-#include "PrincipleVariation.h"
 
 enum class EntryFlag : uint8_t
 {
@@ -41,9 +40,9 @@ public:
 		uint32_t bestMove,
 		int age);
 
-	PrincipleVariation GetPVFromEntry(TTEntry* entryPtr, ChessBoard board);
-
 private:
+
+	
 
 	size_t GetClusterIndex(uint64_t zobristKey) const;
 

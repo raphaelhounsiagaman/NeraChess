@@ -8,7 +8,7 @@
 class FirstNNBot : public ChessPlayer
 {
 public:
-	FirstNNBot(const std::string& modelPath = "model15b.onnx");
+	FirstNNBot(const std::string& modelPath = "Ressources/NeuralNetworks/model15b.onnx");
 	~FirstNNBot();
 
 	Move GetNextMove(const ChessBoard& givenBoard, Timer timer) override;

@@ -1,4 +1,4 @@
-#include "NeraChessBot.h"
+﻿#include "NeraChessBot.h"
 
 #include <filesystem>
 #include <algorithm>
@@ -10,10 +10,12 @@
 #include <iostream>
 #include <cmath>
 #include <thread>
+#include <fstream>
 
 constexpr float INF = 1e9;
 
 NeraChessBot::NeraChessBot(const std::string& modelPath)
+ : m_OpeningBook(c_OpeningBookPath)
 {
 	if (std::filesystem::exists(modelPath))
 		std::cout << "Model found\n";
@@ -31,6 +33,12 @@ NeraChessBot::NeraChessBot(const std::string& modelPath)
 	m_Session = Ort::Session(m_Env, wmodelPath, m_SessionOptions);
 
 	m_InputVector.resize(1);
+
+	if (!m_OpeningBook)
+	{
+		std::cout << "Opening book missing (" + c_OpeningBookPath + ")\n";
+		m_OpeningBookAvailable = false;
+	}
 }
 
 NeraChessBot::~NeraChessBot()
@@ -44,20 +52,77 @@ Move NeraChessBot::GetNextMove(const ChessBoard& givenBoard, Timer timer)
 	m_SearchStartTime = std::chrono::steady_clock::now();
 	m_TimeUp = false;
 
-	ChessBoard board = givenBoard;
-	MoveList<218> legalMoves = board.GetLegalMoves();
-	if (legalMoves.size() == 1)
-		return legalMoves[0];
-
 	Move bestMove = 0;
-	bestMove = IterativeDeepeningSearch(board, 64);
+	
+	if (m_OpeningBookAvailable)
+	{
+		bestMove = GetOpeningBookMove(givenBoard);
+		if (bestMove != 0)
+		{
+			std::cout << "Using opening book move: " + MoveUtil::MoveToUCI(bestMove) + "\n";
+			return bestMove;
+		}
+		else
+		{
+			std::cout << "No opening book move found\n";
+			m_OpeningBookAvailable = false;
+		}
+	}
+
+	ChessBoard board = givenBoard;
+	bestMove = IterativeDeepeningSearch(board, 200);
 	
 	return bestMove;
 }
 
+Move NeraChessBot::GetOpeningBookMove(const ChessBoard& board)
+{
+	std::string fen = board.GetFENString();
+
+	std::string uciMove = "";
+
+	std::string line;
+	while (std::getline(m_OpeningBook, line)) {
+
+		size_t position = line.find(',');
+		if (position == std::string::npos) continue;
+
+		// Extract fen
+		// Avoid extra allocations: compare directly
+		if (line.compare(0, position, fen) == 0) {
+			// Found → extract move
+			uciMove = line.substr(position + 1);
+			break;
+		}
+	}
+
+	if (uciMove == "")
+		return 0;
+
+	Move bareMove = MoveUtil::UCIToMove(uciMove);
+
+	MoveList<218> legalMoves = board.GetLegalMoves();
+	for (Move move : legalMoves)
+	{
+		if (MoveUtil::GetFromSquare(move) == MoveUtil::GetFromSquare(bareMove) &&
+			MoveUtil::GetTargetSquare(move) == MoveUtil::GetTargetSquare(bareMove) &&
+			MoveUtil::GetPromoPiece(move) == MoveUtil::GetPromoPiece(bareMove))
+		{
+			return move;
+		}
+	}
+
+	return 0;
+}
+
 Move NeraChessBot::IterativeDeepeningSearch(ChessBoard& board, int maxDepth)
 {
-	Move bestMove = 0;
+	MoveList<218> legalMoves = board.GetLegalMoves();
+	if (legalMoves.size() == 1)
+		return legalMoves[0];
+
+	Move bestMove{};
+
 	int depthReached = 0;
 
 	for (uint8_t depth = 1; depth <= maxDepth; depth++)
@@ -65,13 +130,18 @@ Move NeraChessBot::IterativeDeepeningSearch(ChessBoard& board, int maxDepth)
 		if (IsTimeUp()) break;
 
 		m_SearchID++;
-		bestMove = PVSRoot(board, depth);
-		depthReached = depth;
+		Move move = PVSRoot(board, depth);
 
 		if (m_TimeUp) break;
+
+		bestMove = move;
+
+		std::cout << "Thinking of move " << SquareUtil::SquareAsString(MoveUtil::GetFromSquare(bestMove)) << SquareUtil::SquareAsString(MoveUtil::GetTargetSquare(bestMove)) <<  " at depth " << (int)depth << "\n";
+
+		depthReached = depth;
 	}
 
-	std::cout << "Depth reached: " << depthReached << "\n";
+	std::cout << "Searched Depth " << depthReached << " fully\n";
 
 	return bestMove;
 }
@@ -111,39 +181,47 @@ Move NeraChessBot::PVSRoot(ChessBoard& board, int depth)
 
 	SortMoves(board, legalMoves, 0, ttProbePtr ? ttProbePtr->bestMove : 0);
 
-	float score = -INF;
+	float bestScore = -INF;
 	Move bestMove = legalMoves[0];
 
 	board.MakeMove(legalMoves[0]);
-	score = -PrincipalVariationSearch(board, -beta, -alpha, depth - 1, 1);
+	bestScore = -PrincipalVariationSearch(board, -beta, -alpha, depth - 1, 1);
 	board.UndoMove(legalMoves[0]);
 
-	alpha = std::max(alpha, score);
+	alpha = std::max(alpha, bestScore);
 
 	for (size_t moveIndex = 1; moveIndex < legalMoves.size(); moveIndex++)
 	{
 		Move move = legalMoves[moveIndex];
 
 		board.MakeMove(move);
-		score = std::max(score, -PrincipalVariationSearch(board, -alpha - 1, -alpha, depth - 1, 1));
+		float score = std::max(score, -PrincipalVariationSearch(board, -alpha - 1, -alpha, depth - 1, 1));
 		if (score > alpha && score < beta)
 		{
 			score = std::max(score, -PrincipalVariationSearch(board, -beta, -alpha, depth - 1, 1));
 		}
 		board.UndoMove(move);
 
-		if (score > alpha)
+		if (m_TimeUp || IsTimeUp())
 		{
-			alpha = score;
+			m_TimeUp = true;
+			return bestMove;
+		}
+
+		if (score > bestScore)
+		{
+			bestScore = score;
 			bestMove = move;
 		}
+
+		alpha = std::max(alpha, bestScore);
 
 		if (alpha >= beta)
 		{
 			//store_killer_or_history(move);
 			m_TranspositionTable.Store(
 				board.GetZobristKey(),
-				score,
+				bestScore,
 				depth,
 				EntryFlag::LOWERBOUND,
 				move,
@@ -152,19 +230,18 @@ Move NeraChessBot::PVSRoot(ChessBoard& board, int depth)
 			return bestMove;
 		}
 
-
 	}
 
 	// store exact/bound TT entry
 	EntryFlag flag;
-	if (score <= originAlpha)
+	if (bestScore <= originAlpha)
 		flag = EntryFlag::UPPERBOUND;
 	else
 		flag = EntryFlag::EXACT;
 
 	m_TranspositionTable.Store(
 		board.GetZobristKey(),
-		score,
+		bestScore,
 		depth,
 		flag,
 		bestMove,
@@ -205,7 +282,18 @@ float NeraChessBot::PrincipalVariationSearch(ChessBoard& board, float alpha, flo
 		}
 	}
 
-	// TODO: add Null move pruning 
+	/*
+	if (board.MakeNullMove())
+	{
+		int reduction = NullMoveReduction(depth);
+
+		float score = -PrincipalVariationSearch(board, -beta, -(beta - 1), depth - reduction, ply + 1);
+
+		board.UndoNullMove();
+		if (score >= beta)
+			return score;
+	}
+	*/
 
 	if (alpha >= beta)
 		return alpha;
@@ -216,20 +304,20 @@ float NeraChessBot::PrincipalVariationSearch(ChessBoard& board, float alpha, flo
 
 	SortMoves(board, legalMoves, ply, ttProbePtr ? ttProbePtr->bestMove : 0);
 
-	float score = -INF;
+	float bestScore = -INF;
 	Move bestMove = legalMoves[0];
 
 	board.MakeMove(legalMoves[0]);
-	score = std::max(score, -PrincipalVariationSearch(board, -beta, -alpha, depth - 1, ply + 1));
+	bestScore = std::max(bestScore, -PrincipalVariationSearch(board, -beta, -alpha, depth - 1, ply + 1));
 	board.UndoMove(legalMoves[0]);
 
-	alpha = std::max(alpha, score);
+	alpha = std::max(alpha, bestScore);
 
 	if (alpha >= beta)
 	{
 		m_TranspositionTable.Store(
 			board.GetZobristKey(),
-			score,
+			bestScore,
 			depth,
 			EntryFlag::LOWERBOUND,
 			legalMoves[0],
@@ -247,7 +335,7 @@ float NeraChessBot::PrincipalVariationSearch(ChessBoard& board, float alpha, flo
 		}
 		m_HistoryHeuristic[MoveUtil::GetFromSquare(legalMoves[0])][MoveUtil::GetTargetSquare(legalMoves[0])] += ply * ply;
 
-		return score;
+		return bestScore;
 	}
 
 	for (size_t moveIndex = 1; moveIndex < legalMoves.size(); moveIndex++)
@@ -262,26 +350,30 @@ float NeraChessBot::PrincipalVariationSearch(ChessBoard& board, float alpha, flo
 
 		uint8_t reduction = 0;
 
-		if (isQuiet && ply >= 2 && moveIndex >= 4)
-		{
-			reduction = 4;	
-		}
 
-		score = std::max(score, -PrincipalVariationSearch(board, -alpha - 1, -alpha, depth - 1 - reduction, ply + 1));
+		reduction = LateMoveReduction(depth, ply, (uint8_t)moveIndex);
+
+		float score = -PrincipalVariationSearch(board, -alpha - 1, -alpha, depth - 1 - reduction, ply + 1);
 		if (score > alpha && score < beta)
 		{
-			score = std::max(score, -PrincipalVariationSearch(board, -beta, -alpha, depth - 1, ply + 1));
+			score = -PrincipalVariationSearch(board, -beta, -alpha, depth - 1, ply + 1);
 		}
 
 		board.UndoMove(move);
 
-		alpha = std::max(alpha, score);
-
-		if (score > alpha)
+		if (m_TimeUp || IsTimeUp())
 		{
-			alpha = score;
+			m_TimeUp = true;
+			return alpha;
+		}
+
+		if (score > bestScore)
+		{
+			bestScore = score;
 			bestMove = move;
 		}
+
+		alpha = std::max(alpha, score);
 
 		if (alpha >= beta)
 		{
@@ -311,26 +403,25 @@ float NeraChessBot::PrincipalVariationSearch(ChessBoard& board, float alpha, flo
 	}
 
 	EntryFlag flag;
-	if (score <= originAlpha)
+	if (bestScore <= originAlpha)
 		flag = EntryFlag::UPPERBOUND;
 	else
 		flag = EntryFlag::EXACT;
 
 	m_TranspositionTable.Store(
 		board.GetZobristKey(),
-		score,
+		bestScore,
 		depth,
 		flag,
 		bestMove,
 		m_SearchID);
 
-	return score;
+	return bestScore;
 }
 
 float NeraChessBot::QuiescenceSearch(ChessBoard& board, float alpha, float beta, uint8_t ply)
 {
-
-
+	
 	TTEntry* ttEntryPtr = m_TranspositionTable.Probe(board.GetZobristKey());
 	if (ttEntryPtr)
 	{
@@ -349,9 +440,12 @@ float NeraChessBot::QuiescenceSearch(ChessBoard& board, float alpha, float beta,
 		}
 	}
 
+	float static_eval = FastStaticEval(board);
+
+	alpha = std::max(static_eval, alpha);
+
 	if (alpha >= beta)
 		return alpha;
-
 
 	MoveList<218> legalMoves = board.GetLegalMoves();
 	MoveList<218> forcingMoves;
@@ -366,7 +460,7 @@ float NeraChessBot::QuiescenceSearch(ChessBoard& board, float alpha, float beta,
 	}
 
 	if (forcingMoves.size() == 0)
-		return EvaluateBoard(board);
+		return FastStaticEval(board);
 
 	SortMoves(board, forcingMoves, ply, ttEntryPtr ? ttEntryPtr->bestMove : 0);
 
@@ -479,16 +573,16 @@ float NeraChessBot::EvaluateBoard(const ChessBoard& board)
 float NeraChessBot::FastStaticEval(const ChessBoard& board)
 {
 	// Cheap material only + small piece-square bonus if you have it; otherwise return material difference.
-	int score = 0;
+	float score = 0;
 	for (Square s = 0; s < 64; ++s)
 	{
 		Piece p = board.GetPiece(s);
 		if (p != PieceType::NO_PIECE)
 		{
-			score += (int)c_PieceValues[p];
+			score += c_PieceValues[p];
 		}
 	}
-	return static_cast<float>(score);
+	return score;
 }
 
 bool NeraChessBot::PositiveSEE(const ChessBoard& board, Move move)
@@ -560,4 +654,11 @@ std::array<float, 19 * 8 * 8> NeraChessBot::BoardToTensor(const ChessBoard& boar
 	std::fill(ptr, ptr + 64, val);
 
 	return out;
+}
+
+int NeraChessBot::LateMoveReduction(int depth, uint8_t ply, uint8_t moveIndex) const
+{
+	if (ply < 3 || moveIndex < 4)
+		return 0;
+	return (int)std::ceil(0.99 + std::log(ply) * std::log(moveIndex) / 3.14);
 }

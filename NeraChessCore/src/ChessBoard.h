@@ -49,17 +49,20 @@ public:
     void MakeMove(Move move, bool gameMove = false);
 	void UndoMove(Move move);
 
-	void MakeNullMove();
-	void UndoNullMove();
+	bool MakeNullMove(); // TODO: implement correctly
+	void UndoNullMove(); // TODO: implement correctly
 
 	const BoardState& GetBoardState() const { return m_BoardState; }
 
 	uint8_t GetHalfMoveClock() const{ return m_HalfMoveClock; }
 	uint16_t GetFullMoveClock() const { return m_FullMoves; }
+
     Piece GetPiece(const uint8_t square) const;
     bool IsInCheck() const;
     uint16_t GetGameOver(bool gameCheck = false) const;
+
     uint64_t GetZobristKey() const;
+    std::string GetFENString() const;
 
     uint8_t GetError() const { return m_Error; }
 

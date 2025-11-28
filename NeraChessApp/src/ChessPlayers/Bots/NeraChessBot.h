@@ -3,6 +3,7 @@
 #include <string>
 #include <chrono>
 #include <unordered_map>
+#include <fstream>
 
 #include "onnxruntime_cxx_api.h"
 
@@ -12,13 +13,15 @@
 class NeraChessBot : public ChessPlayer
 {
 public:
-	NeraChessBot(const std::string& modelPath = "model15b.onnx");
+	NeraChessBot(const std::string& modelPath = "Ressources/NeuralNetworks/model15b.onnx");
 	~NeraChessBot();
 
 	Move GetNextMove(const ChessBoard& givenBoard, Timer timer) override;
 
 private:
 	
+	Move GetOpeningBookMove(const ChessBoard& board);
+
 	Move IterativeDeepeningSearch(ChessBoard& board, int maxDepth);
 	Move PVSRoot(ChessBoard& board, int depth);
 
@@ -35,8 +38,11 @@ private:
 
 	std::array<float, 19 * 8 * 8> BoardToTensor(const ChessBoard& board) const;
 
+	int LateMoveReduction(int depth, uint8_t ply, uint8_t moveIndex) const;
+
 	inline bool IsTimeUp() const { return (std::chrono::steady_clock::now() - m_SearchStartTime) >= m_TimeLimitS; }
 	inline int NullMoveReduction(int depth) { return 2 + (depth >= 6 ? 1 : 0); }
+
 
 private:
 
@@ -63,11 +69,15 @@ private:
 		-1000	// BLACK_KING
 	};
 
+	static inline const std::string c_OpeningBookPath = "Ressources/OpeningBook/OpeningBook.txt";
+	std::ifstream m_OpeningBook;
+
+	// Cache
 	std::unordered_map<uint64_t, float> s_EvaluationCache;
 
 	// Timing Stuff
 	std::chrono::time_point<std::chrono::steady_clock> m_SearchStartTime;
-	std::chrono::seconds m_TimeLimitS{30};
+	std::chrono::seconds m_TimeLimitS{20};
 	std::atomic<bool> m_TimeUp{ false };
 
 	// AI Stuff
@@ -83,10 +93,17 @@ private:
 
 	std::vector<Ort::Value> m_InputVector;
 
-	TranspositionTable m_TranspositionTable{ 2000 }; // 500 MB
+	// Transpotision Table
+	TranspositionTable m_TranspositionTable{ 100 }; // 100 MB
 
+	// Search Heuristics
 	Move m_KillerMoves[100][2] = {};
 	int m_HistoryHeuristic[64][64] = {};
 
+	// Opening book
+	bool m_OpeningBookAvailable = true;
+
+	// other
 	uint32_t m_SearchID = 0;
 };
+

@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstdint>
+#include <string>
 
 #include "Piece.h"
 #include "Square.h"
@@ -50,5 +51,9 @@ namespace MoveUtil
 	constexpr Piece   GetMovePiece(Move m)    { return (m >> 13) &  0xF; }
 	constexpr Piece   GetPromoPiece(Move m)   { return (m >> 17) &  0xF; }
 	constexpr uint8_t GetMoveFlags(Move m)    { return (m >> 21) & 0xFF; }
+
+	Move UCIToMove(const std::string& moveStr);
+
+	std::string MoveToUCI(Move move);
 
 }

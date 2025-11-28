@@ -520,14 +520,33 @@ void ChessBoard::UndoMove(Move move)
 	
 }
 
-void ChessBoard::MakeNullMove()
+bool ChessBoard::MakeNullMove()
 {
-	m_BoardState.boardStateFlags ^= BoardStateFlags::WhiteToMove;
+	if (IsInCheck())
+		return false;
+
+	if (m_BoardState.HasFlag(BoardStateFlags::WhiteToMove))
+	{
+		m_BoardState.boardStateFlags &= ~(uint8_t)BoardStateFlags::WhiteToMove;
+	}
+	else
+	{
+		m_BoardState.boardStateFlags |= (uint8_t)BoardStateFlags::WhiteToMove;
+	}
+
+	return true;
 }
 
 void ChessBoard::UndoNullMove()
 {
-	m_BoardState.boardStateFlags ^= BoardStateFlags::WhiteToMove;
+	if (m_BoardState.HasFlag(BoardStateFlags::WhiteToMove))
+	{
+		m_BoardState.boardStateFlags &= ~(uint8_t)BoardStateFlags::WhiteToMove;
+	}
+	else
+	{
+		m_BoardState.boardStateFlags |= (uint8_t)BoardStateFlags::WhiteToMove;
+	}
 }
 
 MoveList<218> ChessBoard::GetLegalMoves() const
@@ -593,6 +612,138 @@ uint64_t ChessBoard::GetZobristKey() const
 	m_ZobristKey = Zobrist::CalculateZobristKey(*this);
 	m_ZobristKeySet = true;
 	return m_ZobristKey;
+}
+
+std::string ChessBoard::GetFENString() const
+{
+	std::string fen;
+	fen.reserve(size_t(64 + 16));
+
+	for (int rank = 7; rank >= 0; rank--)
+	{
+
+		uint8_t emptyCount = 0;
+
+		for (uint8_t file = 0; file < 8; file++)
+		{
+			const Square square = rank * 8 + file;
+			Piece piece = GetPiece(square);
+
+			if (piece == PieceType::NO_PIECE)
+			{
+				emptyCount++;
+				continue;
+			}
+
+			if (emptyCount > 0)
+			{
+				fen.push_back('0' + emptyCount);
+				emptyCount = 0;
+			}
+
+			char c;
+			switch (piece)
+			{
+			case PieceType::WHITE_PAWN:   c = 'P'; break;
+			case PieceType::WHITE_KNIGHT: c = 'N'; break;
+			case PieceType::WHITE_BISHOP: c = 'B'; break;
+			case PieceType::WHITE_ROOK:   c = 'R'; break;
+			case PieceType::WHITE_QUEEN:  c = 'Q'; break;
+			case PieceType::WHITE_KING:   c = 'K'; break;
+
+			case PieceType::BLACK_PAWN:   c = 'p'; break;
+			case PieceType::BLACK_KNIGHT: c = 'n'; break;
+			case PieceType::BLACK_BISHOP: c = 'b'; break;
+			case PieceType::BLACK_ROOK:   c = 'r'; break;
+			case PieceType::BLACK_QUEEN:  c = 'q'; break;
+			case PieceType::BLACK_KING:   c = 'k'; break;
+
+			default: c = '?'; break;
+			}
+
+			fen.push_back(c);
+		}
+
+		if (emptyCount > 0)
+		{
+			fen.push_back('0' + emptyCount);
+			emptyCount = 0;
+		}
+
+		if (rank > 0)
+			fen.push_back('/');
+	}
+
+	fen.push_back(' ');
+
+	// 2. Side to move
+	bool whiteToMove = (m_BoardState.boardStateFlags & BoardStateFlags::WhiteToMove);
+	fen.push_back(whiteToMove ? 'w' : 'b');
+
+	fen.push_back(' ');
+
+	// 3. Castling rights
+	bool anyCastle = false;
+	if (m_BoardState.boardStateFlags & BoardStateFlags::CanWhiteCastleKing) { fen.push_back('K'); anyCastle = true; }
+	if (m_BoardState.boardStateFlags & BoardStateFlags::CanWhiteCastleQueen) { fen.push_back('Q'); anyCastle = true; }
+	if (m_BoardState.boardStateFlags & BoardStateFlags::CanBlackCastleKing) { fen.push_back('k'); anyCastle = true; }
+	if (m_BoardState.boardStateFlags & BoardStateFlags::CanBlackCastleQueen) { fen.push_back('q'); anyCastle = true; }
+	if (!anyCastle) fen.push_back('-');
+
+	fen.push_back(' ');
+
+	// 4. En passant
+	bool enPassentAvailable = false;
+
+	uint8_t checkRank = whiteToMove ? 4 : 3;
+
+	Square leftSquare = checkRank * 8 + m_BoardState.enPassantFile - 1;
+	Square rightSquare = checkRank * 8 + m_BoardState.enPassantFile + 1;
+
+	if (SquareUtil::GetRank(leftSquare) == checkRank)
+	{
+		Piece leftPiece = GetPiece(leftSquare);
+		if (leftPiece == (whiteToMove ? PieceType::WHITE_PAWN : PieceType::BLACK_PAWN))
+		{
+			enPassentAvailable = true;
+		}
+	}
+	if (SquareUtil::GetRank(rightSquare) == checkRank)
+	{
+		Piece rightPiece = GetPiece(rightSquare);
+		if (rightPiece == (whiteToMove ? PieceType::WHITE_PAWN : PieceType::BLACK_PAWN))
+		{
+			enPassentAvailable = true;
+		}
+	}
+
+
+	if (!(m_BoardState.boardStateFlags & BoardStateFlags::CanEnPassent))
+		enPassentAvailable = false;
+
+	if (enPassentAvailable)
+	{
+		char file = 'a' + m_BoardState.enPassantFile;
+		char rank = (whiteToMove ? '6' : '3');
+		fen.push_back(file);
+		fen.push_back(rank);
+	}
+	else
+	{
+		fen.push_back('-');
+	}
+
+	fen.push_back(' ');
+
+	// 5. Halfmove clock
+	fen.append(std::to_string(m_HalfMoveClock));
+
+	fen.push_back(' ');
+
+	// 6. Fullmove number
+	fen.append(std::to_string(m_FullMoves));
+
+	return fen;
 }
 
 void ChessBoard::RunPerformanceTest(ChessBoard& board, int calcDepth)
