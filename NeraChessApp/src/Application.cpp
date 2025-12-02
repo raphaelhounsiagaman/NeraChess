@@ -92,9 +92,15 @@ void Application::StartGame()
 	static_assert(std::is_base_of<ChessPlayer, player2Type>::value,
 		"player2Type must be derived from BasePlayerTypeClass");
 
+	//m_ChessBoard = ChessBoard("6k1/5p1p/p2b2q1/1pp3p1/3P2P1/1BPb1PP1/PP4Q1/4B1K1 b - - 0 28");
+	//m_ChessBoard = ChessBoard("r1b1kbnr/1pp2ppp/p1pq4/8/3NP3/2N5/PPP2PPP/R1BQK2R b KQkq - 0 7");
+	//m_ChessBoard = ChessBoard("r1bk2nr/1pp3pp/p7/2pNNpQ1/3PP3/8/PPP2PKP/R4R2 b - - 0 13");
+	//m_ChessBoard = ChessBoard("r1b1kbnr/1pp2ppp/p1pq4/8/3NP3/2N2Q2/PPP2PPP/R1B2RK1 b kq - 4 9");
+	m_ChessBoard = ChessBoard();
+
 	m_Player1IsWhite = !m_Player1IsWhite;
 	m_Renderer.SetWhiteBottom(m_Player1IsWhite);
-	m_Player1Turn = m_Player1IsWhite;
+	m_Player1Turn = (m_Player1IsWhite != m_ChessBoard.GetBoardState().HasFlag(BoardStateFlags::WhiteToMove)) ? false : true;
 
 	m_Player1 = std::make_unique<player1Type>();
 	m_Player2 = std::make_unique<player2Type>();
@@ -102,8 +108,6 @@ void Application::StartGame()
 	m_GameStarted = true;
 
 	m_MovePlayed = 0;
-
-	m_ChessBoard = ChessBoard();
 
 	ChessPlayer* currentPlayer = m_Player1Turn ? m_Player1.get() : m_Player2.get();
 
@@ -161,6 +165,9 @@ void Application::ProcessGame()
 			gameOverReason = "Agree on Draw";
 
 		std::cout << "Game over, " << (m_Player1Turn ? "Player1" : "Player2") << " ends the game by " << gameOverReason << "\n\n";
+		
+		//std::cout << m_ChessBoard.GetSANMoveList() << "\n\n"; TODO: enable san move list printing
+
 		m_GameStarted = false;
 		return;
 	}

@@ -40,7 +40,7 @@ private:
 
 	int LateMoveReduction(int depth, uint8_t ply, uint8_t moveIndex) const;
 
-	inline bool IsTimeUp() const { return (std::chrono::steady_clock::now() - m_SearchStartTime) >= m_TimeLimitS; }
+	bool IsTimeUp();
 	inline int NullMoveReduction(int depth) { return 2 + (depth >= 6 ? 1 : 0); }
 
 
@@ -54,19 +54,19 @@ private:
 	static inline const std::array<int64_t, 4> c_InputShape = { 1, c_NumChannels, c_BoardSize, c_BoardSize };
 	static inline const std::array<int64_t, 2> c_OutputShape = { 1, 1 };
 
-	static inline const int c_PieceValues[12] = {
-		1,		// white pawn
-		3,		// WHITE_KNIGHT
-		3,		// WHITE_BISHOP
-		5,		// WHITE_ROOK
-		9,		// WHITE_QUEEN
-		1000,	// WHITE_KING
-		-1,		// BLACK_PAWN
-		-3,		// BLACK_KNIGHT
-		-3,		// BLACK_BISHOP
-		-5,		// BLACK_ROOK
-		-9,		// BLACK_QUEEN
-		-1000	// BLACK_KING
+	static inline const float c_PieceValues[12] = {
+		1.f,		// white pawn
+		3.f,		// WHITE_KNIGHT
+		3.2f,		// WHITE_BISHOP
+		5.f,		// WHITE_ROOK
+		9.f,		// WHITE_QUEEN
+		1000.f,	// WHITE_KING
+		-1.f,		// BLACK_PAWN
+		-3.f,		// BLACK_KNIGHT
+		-3.2f,		// BLACK_BISHOP
+		-5.f,		// BLACK_ROOK
+		-9.f,		// BLACK_QUEEN
+		-1000.f	// BLACK_KING
 	};
 
 	static inline const std::string c_OpeningBookPath = "Ressources/OpeningBook/OpeningBook.txt";
@@ -77,12 +77,13 @@ private:
 
 	// Timing Stuff
 	std::chrono::time_point<std::chrono::steady_clock> m_SearchStartTime;
-	std::chrono::seconds m_TimeLimitS{20};
+	std::chrono::seconds m_TimeLimitS{15};
 	std::atomic<bool> m_TimeUp{ false };
 
 	// AI Stuff
-	Ort::Env m_Env{ ORT_LOGGING_LEVEL_WARNING, "FirstNNBot" };
+	Ort::Env m_Env{ ORT_LOGGING_LEVEL_WARNING, "NeraChessBot" };
 	Ort::SessionOptions m_SessionOptions;
+	OrtCUDAProviderOptions m_CudaOptions;
 	Ort::Session m_Session{ nullptr };
 
 	std::array<float, c_InputTensorSize> m_InputArray = {};
@@ -94,7 +95,7 @@ private:
 	std::vector<Ort::Value> m_InputVector;
 
 	// Transpotision Table
-	TranspositionTable m_TranspositionTable{ 100 }; // 100 MB
+	TranspositionTable m_TranspositionTable{ 256 }; // 256 MB
 
 	// Search Heuristics
 	Move m_KillerMoves[100][2] = {};
@@ -102,6 +103,13 @@ private:
 
 	// Opening book
 	bool m_OpeningBookAvailable = true;
+
+	// Debug Info
+	uint64_t m_NodesSearched = 0;
+	uint64_t m_QuiescenceNodesSearched = 0;
+	uint64_t m_NodesEvaluated = 0;
+
+	uint64_t m_NodesAtDepth[200] = {};
 
 	// other
 	uint32_t m_SearchID = 0;
