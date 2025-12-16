@@ -47,15 +47,16 @@ class MyBotOld : public ChessPlayer
 {
 public:
 	
-	Move GetNextMove(const ChessBoard& givenBoard, Timer timer) override;
+	virtual ChessCore::Move GetNextMove(const ChessCore::ChessBoard& givenBoard, const ChessCore::Timer& timer) override;
+	virtual void StopSearching() override {};
 
 private:
 
-	double Minimax(ChessBoard& board, int depth, bool whiteMaximizingPlayer, double alpha, double beta);
+	double Minimax(ChessCore::ChessBoard& board, int depth, bool whiteMaximizingPlayer, double alpha, double beta);
 
-	double EvaluateBoard(const BoardState& board, bool whiteToMove) const;
+	double EvaluateBoard(const ChessCore::BoardState& board, bool whiteToMove) const;
 
-	static void SortMoves(const ChessBoard& board, MoveList<218>& moves);
+	static void SortMoves(const ChessCore::ChessBoard& board, ChessCore::MoveList<218>& moves);
 
 private:
 

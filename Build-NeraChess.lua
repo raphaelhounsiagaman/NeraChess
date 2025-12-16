@@ -6,7 +6,9 @@ workspace "NeraChess"
    filter "system:windows"
       buildoptions { "/Zc:preprocessor" }
    filter {}
-   
-include "NeraChessCore/Build-Core.lua"
 
-include "NeraChessApp/Build-App.lua"
+include "ChessCore/Build-ChessCore.lua"
+
+include "NeraCore/Build-NeraCore.lua"
+
+include "NeraChessApp/Build-NeraChessApp.lua"

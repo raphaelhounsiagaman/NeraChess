@@ -3,24 +3,24 @@
 #include <algorithm>
 #include <chrono>
 
-Move MyBotOld::GetNextMove(const ChessBoard& givenBoard, Timer timer)
+ChessCore::Move MyBotOld::GetNextMove(const ChessCore::ChessBoard& givenBoard, const ChessCore::Timer& timer)
 {
-	ChessBoard board = givenBoard;
+	ChessCore::ChessBoard board = givenBoard;
 
-	MoveList<218> legalMoves = board.GetLegalMoves();
+	ChessCore::MoveList<218> legalMoves = board.GetLegalMoves();
 	if (legalMoves.size() < 2)
 		return legalMoves[0];
 
 	SortMoves(board, legalMoves);
 
-	BoardState boardState = board.GetBoardState();
-	bool whiteToPlay = boardState.HasFlag(BoardStateFlags::WhiteToMove);
+	ChessCore::BoardState boardState = board.GetBoardState();
+	bool whiteToPlay = boardState.HasFlag(ChessCore::BoardStateFlags::WhiteToMove);
 	int8_t colorMultiplier = whiteToPlay ? 1 : -1;
 
-	Move bestMove{};
+	ChessCore::Move bestMove{};
 	double bestEval = whiteToPlay ? -999999 : 999999;
 
-	for (const Move& move : legalMoves)
+	for (const ChessCore::Move& move : legalMoves)
 	{
 		board.MakeMove(move);
 		double eval = Minimax(board, 4, !whiteToPlay, -99999, 99999);
@@ -39,16 +39,16 @@ Move MyBotOld::GetNextMove(const ChessBoard& givenBoard, Timer timer)
     return bestMove;
 }
 
-double MyBotOld::Minimax(ChessBoard& board, int depth, bool whiteMaximizingPlayer, double alpha, double beta)
+double MyBotOld::Minimax(ChessCore::ChessBoard& board, int depth, bool whiteMaximizingPlayer, double alpha, double beta)
 {
 	uint16_t gameOverFlags = board.GetGameOver();
 
 	double originAlpha = alpha;
 	double originBeta = beta;
 
-	if (gameOverFlags & IS_GAME_OVER)
+	if (gameOverFlags & ChessCore::IS_GAME_OVER)
 	{
-		if (gameOverFlags & IS_CHECKMATE)
+		if (gameOverFlags & ChessCore::IS_CHECKMATE)
 			return whiteMaximizingPlayer ? -99999 : 99999;
 		else
 			return 0;
@@ -86,12 +86,12 @@ double MyBotOld::Minimax(ChessBoard& board, int depth, bool whiteMaximizingPlaye
 		}
 	}
 
-	MoveList<218> legalMoves = board.GetLegalMoves();
+	ChessCore::MoveList<218> legalMoves = board.GetLegalMoves();
 
 
 	double bestEval = whiteMaximizingPlayer ? -99999 : 99999;
 
-	for (const Move& move : legalMoves)
+	for (const ChessCore::Move& move : legalMoves)
 	{
 		board.MakeMove(move);
 		double eval = Minimax(board, depth - 1, !whiteMaximizingPlayer, alpha, beta);
@@ -133,43 +133,43 @@ double MyBotOld::Minimax(ChessBoard& board, int depth, bool whiteMaximizingPlaye
 	return bestEval;
 }
 
-double MyBotOld::EvaluateBoard(const BoardState& boardState, bool whiteToMove) const
+double MyBotOld::EvaluateBoard(const ChessCore::BoardState& boardState, bool whiteToMove) const
 {
 	double evaluation = 0.0;
 
 	float pieceValueMultiplier = 5.f;
 
-	Bitboard importantPieces =
-		boardState.pieceBitboards[WHITE_PAWN]   |
-		boardState.pieceBitboards[WHITE_KNIGHT] |
-		boardState.pieceBitboards[WHITE_BISHOP] |
-		boardState.pieceBitboards[WHITE_ROOK]   |
-		boardState.pieceBitboards[WHITE_QUEEN]  |
-		boardState.pieceBitboards[WHITE_KING]   |
-		boardState.pieceBitboards[BLACK_PAWN]   |
-		boardState.pieceBitboards[BLACK_KNIGHT] |
-		boardState.pieceBitboards[BLACK_BISHOP] |
-		boardState.pieceBitboards[BLACK_ROOK]   |
-		boardState.pieceBitboards[BLACK_QUEEN]  |
-		boardState.pieceBitboards[BLACK_KING];
+	ChessCore::Bitboard importantPieces =
+		boardState.pieceBitboards[ChessCore::WHITE_PAWN]   |
+		boardState.pieceBitboards[ChessCore::WHITE_KNIGHT] |
+		boardState.pieceBitboards[ChessCore::WHITE_BISHOP] |
+		boardState.pieceBitboards[ChessCore::WHITE_ROOK]   |
+		boardState.pieceBitboards[ChessCore::WHITE_QUEEN]  |
+		boardState.pieceBitboards[ChessCore::WHITE_KING]   |
+		boardState.pieceBitboards[ChessCore::BLACK_PAWN]   |
+		boardState.pieceBitboards[ChessCore::BLACK_KNIGHT] |
+		boardState.pieceBitboards[ChessCore::BLACK_BISHOP] |
+		boardState.pieceBitboards[ChessCore::BLACK_ROOK]   |
+		boardState.pieceBitboards[ChessCore::BLACK_QUEEN]  |
+		boardState.pieceBitboards[ChessCore::BLACK_KING];
 
-	float endGame = 1.0f - (float)(BitUtil::PopCnt(importantPieces) / 17);
+	float endGame = 1.0f - (float)(ChessCore::BitUtil::PopCnt(importantPieces) / 17);
 
-	for (Piece piece = 0; piece < 12; piece++)
+	for (ChessCore::Piece piece = 0; piece < 12; piece++)
 	{
-		Bitboard pieceBB = boardState.pieceBitboards[piece];
+		ChessCore::Bitboard pieceBB = boardState.pieceBitboards[piece];
 		if (pieceBB == 0)
 			continue;
 
-		evaluation += m_PieceValues[piece] * BitUtil::PopCnt(pieceBB) * pieceValueMultiplier;
+		evaluation += m_PieceValues[piece] * ChessCore::BitUtil::PopCnt(pieceBB) * pieceValueMultiplier;
 
-		Bitboard squareBB = pieceBB;
+		ChessCore::Bitboard squareBB = pieceBB;
 		while (squareBB != 0)
 		{
-			uint8_t square = BitUtil::PopLSB(squareBB);
+			uint8_t square = ChessCore::BitUtil::PopLSB(squareBB);
 
-			uint8_t file = SquareUtil::GetFile(square);
-			uint8_t rank = SquareUtil::GetRank(square);
+			uint8_t file = ChessCore::SquareUtil::GetFile(square);
+			uint8_t rank = ChessCore::SquareUtil::GetRank(square);
 
 			uint8_t whiteIndex = (7 - rank) * 8 + file;
 			uint8_t blackIndex = square;
@@ -177,40 +177,40 @@ double MyBotOld::EvaluateBoard(const BoardState& boardState, bool whiteToMove) c
 
 			switch (piece)
 			{
-			case PieceType::WHITE_PAWN:
+			case ChessCore::PieceType::WHITE_PAWN:
 				evaluation += m_PawnPositionValues[whiteIndex];
 				break;
-			case PieceType::WHITE_KNIGHT:
+			case ChessCore::PieceType::WHITE_KNIGHT:
 				evaluation += m_KnightPositionValues[whiteIndex];
 				break;
-			case PieceType::WHITE_BISHOP:
+			case ChessCore::PieceType::WHITE_BISHOP:
 				evaluation += m_BishopPositionValues[whiteIndex];
 				break;
-			case PieceType::WHITE_ROOK:
+			case ChessCore::PieceType::WHITE_ROOK:
 				evaluation += m_RookPositionValues[whiteIndex];
 				break;
-			case PieceType::WHITE_QUEEN:
+			case ChessCore::PieceType::WHITE_QUEEN:
 				evaluation += m_QueenPositionValues[whiteIndex];
 				break;
-			case PieceType::WHITE_KING:
+			case ChessCore::PieceType::WHITE_KING:
 				evaluation += m_KingPositionMiddleGameValues[whiteIndex] * (1 - endGame) + m_KingPositionEndGameValues[whiteIndex] * endGame;
 				break;
-			case PieceType::BLACK_PAWN:
+			case ChessCore::PieceType::BLACK_PAWN:
 				evaluation -= m_PawnPositionValues[blackIndex];
 				break;
-			case PieceType::BLACK_KNIGHT:
+			case ChessCore::PieceType::BLACK_KNIGHT:
 				evaluation -= m_KnightPositionValues[blackIndex];
 				break;
-			case PieceType::BLACK_BISHOP:
+			case ChessCore::PieceType::BLACK_BISHOP:
 				evaluation -= m_BishopPositionValues[blackIndex];
 				break;
-			case PieceType::BLACK_ROOK:
+			case ChessCore::PieceType::BLACK_ROOK:
 				evaluation -= m_RookPositionValues[blackIndex];
 				break;
-			case PieceType::BLACK_QUEEN:
+			case ChessCore::PieceType::BLACK_QUEEN:
 				evaluation -= m_QueenPositionValues[blackIndex];
 				break;
-			case PieceType::BLACK_KING:
+			case ChessCore::PieceType::BLACK_KING:
 				evaluation -= m_KingPositionMiddleGameValues[blackIndex] * (1 - endGame) + m_KingPositionEndGameValues[blackIndex] * endGame;
 				break;
 			default:
@@ -223,24 +223,24 @@ double MyBotOld::EvaluateBoard(const BoardState& boardState, bool whiteToMove) c
 	return evaluation;
 }
 
-void MyBotOld::SortMoves(const ChessBoard& board, MoveList<218>& moves)
+void MyBotOld::SortMoves(const ChessCore::ChessBoard& board, ChessCore::MoveList<218>& moves)
 {
 	std::array<float, 218> moveValues{};
 
 	for (uint8_t i = 0; i < moves.size(); i++)
 	{
 		float moveScoreGuess = 0;
-		Piece movePiece = MoveUtil::GetMovePiece(moves[i]);
-		Piece capturePiece = board.GetPiece(MoveUtil::GetTargetSquare(moves[i]));
+		ChessCore::Piece movePiece = ChessCore::MoveUtil::GetMovePiece(moves[i]);
+		ChessCore::Piece capturePiece = board.GetPiece(ChessCore::MoveUtil::GetTargetSquare(moves[i]));
 
-		if (capturePiece != PieceType::NO_PIECE)
+		if (capturePiece != ChessCore::PieceType::NO_PIECE)
 			moveScoreGuess += 10 * m_PieceValues[capturePiece] - m_PieceValues[movePiece];
-		if (MoveUtil::GetMoveFlags(moves[i]) & MoveFlags::IS_PROMOTION)
-			moveScoreGuess += m_PieceValues[MoveUtil::GetPromoPiece(moves[i])];
+		if (ChessCore::MoveUtil::GetMoveFlags(moves[i]) & ChessCore::MoveFlags::IS_PROMOTION)
+			moveScoreGuess += m_PieceValues[ChessCore::MoveUtil::GetPromoPiece(moves[i])];
 		//if (board.SquareIsAttackedByOpponent(moves[i].TargetSquare))
 		//	moveScoreGuess -= (float)(piece_values[move_piece_type]);
 
-		if (MoveUtil::GetMoveFlags(moves[i]) & MoveFlags::IS_PROMOTION)
+		if (ChessCore::MoveUtil::GetMoveFlags(moves[i]) & ChessCore::MoveFlags::IS_PROMOTION)
 			moveScoreGuess += 10;
 
 		moveValues[i] = moveScoreGuess;
@@ -248,7 +248,7 @@ void MyBotOld::SortMoves(const ChessBoard& board, MoveList<218>& moves)
 	
 	struct MoveValuePair
 	{
-		Move move;
+		ChessCore::Move move;
 		float value;
 	};
 

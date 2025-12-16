@@ -1,85 +1,28 @@
 #include "Human.h"
 
-#include <vector>
+#include "Core/Application.h"
 
-Move Human::GetNextMove(const ChessBoard& board, Timer timer)
+#include "BoardLayer.h"
+
+#include <thread>
+#include <chrono>
+
+ChessCore::Move Human::GetNextMove(const ChessCore::ChessBoard& board, const ChessCore::Timer& timer)
 {
-	MoveList<218> legalMoves = board.GetLegalMoves();
+    NeraCore::Application& app = NeraCore::Application::Get();
 
-	uint8_t startSquare = 64;
-	uint8_t targetSquare = 64;
+    BoardLayer* boardLayer = app.GetLayer<BoardLayer>();
 
-    while (true)
+    ChessCore::Move move = 0;
+
+    boardLayer->SetMovePtr(&move);
+
+    while (!m_StopSearching)
     {
-        std::lock_guard<std::mutex> lock(m_SelectedSquareMutex);
-        if (m_SelectedSquare != 64)
-        {
-            m_PossibleMoves = 0ULL;
+        if (move)
+            return move;
 
-            if (startSquare == 64)
-            {
-                startSquare = m_SelectedSquare;
-            }
-            else
-            {
-				targetSquare = m_SelectedSquare;
-            }
-
-            m_SelectedSquare = 64;
-        }
-
-        if (startSquare != 64 && targetSquare != 64)
-        {
-            m_PossibleMoves = 0ULL;
-
-            for (Move legalMove : legalMoves)
-            {
-                if (MoveUtil::GetFromSquare(legalMove) == startSquare && MoveUtil::GetTargetSquare(legalMove) == targetSquare)
-                {
-                    return legalMove;
-                }
-            }
-
-            startSquare = 64;
-            targetSquare = 64;
-
-		}
-        if (startSquare != 64 && targetSquare == 64)
-        {
-            if (!m_PossibleMoves)
-            {
-                for (Move legalMove : legalMoves)
-                {
-                    if (MoveUtil::GetFromSquare(legalMove) == startSquare)
-                    {
-                        std::lock_guard<std::mutex> lock(m_PossibleMovesMutex);
-                        m_PossibleMoves |= 1ULL << MoveUtil::GetTargetSquare(legalMove);
-                    }
-                }
-
-                if (m_PossibleMoves == 0ULL)
-                {
-                    startSquare = 64;
-				}
-            }
-
-        }
-
-
-
-
+        std::this_thread::sleep_for(std::chrono::milliseconds(50));
     }
     return 0;
-}
-
-Bitboard Human::GetPossibleMoves()
-{
-    std::lock_guard<std::mutex> lock(m_PossibleMovesMutex);
-    return m_PossibleMoves;
-}
-
-void Human::SetSelectedSquare(uint8_t square)
-{
-    std::lock_guard<std::mutex> lock(m_SelectedSquareMutex);
-    m_SelectedSquare = square;
 }

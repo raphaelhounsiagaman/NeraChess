@@ -1,7 +1,7 @@
 # Directories
 .vs/
 bin/
-NeraChessAITraining/data
+ChessAITrainingStuff/data
 
 # Files
 *.vcxproj
@@ -19,7 +19,8 @@ NeraChessApp/vendor/onnxruntime-win-x64-gpu-1.23.2/lib/onnxruntime_providers_cud
 
 # Exclude
 !vendor
-!NeraChessApp/vendor/DearImGUI
-!NeraChessApp/vendor/SDL2
-!NeraChessApp/vendor/SDL2_image
+!NeraCore/vendor/DearImGUI
+!NeraCore/vendor/SDL2
+!NeraCore/vendor/SDL2_image
+!NeraCore/vendor/SDL2_mixer
 

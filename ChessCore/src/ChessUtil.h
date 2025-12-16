@@ -1,0 +1,26 @@
+#pragma once
+
+#include <cstdint>
+
+
+namespace ChessCore
+{
+    using Bitboard = uint64_t;
+
+    namespace BitUtil
+    {
+
+        uint8_t TrailingZeroCount(uint64_t value);
+    
+        bool IsPow2(uint64_t value);
+
+        uint8_t PopLSB(uint64_t& value);
+        uint8_t GetLSBIndex(const uint64_t value);
+
+        uint8_t PopCnt(const uint64_t value);
+
+        uint64_t Shift(uint64_t value, int numSquaresToShift);
+
+	} // namespace BitUtil
+
+} // namespace ChessCore

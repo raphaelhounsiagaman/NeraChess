@@ -35,24 +35,24 @@ FirstNNBot::~FirstNNBot()
 	m_Env.release();
 }
 
-Move FirstNNBot::GetNextMove(const ChessBoard& givenBoard, Timer timer)
+ChessCore::Move FirstNNBot::GetNextMove(const ChessCore::ChessBoard& givenBoard, const ChessCore::Timer& timer)
 {
-	ChessBoard board = givenBoard;
+	ChessCore::ChessBoard board = givenBoard;
 	
-	MoveList<218> legalMoves = board.GetLegalMoves();
+	ChessCore::MoveList<218> legalMoves = board.GetLegalMoves();
 	if (legalMoves.size() == 1)
 		return legalMoves[0];
 
 	SortMoves(board, legalMoves);
 
-	const BoardState& boardState = board.GetBoardState();
-	bool whiteToPlay = boardState.HasFlag(BoardStateFlags::WhiteToMove);
+	const ChessCore::BoardState& boardState = board.GetBoardState();
+	bool whiteToPlay = boardState.HasFlag(ChessCore::BoardStateFlags::WhiteToMove);
 	int8_t colorMultiplier = whiteToPlay ? 1 : -1;
 
-	Move bestMove{};
+	ChessCore::Move bestMove{};
 	float bestEval = whiteToPlay ? -999999.f : 999999.f;
 
-	for (const Move& move : legalMoves)
+	for (const ChessCore::Move& move : legalMoves)
 	{
 		board.MakeMove(move);
 		float eval = MinimaxSearch(board, 2, !whiteToPlay, -99999, 99999);
@@ -74,13 +74,13 @@ Move FirstNNBot::GetNextMove(const ChessBoard& givenBoard, Timer timer)
 	return bestMove;
 }
 
-float FirstNNBot::MinimaxSearch(ChessBoard& board, int depth, bool whiteMaximizingPlayer, float alpha, float beta)
+float FirstNNBot::MinimaxSearch(ChessCore::ChessBoard& board, int depth, bool whiteMaximizingPlayer, float alpha, float beta)
 {
 	uint16_t gameOverFlags = board.GetGameOver();
 
-	if (gameOverFlags & IS_GAME_OVER)
+	if (gameOverFlags & ChessCore::IS_GAME_OVER)
 	{
-		if (gameOverFlags & IS_CHECKMATE)
+		if (gameOverFlags & ChessCore::IS_CHECKMATE)
 			return whiteMaximizingPlayer ? -99999.f : 99999.f;
 		else
 			return 0;
@@ -90,13 +90,13 @@ float FirstNNBot::MinimaxSearch(ChessBoard& board, int depth, bool whiteMaximizi
 		return EvaluateBoard(board, whiteMaximizingPlayer);
 	}
 
-	MoveList<218> legalMoves = board.GetLegalMoves();
+	ChessCore::MoveList<218> legalMoves = board.GetLegalMoves();
 
 	if (whiteMaximizingPlayer)
 	{
 		float maxEval = -99999;
 
-		for (const Move& move : legalMoves)
+		for (const ChessCore::Move& move : legalMoves)
 		{
 			board.MakeMove(move);
 			float eval = MinimaxSearch(board, depth - 1, false, alpha, beta);
@@ -114,7 +114,7 @@ float FirstNNBot::MinimaxSearch(ChessBoard& board, int depth, bool whiteMaximizi
 	{
 		float minEval = 99999;
 
-		for (const Move& move : legalMoves)
+		for (const ChessCore::Move& move : legalMoves)
 		{
 			board.MakeMove(move);
 			float eval = MinimaxSearch(board, depth - 1, true, alpha, beta);
@@ -131,24 +131,24 @@ float FirstNNBot::MinimaxSearch(ChessBoard& board, int depth, bool whiteMaximizi
 
 }
 
-void FirstNNBot::SortMoves(const ChessBoard& board, MoveList<218>& moves)
+void FirstNNBot::SortMoves(const ChessCore::ChessBoard& board, ChessCore::MoveList<218>& moves)
 {
 	std::array<float, 218> moveValues{};
 
 	for (uint8_t i = 0; i < moves.size(); i++)
 	{
 		float moveScoreGuess = 0;
-		Piece movePiece = MoveUtil::GetMovePiece(moves[i]);
-		Piece capturePiece = board.GetPiece(MoveUtil::GetTargetSquare(moves[i]));
+		ChessCore::Piece movePiece = ChessCore::MoveUtil::GetMovePiece(moves[i]);
+		ChessCore::Piece capturePiece = board.GetPiece(ChessCore::MoveUtil::GetTargetSquare(moves[i]));
 
-		if (capturePiece != PieceType::NO_PIECE)
+		if (capturePiece != ChessCore::PieceType::NO_PIECE)
 			moveScoreGuess += 10 * c_PieceValues[capturePiece] - c_PieceValues[movePiece];
-		if (MoveUtil::GetMoveFlags(moves[i]) & MoveFlags::IS_PROMOTION)
-			moveScoreGuess += c_PieceValues[MoveUtil::GetPromoPiece(moves[i])];
+		if (ChessCore::MoveUtil::GetMoveFlags(moves[i]) & ChessCore::MoveFlags::IS_PROMOTION)
+			moveScoreGuess += c_PieceValues[ChessCore::MoveUtil::GetPromoPiece(moves[i])];
 		//if (board.SquareIsAttackedByOpponent(moves[i].TargetSquare))
 		//	moveScoreGuess -= (float)(piece_values[move_piece_type]);
 
-		if (MoveUtil::GetMoveFlags(moves[i]) & MoveFlags::IS_PROMOTION)
+		if (ChessCore::MoveUtil::GetMoveFlags(moves[i]) & ChessCore::MoveFlags::IS_PROMOTION)
 			moveScoreGuess += 10;
 
 		moveValues[i] = moveScoreGuess;
@@ -156,7 +156,7 @@ void FirstNNBot::SortMoves(const ChessBoard& board, MoveList<218>& moves)
 
 	struct MoveValuePair
 	{
-		Move move;
+		ChessCore::Move move;
 		float value;
 	};
 
@@ -181,7 +181,7 @@ void FirstNNBot::SortMoves(const ChessBoard& board, MoveList<218>& moves)
 	return;
 }
 
-float FirstNNBot::EvaluateBoard(const ChessBoard& board, bool whiteToMove)
+float FirstNNBot::EvaluateBoard(const ChessCore::ChessBoard& board, bool whiteToMove)
 {
 	m_InputArray = BoardToTensor(board);
 
@@ -211,25 +211,25 @@ float FirstNNBot::EvaluateBoard(const ChessBoard& board, bool whiteToMove)
 	return *evalPtr;
 }
 
-std::array<float, 19 * 8 * 8> FirstNNBot::BoardToTensor(const ChessBoard& board) const
+std::array<float, 19 * 8 * 8> FirstNNBot::BoardToTensor(const ChessCore::ChessBoard& board) const
 {
 	std::array<float, 19 * 8 * 8> out{};
 
-	const BoardState& boardState = board.GetBoardState();
+	const ChessCore::BoardState& boardState = board.GetBoardState();
 
-	for (Square square = 0; square < 64; square++)
+	for (ChessCore::Square square = 0; square < 64; square++)
 	{
-		Piece piece = board.GetPiece(square);
-		if (piece != PieceType::NO_PIECE)
+		ChessCore::Piece piece = board.GetPiece(square);
+		if (piece != ChessCore::PieceType::NO_PIECE)
 		{
-			uint8_t file = SquareUtil::GetFile(square);
-			uint8_t rank = SquareUtil::GetRank(square);
+			uint8_t file = ChessCore::SquareUtil::GetFile(square);
+			uint8_t rank = ChessCore::SquareUtil::GetRank(square);
 
 			out[piece * 64 + file * 8 + rank] = 1.0f;
 		}
 	}
 
-	if (boardState.HasFlag(BoardStateFlags::WhiteToMove))
+	if (boardState.HasFlag(ChessCore::BoardStateFlags::WhiteToMove))
 	{
 		float* ptr = &out[12 * 64];
 		std::fill(ptr, ptr + 64, 1.0f);
@@ -241,13 +241,13 @@ std::array<float, 19 * 8 * 8> FirstNNBot::BoardToTensor(const ChessBoard& board)
 			std::fill(ptr, ptr + 64, 1.0f);
 		};
 
-	if (boardState.HasFlag(BoardStateFlags::CanWhiteCastleKing)) fill_castle(13);
-	if (boardState.HasFlag(BoardStateFlags::CanWhiteCastleQueen)) fill_castle(14);
-	if (boardState.HasFlag(BoardStateFlags::CanBlackCastleKing)) fill_castle(15);
-	if (boardState.HasFlag(BoardStateFlags::CanBlackCastleQueen)) fill_castle(16);
+	if (boardState.HasFlag(ChessCore::BoardStateFlags::CanWhiteCastleKing)) fill_castle(13);
+	if (boardState.HasFlag(ChessCore::BoardStateFlags::CanWhiteCastleQueen)) fill_castle(14);
+	if (boardState.HasFlag(ChessCore::BoardStateFlags::CanBlackCastleKing)) fill_castle(15);
+	if (boardState.HasFlag(ChessCore::BoardStateFlags::CanBlackCastleQueen)) fill_castle(16);
 
 	// en passant
-	if (boardState.HasFlag(BoardStateFlags::CanEnPassent))
+	if (boardState.HasFlag(ChessCore::BoardStateFlags::CanEnPassent))
 	{
 		uint8_t file = boardState.enPassantFile;
 		if (file >= 0 && file <= 7)

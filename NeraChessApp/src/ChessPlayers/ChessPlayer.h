@@ -9,6 +9,6 @@ public:
 
 	virtual ~ChessPlayer() = default;
 
-	virtual Move GetNextMove(const ChessBoard& board, Timer timer) = 0;
-
+	virtual ChessCore::Move GetNextMove(const ChessCore::ChessBoard& board, const ChessCore::Timer& timer) = 0;
+	virtual void StopSearching() = 0;
 };

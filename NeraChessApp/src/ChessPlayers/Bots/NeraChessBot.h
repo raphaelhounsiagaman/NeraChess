@@ -10,33 +10,36 @@
 #include "../ChessPlayer.h"
 #include "TranspositionTable.h"
 
+#include <atomic>
+
 class NeraChessBot : public ChessPlayer
 {
 public:
 	NeraChessBot(const std::string& modelPath = "Ressources/NeuralNetworks/model15b.onnx");
 	~NeraChessBot();
 
-	Move GetNextMove(const ChessBoard& givenBoard, Timer timer) override;
+	virtual ChessCore::Move GetNextMove(const ChessCore::ChessBoard& givenBoard, const ChessCore::Timer& timer) override;
+	virtual void StopSearching() override { m_StopSearching = true; };
 
 private:
 	
-	Move GetOpeningBookMove(const ChessBoard& board);
+	ChessCore::Move GetOpeningBookMove(const ChessCore::ChessBoard& board);
 
-	Move IterativeDeepeningSearch(ChessBoard& board, int maxDepth);
-	Move PVSRoot(ChessBoard& board, int depth);
+	ChessCore::Move IterativeDeepeningSearch(ChessCore::ChessBoard& board, int maxDepth);
+	ChessCore::Move PVSRoot(ChessCore::ChessBoard& board, int depth);
 
-	float PrincipalVariationSearch(ChessBoard& board, float alpha, float beta, int depth, uint8_t ply);
-	float QuiescenceSearch(ChessBoard& board, float alpha, float beta, uint8_t ply);
+	float PrincipalVariationSearch(ChessCore::ChessBoard& board, float alpha, float beta, int depth, uint8_t ply);
+	float QuiescenceSearch(ChessCore::ChessBoard& board, float alpha, float beta, uint8_t ply);
 
-	float EvaluateBoard(const ChessBoard& board);
-	float FastStaticEval(const ChessBoard& board);
-	float EvaluateTerminal(const ChessBoard& board);
+	float EvaluateBoard(const ChessCore::ChessBoard& board);
+	float FastStaticEval(const ChessCore::ChessBoard& board);
+	float EvaluateTerminal(const ChessCore::ChessBoard& board);
 
-	bool PositiveSEE(const ChessBoard& board, Move move);
+	bool PositiveSEE(const ChessCore::ChessBoard& board, ChessCore::Move move);
 
-	void SortMoves(const ChessBoard& board, MoveList<218>& moves, uint8_t ply, Move ttMove = 0);
+	void SortMoves(const ChessCore::ChessBoard& board, ChessCore::MoveList<218>& moves, uint8_t ply, ChessCore::Move ttMove = 0);
 
-	std::array<float, 19 * 8 * 8> BoardToTensor(const ChessBoard& board) const;
+	std::array<float, 19 * 8 * 8> BoardToTensor(const ChessCore::ChessBoard& board) const;
 
 	int LateMoveReduction(int depth, uint8_t ply, uint8_t moveIndex) const;
 
@@ -98,7 +101,7 @@ private:
 	TranspositionTable m_TranspositionTable{ 256 }; // 256 MB
 
 	// Search Heuristics
-	Move m_KillerMoves[100][2] = {};
+	ChessCore::Move m_KillerMoves[100][2] = {};
 	int m_HistoryHeuristic[64][64] = {};
 
 	// Opening book
@@ -113,5 +116,7 @@ private:
 
 	// other
 	uint32_t m_SearchID = 0;
+	std::atomic<bool> m_StopSearching;
+
 };
 

@@ -2,23 +2,19 @@
 
 #include "ChessPlayer.h"
 
-#include <mutex>
-
+#include <atomic>
 
 class Human : public ChessPlayer
 {
 public:
+	Human() = default;
+	virtual ~Human() = default;
 
-	Move GetNextMove(const ChessBoard& board, Timer timer) override;
-
-	Bitboard GetPossibleMoves();
-	void SetSelectedSquare(uint8_t square);
+	virtual ChessCore::Move GetNextMove(const ChessCore::ChessBoard& board, const ChessCore::Timer& timer) override;
+	virtual void StopSearching() override { m_StopSearching = true; }
 
 private:
-	
-	std::mutex m_SelectedSquareMutex;
-	uint8_t m_SelectedSquare = 64;
+	std::atomic<bool> m_StopSearching = false;
 
-	std::mutex m_PossibleMovesMutex;
-	Bitboard m_PossibleMoves = 0ULL;
+
 };

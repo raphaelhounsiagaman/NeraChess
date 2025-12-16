@@ -9,5 +9,6 @@ public:
 	BotRandom() = default;
 	~BotRandom() override = default;
 
-	Move GetNextMove(const ChessBoard& board, Timer timer) override;
+	virtual ChessCore::Move GetNextMove(const ChessCore::ChessBoard& board, const ChessCore::Timer& timer) override;
+	virtual void StopSearching() override {};
 };
