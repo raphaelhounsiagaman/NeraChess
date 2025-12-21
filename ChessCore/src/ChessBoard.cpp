@@ -262,21 +262,21 @@ namespace ChessCore
 
 		m_WasBoardStateChanged = true;
 
-		const Square startSquare = MoveUtil::GetFromSquare(move);
-		const Square targetSquare = MoveUtil::GetTargetSquare(move);
-		const Piece movePiece = MoveUtil::GetMovePiece(move);
-		const Piece promoPiece = MoveUtil::GetPromoPiece(move);
-		const uint8_t moveFlags = MoveUtil::GetMoveFlags(move);
+		const Square startSquare = move.GetStartSquare();
+		const Square targetSquare = move.GetTargetSquare();
+		const Piece movePiece = move.GetMovePiece();
+		const Piece promoPiece = move.GetPromoPiece();
+		const uint8_t moveFlags = move.GetMoveFlags();
 
 		const Bitboard startSquareBitboard = s_SquareBitboard[startSquare];
 		const Bitboard targetSquareBitboard = s_SquareBitboard[targetSquare];
 
-		const bool whitesMove = PieceUtil::IsWhite(movePiece);
+		const bool whitesMove = movePiece.IsWhite();
 
 		const Piece capturedPiece =
 			(moveFlags & MoveFlags::IS_EN_PASSANT) 
 			? (whitesMove ? PieceType::BLACK_PAWN : PieceType::WHITE_PAWN)
-			: GetPiece(MoveUtil::GetTargetSquare(move));
+			: GetPiece(move.GetTargetSquare());
 
 		UndoInfo info{};
 		info.capturedPiece = capturedPiece;
@@ -333,7 +333,7 @@ namespace ChessCore
 		if (moveFlags & MoveFlags::IS_CASTLES)
 		{
 
-			bool queenSide = SquareUtil::GetFile(targetSquare) == 2;
+			bool queenSide = targetSquare.GetFile() == 2;
 
 			if (whitesMove)
 			{
@@ -451,13 +451,13 @@ namespace ChessCore
 
 		m_RepetitionTable.RemoveEntry(m_BoardState.pieceBitboards);
 
-		const bool whitesMove = PieceUtil::IsWhite(MoveUtil::GetMovePiece(move));
+		const bool whitesMove = move.GetMovePiece().IsWhite();
 
-		const Square startSquare = MoveUtil::GetFromSquare(move);
-		const Square targetSquare = MoveUtil::GetTargetSquare(move);
-		const Piece movePiece = MoveUtil::GetMovePiece(move);
-		const Piece promoPiece = MoveUtil::GetPromoPiece(move);
-		const uint8_t moveFlags = MoveUtil::GetMoveFlags(move);
+		const Square startSquare = move.GetStartSquare();
+		const Square targetSquare = move.GetTargetSquare();
+		const Piece movePiece = move.GetMovePiece();
+		const Piece promoPiece = move.GetPromoPiece();
+		const uint8_t moveFlags = move.GetMoveFlags();
 
 		const Bitboard startSquareBitboard = s_SquareBitboard[startSquare];
 		const Bitboard targetSquareBitboard = s_SquareBitboard[targetSquare];
@@ -492,7 +492,7 @@ namespace ChessCore
 
 		if (moveFlags & MoveFlags::IS_CASTLES)
 		{
-			bool queenSide = SquareUtil::GetFile(targetSquare) == 2;
+			bool queenSide = targetSquare.GetFile() == 2;
 
 			if (whitesMove)
 			{
@@ -721,7 +721,7 @@ namespace ChessCore
 		Square leftSquare = checkRank * 8 + m_BoardState.enPassantFile - 1;
 		Square rightSquare = checkRank * 8 + m_BoardState.enPassantFile + 1;
 
-		if (SquareUtil::GetRank(leftSquare) == checkRank)
+		if (leftSquare.GetRank() == checkRank)
 		{
 			Piece leftPiece = GetPiece(leftSquare);
 			if (leftPiece == (whiteToMove ? PieceType::WHITE_PAWN : PieceType::BLACK_PAWN))
@@ -729,7 +729,7 @@ namespace ChessCore
 				enPassentAvailable = true;
 			}
 		}
-		if (SquareUtil::GetRank(rightSquare) == checkRank)
+		if (rightSquare.GetRank() == checkRank)
 		{
 			Piece rightPiece = GetPiece(rightSquare);
 			if (rightPiece == (whiteToMove ? PieceType::WHITE_PAWN : PieceType::BLACK_PAWN))
@@ -785,8 +785,8 @@ namespace ChessCore
 			for (uint32_t i = 0; i < move_list.size(); i++)
 			{
 				std::cout <<
-					SquareUtil::SquareAsString(MoveUtil::GetFromSquare(move_list[i])) <<
-					SquareUtil::SquareAsString(MoveUtil::GetTargetSquare(move_list[i])) <<
+					move_list[i].GetStartSquare().ToString() <<
+					move_list[i].GetTargetSquare().ToString() <<
 					": " << "1" << "\n";
 			}
 			result += move_list.size();
@@ -811,8 +811,8 @@ namespace ChessCore
 	#endif // DEBUG
 			uint64_t perftResult = PerfTest(calcDepth - 1, board);
 			std::cout << 
-				SquareUtil::SquareAsString(MoveUtil::GetFromSquare(move_list[i])) <<
-				SquareUtil::SquareAsString(MoveUtil::GetTargetSquare(move_list[i])) <<
+				move_list[i].GetStartSquare().ToString() <<
+				move_list[i].GetTargetSquare().ToString() <<
 				": " << perftResult << "\n";
 			result += perftResult;
 			board.UndoMove(move_list[i]);
@@ -891,8 +891,8 @@ namespace ChessCore
 
 		if (numMinors == 2 && numWhiteBishops == 1 && numBlackBishops == 1)
 		{
-			bool whiteBishopIsLightSquare = SquareUtil::LightSquare(BitUtil::GetLSBIndex(board.m_BoardState.pieceBitboards[PieceType::WHITE_BISHOP]));
-			bool blackBishopIsLightSquare = SquareUtil::LightSquare(BitUtil::GetLSBIndex(board.m_BoardState.pieceBitboards[PieceType::BLACK_BISHOP]));
+			bool whiteBishopIsLightSquare = Square(BitUtil::GetLSBIndex(board.m_BoardState.pieceBitboards[PieceType::BLACK_BISHOP])).IsLightSquare();
+			bool blackBishopIsLightSquare = Square(BitUtil::GetLSBIndex(board.m_BoardState.pieceBitboards[PieceType::WHITE_BISHOP])).IsLightSquare();
 			return whiteBishopIsLightSquare == blackBishopIsLightSquare;
 		}
 

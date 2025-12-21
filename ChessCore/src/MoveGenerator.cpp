@@ -8,7 +8,7 @@
 namespace ChessCore
 {
 
-	Bitboard MoveGenerator::GetStraightSlidingMask(uint8_t square)
+	Bitboard MoveGenerator::GetStraightSlidingMask(Square square)
 	{
 		Bitboard mask = 0ULL;
 
@@ -26,7 +26,7 @@ namespace ChessCore
 
 		return mask;
 	}
-	Bitboard MoveGenerator::GetDiagonalSlidingMask(uint8_t square)
+	Bitboard MoveGenerator::GetDiagonalSlidingMask(Square square)
 	{
 		Bitboard mask = 0ULL;
 
@@ -49,7 +49,7 @@ namespace ChessCore
 	{
 		std::vector<uint8_t> moveSquareIndices{};
 		moveSquareIndices.reserve(15);
-		for (uint8_t square = 0; square < 64; square++)
+		for (Square square = 0; square < 64; square++)
 		{
 			if ((mask >> square) & 1U)
 				moveSquareIndices.push_back(square);
@@ -77,7 +77,7 @@ namespace ChessCore
 		return blockerBitboards;
 	}
 
-	Bitboard MoveGenerator::CalculatePossibleRookMoves(uint8_t from_square, Bitboard blockers)
+	Bitboard MoveGenerator::CalculatePossibleRookMoves(Square from_square, Bitboard blockers)
 	{
 		Bitboard moves = 0ULL;
 
@@ -113,7 +113,7 @@ namespace ChessCore
 		}
 		return moves;
 	}
-	Bitboard MoveGenerator::CalculatePossibleBishopMoves(uint8_t from_square, Bitboard blockers)
+	Bitboard MoveGenerator::CalculatePossibleBishopMoves(Square from_square, Bitboard blockers)
 	{
 		Bitboard moves = 0ULL;
 
@@ -207,19 +207,19 @@ namespace ChessCore
 	{
 		std::array<Bitboard, 64> arr{};
 
-		for (uint8_t square = 0; square < 64; square++)
+		for (Square square = 0; square < 64; square++)
 		{
-			const int file = SquareUtil::GetFile(square);
-			const int rank = SquareUtil::GetRank(square);
+			const int file = square.GetFile();
+			const int rank = square.GetRank();
 
 			for (std::array<int, 2> dir : s_DirectionOffsets2D)
 			{			
 				int f = file + dir[0];
 				int r = rank + dir[1];
 
-				if (SquareUtil::IsValidCoordinate(f, r))
+				if (Square::IsValidCoordinates(f, r))
 				{
-					arr[square] |= 1ULL << SquareUtil::CoordsToSquare(f, r);
+					arr[square] |= 1ULL << Square(f, r);
 				}
 			}
 
@@ -231,10 +231,10 @@ namespace ChessCore
 	{
 		std::array<Bitboard, 64> array{};
 
-		for (uint8_t square = 0; square < 64; square++)
+		for (Square square = 0; square < 64; square++)
 		{
-			const int file = SquareUtil::GetFile(square);
-			const int rank = SquareUtil::GetRank(square);
+			const int file = square.GetFile();
+			const int rank = square.GetRank();
 
 			std::array<std::array<int, 2>, 8> knightJumps =
 			{ {
@@ -252,9 +252,9 @@ namespace ChessCore
 			{
 				int knightX = file + knightJumps[i][0];
 				int knightY = rank + knightJumps[i][1];
-				if (SquareUtil::IsValidCoordinate(knightX, knightY))
+				if (Square::IsValidCoordinates(knightX, knightY))
 				{
-					array[square] |= 1ULL << SquareUtil::CoordsToSquare(knightX, knightY);
+					array[square] |= 1ULL << Square(knightX, knightY);
 				}
 			}
 		}
@@ -267,18 +267,18 @@ namespace ChessCore
 		std::array<Bitboard, 64> array{};
 
 
-		for (uint8_t square = 0; square < 64; square++)
+		for (Square square = 0; square < 64; square++)
 		{
-			const uint8_t file = SquareUtil::GetFile(square);
-			const uint8_t rank = SquareUtil::GetRank(square);
+			const uint8_t file = square.GetFile();
+			const uint8_t rank = square.GetRank();
 
-			if (SquareUtil::IsValidCoordinate(file + 1, rank + 1))
+			if (Square::IsValidCoordinates(file + 1, rank + 1))
 			{
-				array[square] |= 1ULL << SquareUtil::CoordsToSquare(file + 1, rank + 1);
+				array[square] |= 1ULL << Square(file + 1, rank + 1);
 			}
-			if (SquareUtil::IsValidCoordinate(file - 1, rank + 1))
+			if (Square::IsValidCoordinates(file - 1, rank + 1))
 			{
-				array[square] |= 1ULL << SquareUtil::CoordsToSquare(file - 1, rank + 1);
+				array[square] |= 1ULL << Square(file - 1, rank + 1);
 			}
 
 		}
@@ -291,18 +291,18 @@ namespace ChessCore
 		std::array<Bitboard, 64> array{};
 
 
-		for (uint8_t square = 0; square < 64; square++)
+		for (Square square = 0; square < 64; square++)
 		{
-			const uint8_t file = SquareUtil::GetFile(square);
-			const uint8_t rank = SquareUtil::GetRank(square);
+			const uint8_t file = square.GetFile();
+			const uint8_t rank = square.GetRank();
 		
-			if (SquareUtil::IsValidCoordinate(file + 1, rank - 1))
+			if (Square::IsValidCoordinates(file + 1, rank - 1))
 			{
-				array[square] |= 1ULL << SquareUtil::CoordsToSquare(file + 1, rank - 1);
+				array[square] |= 1ULL << Square(file + 1, rank - 1);
 			}
-			if (SquareUtil::IsValidCoordinate(file - 1, rank - 1))
+			if (Square::IsValidCoordinates(file - 1, rank - 1))
 			{
-				array[square] |= 1ULL << SquareUtil::CoordsToSquare(file - 1, rank - 1);
+				array[square] |= 1ULL << Square(file - 1, rank - 1);
 			}
 
 		}
@@ -317,19 +317,19 @@ namespace ChessCore
 
 		for (uint8_t dirIndex = 0; dirIndex < s_DirectionOffsets2D.size(); dirIndex++)
 		{
-			for (uint8_t square = 0; square < 64; square++)
+			for (Square square = 0; square < 64; square++)
 			{
-				const uint8_t file = SquareUtil::GetFile(square);
-				const uint8_t rank = SquareUtil::GetRank(square);
+				const uint8_t file = square.GetFile();
+				const uint8_t rank = square.GetRank();
 
 				for (int dst = 0; dst < 8; dst++)
 				{
 					int f = file + s_DirectionOffsets2D[dirIndex][0] * dst;
 					int r = rank + s_DirectionOffsets2D[dirIndex][1] * dst;
 
-					if (SquareUtil::IsValidCoordinate(f, r))
+					if (Square::IsValidCoordinates(f, r))
 					{
-						array[dirIndex][square] |= 1ULL << SquareUtil::CoordsToSquare(f, r);
+						array[dirIndex][square] |= 1ULL << Square(f, r);
 					}
 					else
 					{
@@ -374,16 +374,16 @@ namespace ChessCore
 	{
 		static std::array<std::array<Bitboard, 64>, 64> array{};
 	
-		for (int squareA = 0; squareA < 64; squareA++)
+		for (Square squareA = 0; squareA < 64; squareA++)
 		{
-			for (int squareB = 0; squareB < 64; squareB++)
+			for (Square squareB = 0; squareB < 64; squareB++)
 			{
 
-				uint8_t pointAFile = SquareUtil::GetFile(squareA);
-				uint8_t pointARank = SquareUtil::GetRank(squareA);
+				uint8_t pointAFile = squareA.GetFile();
+				uint8_t pointARank = squareA.GetRank();
 
-				uint8_t pointBFile = SquareUtil::GetFile(squareB);
-				uint8_t pointBRank = SquareUtil::GetRank(squareB);
+				uint8_t pointBFile = squareB.GetFile();
+				uint8_t pointBRank = squareB.GetRank();
 
 				int deltaFile = pointBFile - pointAFile;
 				int deltaRank = pointBRank - pointARank;
@@ -404,9 +404,9 @@ namespace ChessCore
 					int coordFile = pointAFile + dirFile * i;
 					int coordRank = pointARank + dirRank * i;
 
-					if (SquareUtil::IsValidCoordinate(coordFile, coordRank))
+					if (Square::IsValidCoordinates(coordFile, coordRank))
 					{
-						array[squareA][squareB] |= 1ULL << SquareUtil::CoordsToSquare(coordFile, coordRank);
+						array[squareA][squareB] |= 1ULL << Square(coordFile, coordRank);
 					}
 				}
 			}
@@ -450,14 +450,14 @@ namespace ChessCore
 	const std::array<std::array<Bitboard, 64>, 8> MoveGenerator::s_DirRayMask = InitDirRayMask();
 	const std::array<std::array<int, 8>, 64> MoveGenerator::s_SquaresToEdge = InitSquaresToEdge();
 
-	const Bitboard MoveGenerator::s_WhiteKingsideMask = 1ULL << SquareUtil::f1 | 1ULL << SquareUtil::g1;
-	const Bitboard MoveGenerator::s_BlackKingsideMask = 1ULL << SquareUtil::f8 | 1ULL << SquareUtil::g8;
+	const Bitboard MoveGenerator::s_WhiteKingsideMask = 1ULL << Square::f1 | 1ULL << Square::g1;
+	const Bitboard MoveGenerator::s_BlackKingsideMask = 1ULL << Square::f8 | 1ULL << Square::g8;
 
-	const Bitboard MoveGenerator::s_WhiteQueensideMask2 = 1ULL << SquareUtil::d1 | 1ULL << SquareUtil::c1;
-	const Bitboard MoveGenerator::s_BlackQueensideMask2 = 1ULL << SquareUtil::d8 | 1ULL << SquareUtil::c8;
+	const Bitboard MoveGenerator::s_WhiteQueensideMask2 = 1ULL << Square::d1 | 1ULL << Square::c1;
+	const Bitboard MoveGenerator::s_BlackQueensideMask2 = 1ULL << Square::d8 | 1ULL << Square::c8;
 
-	const Bitboard MoveGenerator::s_WhiteQueensideMask = 1ULL << SquareUtil::d1 | 1ULL << SquareUtil::c1 | 1ULL << SquareUtil::b1;
-	const Bitboard MoveGenerator::s_BlackQueensideMask = 1ULL << SquareUtil::d8 | 1ULL << SquareUtil::c8 | 1ULL << SquareUtil::b8;
+	const Bitboard MoveGenerator::s_WhiteQueensideMask = 1ULL << Square::d1 | 1ULL << Square::c1 | 1ULL << Square::b1;
+	const Bitboard MoveGenerator::s_BlackQueensideMask = 1ULL << Square::d8 | 1ULL << Square::c8 | 1ULL << Square::b8;
 
 	const std::array<std::array<Bitboard, 64>, 64> MoveGenerator::s_AlignMask = InitAlignMask();
 
@@ -620,10 +620,10 @@ namespace ChessCore
 					// This square contains an enemy piece
 					else
 					{
-						PieceType pieceType = GetPiece(squareIndex);
+						Piece piece = GetPiece(squareIndex);
 
 						// Check if piece is in bitmask of pieces able to move in current direction
-						if (isDiagonal && PieceUtil::IsDiagonalSlider(pieceType) || !isDiagonal && PieceUtil::IsOrthogonalSlider(pieceType))
+						if (isDiagonal && piece.IsDiagonalSlider() || !isDiagonal && piece.IsOrthogonalSlider())
 						{
 							// Friendly piece blocks the check, so this is a pin
 							if (isFriendlyPieceAlongRay)
@@ -679,7 +679,7 @@ namespace ChessCore
 
 		Bitboard opponentPawnsBoard = m_OpponentPawns;
 		m_OpponentPawnAttackMap = PawnAttacks(opponentPawnsBoard, !m_WhiteToMove);
-		if (SquareUtil::ContainsSquare(m_OpponentPawnAttackMap, m_FriendlyKingSquare))
+		if (m_FriendlyKingSquare.ContainsSquare(m_OpponentPawnAttackMap))
 		{
 			m_InDoubleCheck = m_InCheck; // if already in check, then this is double check
 			m_InCheck = true;
@@ -729,7 +729,7 @@ namespace ChessCore
 		while (kingMoves != 0)
 		{
 			int targetSquare = BitUtil::PopLSB(kingMoves);
-			m_LegalMoves.push(MoveUtil::CreateMove(
+			m_LegalMoves.push(Move(
 				m_FriendlyKingSquare, 
 				targetSquare, 
 				m_WhiteToMove ? PieceType::WHITE_KING : PieceType::BLACK_KING,
@@ -749,8 +749,8 @@ namespace ChessCore
 			Bitboard castleMask = m_WhiteToMove ? s_WhiteKingsideMask : s_BlackKingsideMask;
 			if ((castleMask & castleBlockers) == 0)
 			{
-				int targetSquare = m_WhiteToMove ? SquareUtil::g1 : SquareUtil::g8;
-				m_LegalMoves.push(MoveUtil::CreateMove(
+				int targetSquare = m_WhiteToMove ? Square::g1 : Square::g8;
+				m_LegalMoves.push(Move(
 					m_FriendlyKingSquare, 
 					targetSquare,
 					GetPiece(m_FriendlyKingSquare),
@@ -767,8 +767,8 @@ namespace ChessCore
 			Bitboard castleBlockMask = m_WhiteToMove ? s_WhiteQueensideMask : s_BlackQueensideMask;
 			if ((castleMask & castleBlockers) == 0 && (castleBlockMask & m_AllPieces) == 0)
 			{
-				int targetSquare = m_WhiteToMove ? SquareUtil::c1 : SquareUtil::c8;
-				m_LegalMoves.push(MoveUtil::CreateMove(
+				int targetSquare = m_WhiteToMove ? Square::c1 : Square::c8;
+				m_LegalMoves.push(Move(
 					m_FriendlyKingSquare,
 					targetSquare,
 					GetPiece(m_FriendlyKingSquare),
@@ -810,7 +810,7 @@ namespace ChessCore
 			while (moveSquares != 0)
 			{
 				int targetSquare = BitUtil::PopLSB(moveSquares);
-				m_LegalMoves.push(MoveUtil::CreateMove(
+				m_LegalMoves.push(Move(
 					startSquare, 
 					targetSquare,
 					GetPiece(startSquare),
@@ -834,7 +834,7 @@ namespace ChessCore
 			while (moveSquares != 0)
 			{
 				int targetSquare = BitUtil::PopLSB(moveSquares);
-				m_LegalMoves.push(MoveUtil::CreateMove(
+				m_LegalMoves.push(Move(
 					startSquare,
 					targetSquare,
 					GetPiece(startSquare),
@@ -859,7 +859,7 @@ namespace ChessCore
 			while (moveSquares != 0)
 			{
 				int targetSquare = BitUtil::PopLSB(moveSquares);
-				m_LegalMoves.push(MoveUtil::CreateMove(
+				m_LegalMoves.push(Move(
 					knightSquare, 
 					targetSquare, 
 					GetPiece(knightSquare),
@@ -878,15 +878,15 @@ namespace ChessCore
 		PieceType friendlyPawnPiece = m_WhiteToMove ? PieceType::WHITE_PAWN : PieceType::BLACK_PAWN;
 		Bitboard pawns = m_FriendlyPawns;
 		
-		Bitboard promotionRankMask = m_WhiteToMove ? SquareUtil::Rank8 : SquareUtil::Rank1;
+		Bitboard promotionRankMask = m_WhiteToMove ? Square::Rank8 : Square::Rank1;
 
 		Bitboard singlePush = (BitUtil::Shift(pawns, pushOffset)) & ~m_AllPieces;
 
 		Bitboard pushPromotions = singlePush & promotionRankMask & m_CheckRayBitmask;
 
 
-		Bitboard captureEdgeFileMask = m_WhiteToMove ? SquareUtil::NotAFile : SquareUtil::NotHFile;
-		Bitboard captureEdgeFileMask2 = m_WhiteToMove ? SquareUtil::NotHFile : SquareUtil::NotAFile;
+		Bitboard captureEdgeFileMask = m_WhiteToMove ? Square::NotAFile : Square::NotHFile;
+		Bitboard captureEdgeFileMask2 = m_WhiteToMove ? Square::NotHFile : Square::NotAFile;
 		Bitboard captureA = BitUtil::Shift(pawns & captureEdgeFileMask, pushDir * 7) & m_OpponentPieces;
 		Bitboard captureB = BitUtil::Shift(pawns & captureEdgeFileMask2, pushDir * 9) & m_OpponentPieces;
 
@@ -906,7 +906,7 @@ namespace ChessCore
 			int startSquare = targetSquare - pushOffset;
 			if (!IsPinned(startSquare) || s_AlignMask[startSquare][m_FriendlyKingSquare] == s_AlignMask[targetSquare][m_FriendlyKingSquare])
 			{
-				m_LegalMoves.push(MoveUtil::CreateMove(
+				m_LegalMoves.push(Move(
 					startSquare,
 					targetSquare,
 					friendlyPawnPiece
@@ -915,7 +915,7 @@ namespace ChessCore
 		}
 
 		// Generate double pawn pushes
-		Bitboard doublePushTargetRankMask = m_WhiteToMove ? SquareUtil::Rank4 : SquareUtil::Rank5;
+		Bitboard doublePushTargetRankMask = m_WhiteToMove ? Square::Rank4 : Square::Rank5;
 		Bitboard doublePush = BitUtil::Shift(singlePush, pushOffset) & ~m_AllPieces & doublePushTargetRankMask & m_CheckRayBitmask;
 
 		while (doublePush != 0)
@@ -924,7 +924,7 @@ namespace ChessCore
 			uint8_t startSquare = targetSquare - pushOffset * 2;
 			if (!IsPinned(startSquare) || s_AlignMask[startSquare][m_FriendlyKingSquare] == s_AlignMask[targetSquare][m_FriendlyKingSquare])
 			{
-				m_LegalMoves.push(MoveUtil::CreateMove(
+				m_LegalMoves.push(Move(
 					startSquare,
 					targetSquare, 
 					friendlyPawnPiece,
@@ -943,7 +943,7 @@ namespace ChessCore
 
 			if (!IsPinned(startSquare) || s_AlignMask[startSquare][m_FriendlyKingSquare] == s_AlignMask[targetSquare][m_FriendlyKingSquare])
 			{
-				m_LegalMoves.push(MoveUtil::CreateMove(
+				m_LegalMoves.push(Move(
 					startSquare, 
 					targetSquare,
 					friendlyPawnPiece,
@@ -960,7 +960,7 @@ namespace ChessCore
 
 			if (!IsPinned(startSquare) || s_AlignMask[startSquare][m_FriendlyKingSquare] == s_AlignMask[targetSquare][m_FriendlyKingSquare])
 			{
-				m_LegalMoves.push(MoveUtil::CreateMove(
+				m_LegalMoves.push(Move(
 					startSquare,
 					targetSquare,
 					friendlyPawnPiece,
@@ -1012,9 +1012,9 @@ namespace ChessCore
 			int epFileIndex = m_BoardState.enPassantFile;
 			int epRankIndex = m_WhiteToMove ? 5 : 2;
 			uint8_t targetSquare = epRankIndex * 8 + epFileIndex;
-			int capturedPawnSquare = targetSquare - pushOffset;
+			Square capturedPawnSquare = targetSquare - pushOffset;
 
-			if (SquareUtil::ContainsSquare(m_CheckRayBitmask, capturedPawnSquare))
+			if (capturedPawnSquare.ContainsSquare(m_CheckRayBitmask))
 			{
 				Bitboard pawnsThatCanCaptureEp = pawns & PawnAttacks(1ULL << targetSquare, !m_WhiteToMove);
 
@@ -1025,7 +1025,7 @@ namespace ChessCore
 					{
 						if (!InCheckAfterEnPassant(startSquare, targetSquare, capturedPawnSquare))
 						{
-							m_LegalMoves.push(MoveUtil::CreateMove(
+							m_LegalMoves.push(Move(
 								startSquare, 
 								targetSquare, 
 								friendlyPawnPiece,
@@ -1041,10 +1041,10 @@ namespace ChessCore
 	
 	}
 
-	void MoveGenerator::GeneratePromotions(uint8_t startSquare, uint8_t targetSquare)
+	void MoveGenerator::GeneratePromotions(Square startSquare, Square targetSquare)
 	{
 
-		m_LegalMoves.push(MoveUtil::CreateMove(
+		m_LegalMoves.push(Move(
 			startSquare,
 			targetSquare,
 			m_WhiteToMove ? PieceType::WHITE_PAWN : PieceType::BLACK_PAWN,
@@ -1052,7 +1052,7 @@ namespace ChessCore
 			MoveFlags::IS_PROMOTION | (GetPiece(targetSquare) == PieceType::NO_PIECE ? 0 : MoveFlags::IS_CAPTURE)
 		));
 
-		m_LegalMoves.push(MoveUtil::CreateMove(
+		m_LegalMoves.push(Move(
 			startSquare,
 			targetSquare,
 			m_WhiteToMove ? PieceType::WHITE_PAWN : PieceType::BLACK_PAWN,
@@ -1060,7 +1060,7 @@ namespace ChessCore
 			MoveFlags::IS_PROMOTION | (GetPiece(targetSquare) == PieceType::NO_PIECE ? 0 : MoveFlags::IS_CAPTURE)
 		));
 
-		m_LegalMoves.push(MoveUtil::CreateMove(
+		m_LegalMoves.push(Move(
 			startSquare, 
 			targetSquare, 
 			m_WhiteToMove ? PieceType::WHITE_PAWN   : PieceType::BLACK_PAWN ,
@@ -1068,7 +1068,7 @@ namespace ChessCore
 			MoveFlags::IS_PROMOTION | (GetPiece(targetSquare) == PieceType::NO_PIECE ? 0 : MoveFlags::IS_CAPTURE)
 		));
 
-		m_LegalMoves.push(MoveUtil::CreateMove(
+		m_LegalMoves.push(Move(
 			startSquare,
 			targetSquare,
 			m_WhiteToMove ? PieceType::WHITE_PAWN : PieceType::BLACK_PAWN,
@@ -1079,7 +1079,7 @@ namespace ChessCore
 
 	}
 
-	Bitboard MoveGenerator::GetSlidingAttacks(uint8_t square, Bitboard blockers, bool orthogonal)
+	Bitboard MoveGenerator::GetSlidingAttacks(Square square, Bitboard blockers, bool orthogonal)
 	{
 		if (square >= 64)
 		{
@@ -1099,7 +1099,7 @@ namespace ChessCore
 		}
 	}
 
-	PieceType MoveGenerator::GetPiece(uint8_t square)
+	Piece MoveGenerator::GetPiece(Square square)
 	{
 
 		for (uint8_t board = 0; board < 12; board++)
@@ -1113,12 +1113,12 @@ namespace ChessCore
 		return PieceType::NO_PIECE;
 	}
 
-	bool MoveGenerator::IsPinned(int square) const
+	bool MoveGenerator::IsPinned(Square square) const
 	{
 		return ((m_PinRays >> square) & 1ULL) != 0;
 	}
 
-	bool MoveGenerator::InCheckAfterEnPassant(int startSquare, int targetSquare, int epCaptureSquare)
+	bool MoveGenerator::InCheckAfterEnPassant(Square startSquare, Square targetSquare, Square epCaptureSquare)
 	{
 		Bitboard enemyOrtho = m_OpponentOrthogonalSliders;
 
@@ -1137,10 +1137,10 @@ namespace ChessCore
 
 		if (isWhite)
 		{
-			return ((pawns << 9) & SquareUtil::NotAFile) | ((pawns << 7) & SquareUtil::NotHFile);
+			return ((pawns << 9) & Square::NotAFile) | ((pawns << 7) & Square::NotHFile);
 		}
 
-		return ((pawns >> 7) & SquareUtil::NotAFile) | ((pawns >> 9) & SquareUtil::NotHFile);
+		return ((pawns >> 7) & Square::NotAFile) | ((pawns >> 9) & Square::NotHFile);
 	}
 
 } // namespace ChessCore

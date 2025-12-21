@@ -81,9 +81,9 @@ void BoardLayer::OnUpdate(float deltaTime)
 	if (m_AnimationDone > 1)
 	{
 		m_ChessBoard.MakeMove(m_AnimationMove, true);
-		if (ChessCore::MoveUtil::GetMoveFlags(m_AnimationMove) & ChessCore::IS_CAPTURE)
+		if (m_AnimationMove.GetMoveFlags() & ChessCore::IS_CAPTURE)
 			PlayRandomSoundFromList(m_CaptureSounds);
-		else if (ChessCore::MoveUtil::GetMoveFlags(m_AnimationMove) & ChessCore::IS_CASTLES)
+		else if (m_AnimationMove.GetMoveFlags() & ChessCore::IS_CASTLES)
 		{
 			PlayRandomSoundFromList(m_MoveSounds);
 			PlayRandomSoundFromList(m_MoveSounds);
@@ -147,18 +147,18 @@ void BoardLayer::DrawHighlights()
 	if (m_LastMovePlayed)
 	{
 		// TODO: make this prettier and more efficient / more readable / more custom
-		ChessCore::Square fromSquare = ChessCore::MoveUtil::GetFromSquare(m_LastMovePlayed);
-		ChessCore::Square targetSquare = ChessCore::MoveUtil::GetTargetSquare(m_LastMovePlayed);
+		ChessCore::Square fromSquare = m_LastMovePlayed.GetStartSquare();
+		ChessCore::Square targetSquare = m_LastMovePlayed.GetTargetSquare();
 
-		uint8_t fromFile = m_WhiteBottom ? ChessCore::SquareUtil::GetFile(fromSquare) : 
-			7 - ChessCore::SquareUtil::GetFile(fromSquare);
-		uint8_t fromRank = m_WhiteBottom ? 7 - ChessCore::SquareUtil::GetRank(fromSquare) : 
-			ChessCore::SquareUtil::GetRank(fromSquare);
+		uint8_t fromFile = m_WhiteBottom ? fromSquare.GetFile() :
+			7 - fromSquare.GetFile();
+		uint8_t fromRank = m_WhiteBottom ? 7 - fromSquare.GetRank() :
+			fromSquare.GetRank();
 
-		uint8_t targetFile = m_WhiteBottom ? ChessCore::SquareUtil::GetFile(targetSquare) : 
-			7 - ChessCore::SquareUtil::GetFile(targetSquare);
-		uint8_t targetRank = m_WhiteBottom ? 7 - ChessCore::SquareUtil::GetRank(targetSquare) : 
-			ChessCore::SquareUtil::GetRank(targetSquare);
+		uint8_t targetFile = m_WhiteBottom ? targetSquare.GetFile() :
+			7 - targetSquare.GetFile();
+		uint8_t targetRank = m_WhiteBottom ? 7 - targetSquare.GetRank() :
+			targetSquare.GetRank();
 
 		NeraCore::Vec2<uint32_t> squarePos = {
 			m_Margin.X + fromFile * m_SquareSize.X,
@@ -179,10 +179,10 @@ void BoardLayer::DrawHighlights()
 	
 	if (m_SelectedPieceSquare != 64)
 	{
-		uint8_t file = m_WhiteBottom ? ChessCore::SquareUtil::GetFile(m_SelectedPieceSquare) : 
-			7 - ChessCore::SquareUtil::GetFile(m_SelectedPieceSquare);
-		uint8_t rank = m_WhiteBottom ? 7 - ChessCore::SquareUtil::GetRank(m_SelectedPieceSquare) : 
-			ChessCore::SquareUtil::GetRank(m_SelectedPieceSquare);
+		uint8_t file = m_WhiteBottom ? m_SelectedPieceSquare.GetFile() :
+			7 - m_SelectedPieceSquare.GetFile();
+		uint8_t rank = m_WhiteBottom ? 7 - m_SelectedPieceSquare.GetRank() :
+			m_SelectedPieceSquare.GetRank();
 
 		NeraCore::Vec2<uint32_t> squarePos = {
 			m_Margin.X + file * m_SquareSize.X,
@@ -200,10 +200,10 @@ void BoardLayer::DrawHighlights()
 	{
 		ChessCore::Square square = ChessCore::BitUtil::PopLSB(squares);
 
-		uint8_t file = m_WhiteBottom ? ChessCore::SquareUtil::GetFile(square) : 
-			7 - ChessCore::SquareUtil::GetFile(square);
-		uint8_t rank = m_WhiteBottom ? 7 - ChessCore::SquareUtil::GetRank(square) :
-			ChessCore::SquareUtil::GetRank(square);
+		uint8_t file = m_WhiteBottom ? square.GetFile() :
+			7 - square.GetFile();
+		uint8_t rank = m_WhiteBottom ? 7 - square.GetRank() :
+			square.GetRank();
 
 		NeraCore::Vec2<uint32_t> squarePos = {
 			m_Margin.X + file * m_SquareSize.X,
@@ -219,22 +219,22 @@ void BoardLayer::DrawAnimatedPiece()
 	if (m_AnimationPiece == ChessCore::PieceType::NO_PIECE)
 		return;
 
-	uint8_t fromFile = m_WhiteBottom ? ChessCore::SquareUtil::GetFile(m_AnimationFromSquare) :
-		7 - ChessCore::SquareUtil::GetFile(m_AnimationFromSquare);
-	uint8_t fromRank = m_WhiteBottom ? 7 - ChessCore::SquareUtil::GetRank(m_AnimationFromSquare) :
-		ChessCore::SquareUtil::GetRank(m_AnimationFromSquare);
+	uint8_t fromFile = m_WhiteBottom ? m_AnimationFromSquare.GetFile() :
+		7 - m_AnimationFromSquare.GetFile();
+	uint8_t fromRank = m_WhiteBottom ? 7 - m_AnimationFromSquare.GetRank() :
+		m_AnimationFromSquare.GetRank();
 
 	NeraCore::Vec2<uint32_t> fromPos = {
 		m_Margin.X + fromFile * m_SquareSize.X,
 		m_Margin.Y + fromRank * m_SquareSize.Y
 	};
 
-	ChessCore::Square targetSquare = ChessCore::MoveUtil::GetTargetSquare(m_AnimationMove);
+	ChessCore::Square targetSquare = m_AnimationMove.GetTargetSquare();
 
-	uint8_t targetFile = m_WhiteBottom ? ChessCore::SquareUtil::GetFile(targetSquare) : 
-		7 - ChessCore::SquareUtil::GetFile(targetSquare);
-	uint8_t targetRank = m_WhiteBottom ? 7 - ChessCore::SquareUtil::GetRank(targetSquare) : 
-		ChessCore::SquareUtil::GetRank(targetSquare);
+	uint8_t targetFile = m_WhiteBottom ? targetSquare.GetFile() :
+		7 - targetSquare.GetFile();
+	uint8_t targetRank = m_WhiteBottom ? 7 - targetSquare.GetRank() :
+		targetSquare.GetRank();
 
 	NeraCore::Vec2<uint32_t> targetPos = {
 		m_Margin.X + targetFile * m_SquareSize.X,
@@ -263,8 +263,8 @@ void BoardLayer::DrawPieces()
 		if (piece == ChessCore::PieceType::NO_PIECE)
 			continue;
 
-		uint8_t file = ChessCore::SquareUtil::GetFile(square);
-		uint8_t rank = ChessCore::SquareUtil::GetRank(square);
+		uint8_t file = square.GetFile();
+		uint8_t rank = square.GetRank();
 		
 		if (file + 8 * rank == m_FlyingPieceSquare ||
 			file + 8 * rank == m_AnimationFromSquare)
@@ -353,9 +353,9 @@ void BoardLayer::PlayMove(ChessCore::Move move)
 	if (m_AnimationMove)
 	{
 		m_ChessBoard.MakeMove(m_AnimationMove, true);
-		if (ChessCore::MoveUtil::GetMoveFlags(m_AnimationMove) & ChessCore::IS_CAPTURE)
+		if (m_AnimationMove.GetMoveFlags() & ChessCore::IS_CAPTURE)
 			PlayRandomSoundFromList(m_CaptureSounds);
-		else if (ChessCore::MoveUtil::GetMoveFlags(m_AnimationMove) & ChessCore::IS_CASTLES)
+		else if (m_AnimationMove.GetMoveFlags() & ChessCore::IS_CASTLES)
 		{
 			PlayRandomSoundFromList(m_MoveSounds);
 			PlayRandomSoundFromList(m_MoveSounds);
@@ -371,9 +371,9 @@ void BoardLayer::PlayMove(ChessCore::Move move)
 
 	if (m_AnimationSkipped)
 	{
-		if (ChessCore::MoveUtil::GetMoveFlags(move) & ChessCore::IS_CAPTURE)
+		if (move.GetMoveFlags() & ChessCore::IS_CAPTURE)
 			PlayRandomSoundFromList(m_CaptureSounds);
-		else if (ChessCore::MoveUtil::GetMoveFlags(move) & ChessCore::IS_CASTLES)
+		else if (move.GetMoveFlags() & ChessCore::IS_CASTLES)
 		{
 			PlayRandomSoundFromList(m_MoveSounds);
 			PlayRandomSoundFromList(m_MoveSounds);
@@ -389,8 +389,8 @@ void BoardLayer::PlayMove(ChessCore::Move move)
 	{
 		m_AnimationDone = 0.f;
 		m_AnimationMove = move;
-		m_AnimationFromSquare = ChessCore::MoveUtil::GetFromSquare(move);
-		m_AnimationPiece = ChessCore::MoveUtil::GetMovePiece(move);
+		m_AnimationFromSquare = move.GetStartSquare();
+		m_AnimationPiece = move.GetMovePiece();
 	}
 
 }
@@ -424,8 +424,8 @@ bool BoardLayer::OnMouseButtonPressed(NeraCore::MouseButtonPressedEvent& event)
 		m_LegalMoves = m_ChessBoard.GetLegalMoves();
 		for (ChessCore::Move legalMove : m_LegalMoves)
 		{
-			if (ChessCore::MoveUtil::GetFromSquare(legalMove) == m_SelectedPieceSquare && 
-				ChessCore::MoveUtil::GetTargetSquare(legalMove) == square)
+			if (legalMove.GetStartSquare() == m_SelectedPieceSquare &&
+				legalMove.GetTargetSquare() == square)
 			{
 				move = legalMove;
 				break;
@@ -494,8 +494,8 @@ bool BoardLayer::OnMouseButtonReleased(NeraCore::MouseButtonReleasedEvent& event
 		m_LegalMoves = m_ChessBoard.GetLegalMoves();
 		for (ChessCore::Move legalMove : m_LegalMoves)
 		{
-			if (ChessCore::MoveUtil::GetFromSquare(legalMove) == m_SelectedPieceSquare &&
-				ChessCore::MoveUtil::GetTargetSquare(legalMove) == square)
+			if (legalMove.GetStartSquare() == m_SelectedPieceSquare &&
+				legalMove.GetTargetSquare() == square)
 			{
 				move = legalMove;
 				break;

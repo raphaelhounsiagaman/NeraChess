@@ -3,31 +3,32 @@
 namespace ChessCore
 {
 
-	namespace PieceUtil
+	bool Piece::IsDiagonalSlider() const
 	{
-		bool IsWhite(Piece piece)
-		{
-			return !((piece & 0b1000) || ((piece & 0b0110) == 0b0110));
-		}
+		return
+			piece == PieceType::WHITE_BISHOP ||
+			piece == PieceType::WHITE_QUEEN ||
+			piece == PieceType::BLACK_BISHOP ||
+			piece == PieceType::BLACK_QUEEN;
+	}
 
-		bool IsDiagonalSlider(Piece piece)
-		{
-			return
-				piece == PieceType::WHITE_BISHOP ||
-				piece == PieceType::WHITE_QUEEN ||
-				piece == PieceType::BLACK_BISHOP ||
-				piece == PieceType::BLACK_QUEEN;
-		}
+	bool Piece::IsOrthogonalSlider() const
+	{
+		return
+			piece == PieceType::WHITE_ROOK ||
+			piece == PieceType::WHITE_QUEEN ||
+			piece == PieceType::BLACK_ROOK ||
+			piece == PieceType::BLACK_QUEEN;
+	}
 
-		bool IsOrthogonalSlider(Piece piece)
-		{
-			return
-				piece == PieceType::WHITE_ROOK ||
-				piece == PieceType::WHITE_QUEEN ||
-				piece == PieceType::BLACK_ROOK ||
-				piece == PieceType::BLACK_QUEEN;
-		}
+	Piece operator+(const Piece& lhs, uint8_t rhs)
+	{
+		return Piece(lhs.piece + rhs);
+	}
 
+	Piece operator+(uint8_t lhs, const Piece& rhs)
+	{
+		return Piece(lhs + rhs.piece);
 	}
 
 } // namespace ChessCore

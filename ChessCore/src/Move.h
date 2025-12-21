@@ -11,8 +11,8 @@
 * | Bits  | Purpose         |
 * | ----- | --------------- |
 * | 0     | validation      |
-* | 1–6   | from square     |
-* | 7–12  | to square       |
+* | 1–6   | start square    |
+* | 7–12  | target square   |
 * | 13–16 | move piece      |
 * | 17–20 | promotion piece |
 * | 21–28 | move flags      |
@@ -22,7 +22,6 @@
 
 namespace ChessCore
 {
-	using Move = uint32_t;
 
 	enum MoveFlags : uint8_t
 	{
@@ -35,30 +34,27 @@ namespace ChessCore
 		PAWN_TWO_UP = 1 << 4, // Bit 5
 	};
 
-	namespace MoveUtil
+	struct Move
 	{
+		Move() = default;
+		Move(uint32_t m) : move(m) {};
+		Move(Square startSquare, Square targetSquare, Piece movePiece = 0, Piece promoPiece = 0, uint8_t flags = 0);
+		Move(const std::string& moveStr);
 
-		constexpr Move CreateMove(uint8_t from, uint8_t target, uint8_t move = 0, uint8_t promo = 0, uint8_t flags = 0)
-		{
-			return
-				((static_cast<Move>(1))) |
-				((static_cast<Move>(from) & 0x3F) << 1) |
-				((static_cast<Move>(target) & 0x3F) << 7) |
-				((static_cast<Move>(move) & 0xF) << 13) |
-				((static_cast<Move>(promo) & 0xF) << 17) |
-				((static_cast<Move>(flags) & 0xFF) << 21);
-		}
+		uint32_t move{ 0 };
 
-		constexpr Square GetFromSquare(Move m) { return (m >> 1) & 0x3F; }
-		constexpr Square GetTargetSquare(Move m) { return (m >> 7) & 0x3F; }
-		constexpr Piece   GetMovePiece(Move m) { return (m >> 13) & 0xF; }
-		constexpr Piece   GetPromoPiece(Move m) { return (m >> 17) & 0xF; }
-		constexpr uint8_t GetMoveFlags(Move m) { return (m >> 21) & 0xFF; }
+		operator uint32_t() const { return move; }
+		operator std::string() const { return ToUCI(); }
 
-		Move UCIToMove(const std::string& moveStr);
+		Square GetStartSquare() const { return (move >> 1) & 0x3F; }
+		Square GetTargetSquare() const { return (move >> 7) & 0x3F; }
+		Piece   GetMovePiece() const { return (move >> 13) & 0xF; }
+		Piece   GetPromoPiece() const { return (move >> 17) & 0xF; }
+		uint8_t GetMoveFlags() const { return (move >> 21) & 0xFF; }
 
-		std::string MoveToUCI(Move move);
+		std::string ToUCI() const;
 
-	} // namespace MoveUtil
+	};
+
 
 } // namespace ChessCore

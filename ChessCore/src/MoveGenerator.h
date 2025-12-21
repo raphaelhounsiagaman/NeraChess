@@ -32,15 +32,15 @@ namespace ChessCore
 		void CalculateKnightMoves();
 		void CalculatePawnMoves();
 
-		void GeneratePromotions(uint8_t startSquare, uint8_t targetSquare);
+		void GeneratePromotions(Square startSquare, Square targetSquare);
 
-		Bitboard GetSlidingAttacks(uint8_t square, Bitboard blockers, bool orthogonal);
+		Bitboard GetSlidingAttacks(Square square, Bitboard blockers, bool orthogonal);
 
-		PieceType GetPiece(uint8_t square);
+		Piece GetPiece(Square square);
 
-		bool IsPinned(int square) const;
+		bool IsPinned(Square square) const;
 
-		bool InCheckAfterEnPassant(int startSquare, int targetSquare, int epCaptureSquare);
+		bool InCheckAfterEnPassant(Square startSquare, Square targetSquare, Square epCaptureSquare);
 
 		Bitboard PawnAttacks(Bitboard pawns, bool isWhite);
 
@@ -59,8 +59,8 @@ namespace ChessCore
 		Bitboard m_FriendlyPieces{};// check
 		Bitboard m_OpponentPieces{};// check
 
-		uint8_t m_FriendlyKingSquare{};// check
-		uint8_t m_OpponentKingSquare{};// check
+		Square m_FriendlyKingSquare{};// check
+		Square m_OpponentKingSquare{};// check
 
 		Bitboard m_FriendlyOrthogonalSliders{};// check
 		Bitboard m_FriendlyDiagonalSliders{};  // check
@@ -101,8 +101,8 @@ namespace ChessCore
 
 		// Mask for every square
 
-		static Bitboard GetStraightSlidingMask(uint8_t square);
-		static Bitboard GetDiagonalSlidingMask(uint8_t square);
+		static Bitboard GetStraightSlidingMask(Square square);
+		static Bitboard GetDiagonalSlidingMask(Square square);
 
 		static std::array<Bitboard, 64> InitRookMasks();
 		static std::array<Bitboard, 64> InitBishopMasks();
@@ -131,8 +131,8 @@ namespace ChessCore
 
 		static std::vector<Bitboard> CreateAllBlockerBitboards(Bitboard mask);
 
-		static Bitboard CalculatePossibleRookMoves(uint8_t from_square, Bitboard blockers);
-		static Bitboard CalculatePossibleBishopMoves(uint8_t from_square, Bitboard blockers);
+		static Bitboard CalculatePossibleRookMoves(Square from_square, Bitboard blockers);
+		static Bitboard CalculatePossibleBishopMoves(Square from_square, Bitboard blockers);
 
 		static const std::unique_ptr<Bitboard[]> s_RookMoveMasksArray;
 		static const std::unique_ptr<Bitboard[]> s_BishopMoveMasksArray;

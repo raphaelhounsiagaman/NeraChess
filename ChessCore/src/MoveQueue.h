@@ -36,7 +36,7 @@ namespace ChessCore
 		}
 
 	private:
-		std::queue<int> m_Queue;
+		std::queue<Move> m_Queue;
 		std::mutex m_Mutex;
 
 	};

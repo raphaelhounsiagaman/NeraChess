@@ -5,64 +5,87 @@
 
 namespace ChessCore
 {
-
-	using Square = uint8_t;
 	using Bitboard = uint64_t;
 
-	namespace SquareUtil
+	struct Square
 	{
-		constexpr Square a1 = 0;
-		constexpr Square b1 = 1;
-		constexpr Square c1 = 2;
-		constexpr Square d1 = 3;
-		constexpr Square e1 = 4;
-		constexpr Square f1 = 5;
-		constexpr Square g1 = 6;
-		constexpr Square h1 = 7;
+		Square() = default;
+		Square(uint8_t file, uint8_t rank) { square = file + rank * 8; };
+		Square(uint8_t s) : square(s) {}
 
-		constexpr Square a8 = 56;
-		constexpr Square b8 = 57;
-		constexpr Square c8 = 58;
-		constexpr Square d8 = 59;
-		constexpr Square e8 = 60;
-		constexpr Square f8 = 61;
-		constexpr Square g8 = 62;
-		constexpr Square h8 = 63;
+		uint8_t square{ 0 };
 
-		constexpr Bitboard FileA = 0x101010101010101;
-		constexpr Bitboard FileH = FileA << 7;
-		constexpr Bitboard NotAFile = ~FileA;
-		constexpr Bitboard NotHFile = ~FileH;
+		operator uint8_t() const { return square; }
 
-		constexpr Bitboard Rank1 = 0b11111111;
-		constexpr Bitboard Rank2 = Rank1 << (8 * 1);
-		constexpr Bitboard Rank3 = Rank1 << (8 * 2);
-		constexpr Bitboard Rank4 = Rank1 << (8 * 3);
-		constexpr Bitboard Rank5 = Rank1 << (8 * 4);
-		constexpr Bitboard Rank6 = Rank1 << (8 * 5);
-		constexpr Bitboard Rank7 = Rank1 << (8 * 6);
-		constexpr Bitboard Rank8 = Rank1 << (8 * 7);
+		Square& operator++()
+		{
+			++square;
+			return *this;
+		}
 
-		uint8_t CoordsToSquare(uint8_t file, uint8_t rank);
+		Square operator++(int)
+		{
+			Square old = *this;
+			++(*this);
+			return old;
+		}
 
-		uint8_t GetRank(Square square);
+		bool operator<(int other) const
+		{
+			return square < other;
+		}
 
-		uint8_t GetFile(Square square);
+		bool operator>(int other) const
+		{
+			return square > other;
+		}
 
-		bool IsValidSquare(Square square);
+		uint8_t GetRank() const;
+		uint8_t GetFile() const;
 
-		bool IsValidCoordinate(uint8_t file, uint8_t rank);
+		std::string ToString() const; 
 
-		bool LightSquare(uint8_t file, uint8_t rank);
+		bool IsValid() const;
+		bool IsLightSquare() const;
+		bool ContainsSquare(Bitboard board) const;
 
-		bool LightSquare(uint8_t square);
+		static bool IsValidCoordinates(uint8_t file, uint8_t rank);
 
-		bool ContainsSquare(Bitboard bitboard, uint8_t square);
+		static const Square a1;
+		static const Square b1;
+		static const Square c1;
+		static const Square d1;
+		static const Square e1;
+		static const Square f1;
+		static const Square g1;
+		static const Square h1;
 
-		std::string CoordsAsString(uint8_t file, uint8_t rank);
+		static const Square a8;
+		static const Square b8;
+		static const Square c8;
+		static const Square d8;
+		static const Square e8;
+		static const Square f8;
+		static const Square g8;
+		static const Square h8;
 
-		std::string SquareAsString(uint8_t square);
-	}
+		static const Bitboard FileA;
+		static const Bitboard FileH;
+		static const Bitboard NotAFile;
+		static const Bitboard NotHFile;
+		 
+		static const Bitboard Rank1;
+		static const Bitboard Rank2;
+		static const Bitboard Rank3;
+		static const Bitboard Rank4;
+		static const Bitboard Rank5;
+		static const Bitboard Rank6;
+		static const Bitboard Rank7;
+		static const Bitboard Rank8;
 
+	};
+
+	Square operator+(const Square& lhs, int rhs);
+	Square operator+(int lhs, const Square& rhs);
 
 } // namespace ChessCore

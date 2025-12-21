@@ -19,7 +19,7 @@ public:
 	~NeraChessBot();
 
 	virtual ChessCore::Move GetNextMove(const ChessCore::ChessBoard& givenBoard, const ChessCore::Clock& timer) override;
-	virtual void ResetGame() override { m_OpeningBookAvailable = true; m_StopSearching = true; };
+	virtual void ResetGame() override { m_OpeningBookAvailable = true; m_StopSearching = false; };
 	virtual void StopSearching() override { m_StopSearching = true; };
 
 private:
@@ -81,7 +81,7 @@ private:
 
 	// Timing Stuff
 	std::chrono::time_point<std::chrono::steady_clock> m_SearchStartTime;
-	std::chrono::seconds m_TimeLimitS{15};
+	std::chrono::seconds m_TimeLimitS{ 15 };
 	std::atomic<bool> m_TimeUp{ false };
 
 	// AI Stuff

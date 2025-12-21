@@ -138,17 +138,17 @@ void FirstNNBot::SortMoves(const ChessCore::ChessBoard& board, ChessCore::MoveLi
 	for (uint8_t i = 0; i < moves.size(); i++)
 	{
 		float moveScoreGuess = 0;
-		ChessCore::Piece movePiece = ChessCore::MoveUtil::GetMovePiece(moves[i]);
-		ChessCore::Piece capturePiece = board.GetPiece(ChessCore::MoveUtil::GetTargetSquare(moves[i]));
+		ChessCore::Piece movePiece = moves[i].GetMovePiece();
+		ChessCore::Piece capturePiece = board.GetPiece(moves[i].GetTargetSquare());
 
 		if (capturePiece != ChessCore::PieceType::NO_PIECE)
 			moveScoreGuess += 10 * c_PieceValues[capturePiece] - c_PieceValues[movePiece];
-		if (ChessCore::MoveUtil::GetMoveFlags(moves[i]) & ChessCore::MoveFlags::IS_PROMOTION)
-			moveScoreGuess += c_PieceValues[ChessCore::MoveUtil::GetPromoPiece(moves[i])];
+		if (moves[i].GetMoveFlags() & ChessCore::MoveFlags::IS_PROMOTION)
+			moveScoreGuess += c_PieceValues[moves[i].GetPromoPiece()];
 		//if (board.SquareIsAttackedByOpponent(moves[i].TargetSquare))
 		//	moveScoreGuess -= (float)(piece_values[move_piece_type]);
 
-		if (ChessCore::MoveUtil::GetMoveFlags(moves[i]) & ChessCore::MoveFlags::IS_PROMOTION)
+		if (moves[i].GetMoveFlags() & ChessCore::MoveFlags::IS_PROMOTION)
 			moveScoreGuess += 10;
 
 		moveValues[i] = moveScoreGuess;
@@ -222,8 +222,8 @@ std::array<float, 19 * 8 * 8> FirstNNBot::BoardToTensor(const ChessCore::ChessBo
 		ChessCore::Piece piece = board.GetPiece(square);
 		if (piece != ChessCore::PieceType::NO_PIECE)
 		{
-			uint8_t file = ChessCore::SquareUtil::GetFile(square);
-			uint8_t rank = ChessCore::SquareUtil::GetRank(square);
+			uint8_t file = square.GetFile();
+			uint8_t rank = square.GetRank();
 
 			out[piece * 64 + file * 8 + rank] = 1.0f;
 		}

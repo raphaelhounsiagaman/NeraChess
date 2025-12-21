@@ -90,7 +90,7 @@ void GameManagerLayer::RunGame(ChessCore::ChessBoard board)
 		ChessCore::MoveList<218> legalMoves = board.GetLegalMoves();
 		if (std::find(legalMoves.begin(), legalMoves.end(), move) == legalMoves.end())
 		{
-			std::println("Player wants to play illegal move: {}", move);
+			std::println("Player wants to play illegal move: {}", move.ToUCI());
 			break;
 		}
 
@@ -99,8 +99,8 @@ void GameManagerLayer::RunGame(ChessCore::ChessBoard board)
 		m_MoveQueue.Push(move);
 
 		std::println("Move Played: {}{}",
-			ChessCore::SquareUtil::SquareAsString(ChessCore::MoveUtil::GetFromSquare(move)),
-			ChessCore::SquareUtil::SquareAsString(ChessCore::MoveUtil::GetTargetSquare(move)));
+			move.GetStartSquare().ToString(),
+			move.GetTargetSquare().ToString());
 
 		uint16_t gameOverFlags = board.GetGameOver(true);
 		if (gameOverFlags & (uint16_t)ChessCore::GameOverFlags::IS_GAME_OVER)

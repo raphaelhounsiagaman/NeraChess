@@ -166,10 +166,10 @@ double MyBotOld::EvaluateBoard(const ChessCore::BoardState& boardState, bool whi
 		ChessCore::Bitboard squareBB = pieceBB;
 		while (squareBB != 0)
 		{
-			uint8_t square = ChessCore::BitUtil::PopLSB(squareBB);
+			ChessCore::Square square(ChessCore::BitUtil::PopLSB(squareBB));
 
-			uint8_t file = ChessCore::SquareUtil::GetFile(square);
-			uint8_t rank = ChessCore::SquareUtil::GetRank(square);
+			uint8_t file = square.GetFile();
+			uint8_t rank = square.GetRank();
 
 			uint8_t whiteIndex = (7 - rank) * 8 + file;
 			uint8_t blackIndex = square;
@@ -230,17 +230,17 @@ void MyBotOld::SortMoves(const ChessCore::ChessBoard& board, ChessCore::MoveList
 	for (uint8_t i = 0; i < moves.size(); i++)
 	{
 		float moveScoreGuess = 0;
-		ChessCore::Piece movePiece = ChessCore::MoveUtil::GetMovePiece(moves[i]);
-		ChessCore::Piece capturePiece = board.GetPiece(ChessCore::MoveUtil::GetTargetSquare(moves[i]));
+		ChessCore::Piece movePiece = moves[i].GetMovePiece();
+		ChessCore::Piece capturePiece = board.GetPiece(moves[i].GetTargetSquare());
 
 		if (capturePiece != ChessCore::PieceType::NO_PIECE)
 			moveScoreGuess += 10 * m_PieceValues[capturePiece] - m_PieceValues[movePiece];
-		if (ChessCore::MoveUtil::GetMoveFlags(moves[i]) & ChessCore::MoveFlags::IS_PROMOTION)
-			moveScoreGuess += m_PieceValues[ChessCore::MoveUtil::GetPromoPiece(moves[i])];
+		if (moves[i].GetMoveFlags() & ChessCore::MoveFlags::IS_PROMOTION)
+			moveScoreGuess += m_PieceValues[moves[i].GetPromoPiece()];
 		//if (board.SquareIsAttackedByOpponent(moves[i].TargetSquare))
 		//	moveScoreGuess -= (float)(piece_values[move_piece_type]);
 
-		if (ChessCore::MoveUtil::GetMoveFlags(moves[i]) & ChessCore::MoveFlags::IS_PROMOTION)
+		if (moves[i].GetMoveFlags() & ChessCore::MoveFlags::IS_PROMOTION)
 			moveScoreGuess += 10;
 
 		moveValues[i] = moveScoreGuess;
