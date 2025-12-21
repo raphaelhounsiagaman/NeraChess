@@ -7,7 +7,7 @@
 #include <thread>
 #include <chrono>
 
-ChessCore::Move Human::GetNextMove(const ChessCore::ChessBoard& board, const ChessCore::Timer& timer)
+ChessCore::Move Human::GetNextMove(const ChessCore::ChessBoard& board, const ChessCore::Clock& timer)
 {
     NeraCore::Application& app = NeraCore::Application::Get();
 
@@ -24,5 +24,8 @@ ChessCore::Move Human::GetNextMove(const ChessCore::ChessBoard& board, const Che
 
         std::this_thread::sleep_for(std::chrono::milliseconds(50));
     }
+
+    m_StopSearching = false;
+
     return 0;
 }

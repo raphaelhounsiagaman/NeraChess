@@ -67,7 +67,7 @@ private:
 	ChessCore::ChessBoard m_ChessBoard = ChessCore::ChessBoard();
 
 	NeraCore::Color m_LightSquareColor = NeraCore::Color(217, 199, 156);
-	NeraCore::Color m_DarkSquareColor = NeraCore::Color(56, 39, 12);
+	NeraCore::Color m_DarkSquareColor = NeraCore::Color(145, 88, 32);
 
 	float m_MarginProportion = 0.05f;
 	NeraCore::Vec2<uint32_t> m_Margin{ 0, 0 };
@@ -105,7 +105,6 @@ private:
 
 	std::vector<NeraCore::Sound> m_MoveSounds;
 	std::vector<NeraCore::Sound> m_CaptureSounds;
-	std::vector<NeraCore::Sound> m_CastleSounds;
 
 	// Misc 
 

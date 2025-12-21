@@ -20,8 +20,7 @@ namespace NeraCore
 		bool IsResizeable = true;
 		bool VSync = true;
 
-		using EventCallbackFn = std::function<void(Event&)>;
-		EventCallbackFn EventCallback;
+		std::function<void(Event&)> EventCallback;
 
 		RendererSpecification RendererSpec;
 		SoundPlayerSpecification SoundPlayerSpec;

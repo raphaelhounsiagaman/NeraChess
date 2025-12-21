@@ -11,7 +11,8 @@ public:
 	FirstNNBot(const std::string& modelPath = "Ressources/NeuralNetworks/model15b.onnx");
 	~FirstNNBot();
 
-	virtual ChessCore::Move GetNextMove(const ChessCore::ChessBoard& givenBoard, const ChessCore::Timer& timer) override;
+	virtual ChessCore::Move GetNextMove(const ChessCore::ChessBoard& givenBoard, const ChessCore::Clock& timer) override;
+	virtual void ResetGame() override {};
 	virtual void StopSearching() override {};
 
 private:

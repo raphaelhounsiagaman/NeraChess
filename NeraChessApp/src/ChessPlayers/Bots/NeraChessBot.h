@@ -18,7 +18,8 @@ public:
 	NeraChessBot(const std::string& modelPath = "Ressources/NeuralNetworks/model15b.onnx");
 	~NeraChessBot();
 
-	virtual ChessCore::Move GetNextMove(const ChessCore::ChessBoard& givenBoard, const ChessCore::Timer& timer) override;
+	virtual ChessCore::Move GetNextMove(const ChessCore::ChessBoard& givenBoard, const ChessCore::Clock& timer) override;
+	virtual void ResetGame() override { m_OpeningBookAvailable = true; m_StopSearching = true; };
 	virtual void StopSearching() override { m_StopSearching = true; };
 
 private:

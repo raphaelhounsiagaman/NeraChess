@@ -1,7 +1,6 @@
 #pragma once
 
 #include "../ChessPlayer.h"
-#include "Timer.h"
 
 #include <unordered_map>
 
@@ -47,7 +46,8 @@ class MyBotOld : public ChessPlayer
 {
 public:
 	
-	virtual ChessCore::Move GetNextMove(const ChessCore::ChessBoard& givenBoard, const ChessCore::Timer& timer) override;
+	virtual ChessCore::Move GetNextMove(const ChessCore::ChessBoard& givenBoard, const ChessCore::Clock& timer) override;
+	virtual void ResetGame() override {};
 	virtual void StopSearching() override {};
 
 private:

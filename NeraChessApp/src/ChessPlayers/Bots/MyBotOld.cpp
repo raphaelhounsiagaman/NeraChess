@@ -3,7 +3,7 @@
 #include <algorithm>
 #include <chrono>
 
-ChessCore::Move MyBotOld::GetNextMove(const ChessCore::ChessBoard& givenBoard, const ChessCore::Timer& timer)
+ChessCore::Move MyBotOld::GetNextMove(const ChessCore::ChessBoard& givenBoard, const ChessCore::Clock& timer)
 {
 	ChessCore::ChessBoard board = givenBoard;
 

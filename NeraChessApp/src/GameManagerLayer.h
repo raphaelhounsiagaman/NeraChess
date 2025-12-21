@@ -3,12 +3,13 @@
 #include "Core/Layer.h"
 
 #include "ChessBoard.h"
-#include "Timer.h"
+#include "Clock.h"
+#include "MoveQueue.h"
 
 #include "ChessPlayers/AllPlayer.h"
 
 #include <memory>
-#include <mutex>
+#include <atomic>
 
 class GameManagerLayer : public NeraCore::Layer
 {
@@ -20,33 +21,31 @@ public:
 	virtual void OnUpdate(float deltaTime) override;
 	virtual void OnRender() override {};
 
-	template<typename TPlayer1, typename TPlayer2, typename... Args1, typename... Args2>
-	void SetPlayerTypes(Args1&&... args1, Args2&&... args2);
+	template<typename TPlayer1, typename TPlayer2>
+	void SetPlayerTypes();
 
 	void StartGame();
-
-	void GetMoveFromPlayer(ChessPlayer* player);
-
 	void StopGame();
 
 private:
+	void RunGame(ChessCore::ChessBoard board);
+	void Reset();
 
 private:
 
-	ChessCore::Timer m_Timer{};
+	ChessCore::Clock m_Clock{};
 	ChessCore::ChessBoard m_ChessBoard{};
 
-	std::mutex m_MovePlayedMutex;
-	ChessCore::Move m_MovePlayed = 0;
+	ChessCore::MoveQueue m_MoveQueue;
 
 	std::unique_ptr<ChessPlayer> m_Player1 = std::make_unique<Human>();
 	std::unique_ptr<ChessPlayer> m_Player2 = std::make_unique<NeraChessBot>();
 
-	bool m_Player1IsWhite = false;
-	bool m_Player1Turn = true;
+	bool m_Player1IsWhite = true;
+	std::atomic<bool> m_Player1Turn = true;
 
-	bool m_GameStarted = false;
-	bool m_GameStopRequested = false;
+	std::atomic<bool> m_GameStarted = false;
+	std::atomic<bool> m_GameStopRequested = false;
 };
 
 

@@ -35,7 +35,7 @@ FirstNNBot::~FirstNNBot()
 	m_Env.release();
 }
 
-ChessCore::Move FirstNNBot::GetNextMove(const ChessCore::ChessBoard& givenBoard, const ChessCore::Timer& timer)
+ChessCore::Move FirstNNBot::GetNextMove(const ChessCore::ChessBoard& givenBoard, const ChessCore::Clock& timer)
 {
 	ChessCore::ChessBoard board = givenBoard;
 	

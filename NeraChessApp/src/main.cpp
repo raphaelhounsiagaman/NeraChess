@@ -17,5 +17,6 @@ int main()
 	app.PushLayer<BoardLayer>();
 	app.PushLayer<GameManagerLayer>();
 	app.PushLayer<UILayer>();
+
 	app.Run();
 }

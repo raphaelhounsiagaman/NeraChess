@@ -13,7 +13,7 @@
 #include <future>
 #include <fstream>
 
-constexpr float INF = 1e9;
+constexpr float INF = 1e2;
 
 NeraChessBot::NeraChessBot(const std::string& modelPath)
  : m_OpeningBook(c_OpeningBookPath)
@@ -54,7 +54,7 @@ NeraChessBot::~NeraChessBot()
 	m_Env.release();
 }
 
-ChessCore::Move NeraChessBot::GetNextMove(const ChessCore::ChessBoard& givenBoard,const ChessCore::Timer& timer)
+ChessCore::Move NeraChessBot::GetNextMove(const ChessCore::ChessBoard& givenBoard,const ChessCore::Clock& timer)
 {
 	m_SearchStartTime = std::chrono::steady_clock::now();
 	m_TimeUp = false;
@@ -81,6 +81,8 @@ ChessCore::Move NeraChessBot::GetNextMove(const ChessCore::ChessBoard& givenBoar
 	
 	if (m_StopSearching)
 		return givenBoard.GetLegalMoves()[0];
+
+	m_StopSearching = false;
 
 	return bestMove;
 }
