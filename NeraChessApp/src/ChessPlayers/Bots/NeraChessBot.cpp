@@ -16,42 +16,13 @@
 constexpr float INF = 1e2;
 
 NeraChessBot::NeraChessBot(const std::string& modelPath)
- : m_OpeningBook(c_OpeningBookPath)
+ : m_OpeningBook(c_OpeningBookPath), m_NeuralNetwork(modelPath)
 {
-	if (std::filesystem::exists(modelPath))
-		std::cout << "Model found\n";
-	else
-	{
-		std::cout << "Model missing (" + modelPath + ")\n";
-		return;
-	}
-
-	// Initialization of OnnxRuntime
-	std::wstring wide(modelPath.begin(), modelPath.end());
-	const wchar_t* wmodelPath = wide.c_str();
-	m_SessionOptions.SetGraphOptimizationLevel(GraphOptimizationLevel::ORT_ENABLE_ALL);
-	m_SessionOptions.SetIntraOpNumThreads(std::thread::hardware_concurrency());
-
-	m_CudaOptions.arena_extend_strategy = 0;
-	m_CudaOptions.cudnn_conv_algo_search = OrtCudnnConvAlgoSearchHeuristic;
-	m_CudaOptions.do_copy_in_default_stream = 1;
-
-	m_SessionOptions.AppendExecutionProvider_CUDA(m_CudaOptions);
-	m_Session = Ort::Session(m_Env, wmodelPath, m_SessionOptions);
-
-	m_InputVector.resize(1);
-
 	if (!m_OpeningBook)
 	{
 		std::cout << "Opening book missing (" + c_OpeningBookPath + ")\n";
 		m_OpeningBookAvailable = false;
 	}
-}
-
-NeraChessBot::~NeraChessBot()
-{
-	m_Session.release();
-	m_Env.release();
 }
 
 ChessCore::Move NeraChessBot::GetNextMove(const ChessCore::ChessBoard& givenBoard,const ChessCore::Clock& timer)
@@ -283,6 +254,13 @@ float NeraChessBot::PrincipalVariationSearch(ChessCore::ChessBoard& board, float
 	if (legalMoves.size() == 0)
 		return EvaluateTerminal(board);
 
+	for (ChessCore::Move move : legalMoves)
+	{
+		board.MakeMove(move);
+		m_NeuralNetwork.QueuePosition(board);
+		board.UndoMove(move);
+	}
+
 	SortMoves(board, legalMoves, ply, ttProbePtr ? ttProbePtr->bestMove : ChessCore::Move(0));
 
 	float bestScore = -INF;
@@ -451,6 +429,13 @@ float NeraChessBot::QuiescenceSearch(ChessCore::ChessBoard& board, float alpha, 
 	if (forcingMoves.size() == 0)
 		return EvaluateBoard(board);
 
+	for (ChessCore::Move move : forcingMoves)
+	{
+		board.MakeMove(move);
+		m_NeuralNetwork.QueuePosition(board);
+		board.UndoMove(move);
+	}
+
 	if (forcingMoves.size() > 4)
 		SortMoves(board, forcingMoves, ply, ttEntryPtr ? ttEntryPtr->bestMove : ChessCore::Move(0));
 
@@ -530,41 +515,7 @@ void NeraChessBot::SortMoves(const ChessCore::ChessBoard& board, ChessCore::Move
 
 float NeraChessBot::EvaluateBoard(const ChessCore::ChessBoard& board)
 {
-	auto cacheIt = s_EvaluationCache.find(board.GetZobristKey());
-	if (cacheIt != s_EvaluationCache.end())
-		return cacheIt->second;
-
-	m_NodesEvaluated++;
-	m_InputArray = BoardToTensor(board);
-
-	Ort::Value inputTensor = Ort::Value::CreateTensor<float>(
-		m_MemoryInfo,
-		m_InputArray.data(),
-		m_InputArray.size(),
-		c_InputShape.data(),
-		c_InputShape.size()
-	);
-
-	m_InputVector[0] = std::move(inputTensor);
-
-	Ort::RunOptions options;
-
-	std::vector<Ort::Value> outputVector = m_Session.Run(
-		options,
-		&m_InputName,
-		m_InputVector.data(),
-		m_InputVector.size(),
-		&m_OutputName,
-		1
-	);
-
-	const float eval = *outputVector.front().GetTensorData<float>();
-
-	const float perspectiveEval = ((eval * float(board.GetBoardState().HasFlag(ChessCore::BoardStateFlags::WhiteToMove) ? 1.f : -1.f)) + FastStaticEval(board)) / 2;
-
-	s_EvaluationCache[board.GetZobristKey()] = perspectiveEval;
-
-	return perspectiveEval;
+	return m_NeuralNetwork.GetEvaluation(board);
 }
 
 float NeraChessBot::FastStaticEval(const ChessCore::ChessBoard& board)
@@ -599,59 +550,7 @@ float NeraChessBot::EvaluateTerminal(const ChessCore::ChessBoard& board)
 		return 0;
 }
 
-std::array<float, 19 * 8 * 8> NeraChessBot::BoardToTensor(const ChessCore::ChessBoard& board) const
-{
-	std::array<float, 19 * 8 * 8> out{};
 
-	const ChessCore::BoardState& boardState = board.GetBoardState();
-
-	for (ChessCore::Square square = 0; square < 64; square++)
-	{
-		ChessCore::Piece piece = board.GetPiece(square);
-		if (piece != ChessCore::PieceType::NO_PIECE)
-		{
-			uint8_t file = square.GetFile();
-			uint8_t rank = square.GetRank();
-
-			out[piece * 64 + file * 8 + rank] = 1.0f;
-		}
-	}
-
-	if (boardState.HasFlag(ChessCore::BoardStateFlags::WhiteToMove))
-	{
-		float* ptr = &out[12 * 64];
-		std::fill(ptr, ptr + 64, 1.0f);
-	}
-
-	auto fill_castle = [&](int channel)
-		{
-			float* ptr = &out[channel * 64];
-			std::fill(ptr, ptr + 64, 1.0f);
-		};
-
-	if (boardState.HasFlag(ChessCore::BoardStateFlags::CanWhiteCastleKing)) fill_castle(13);
-	if (boardState.HasFlag(ChessCore::BoardStateFlags::CanWhiteCastleQueen)) fill_castle(14);
-	if (boardState.HasFlag(ChessCore::BoardStateFlags::CanBlackCastleKing)) fill_castle(15);
-	if (boardState.HasFlag(ChessCore::BoardStateFlags::CanBlackCastleQueen)) fill_castle(16);
-
-	// en passant
-	if (boardState.HasFlag(ChessCore::BoardStateFlags::CanEnPassent))
-	{
-		uint8_t file = boardState.enPassantFile;
-		if (file >= 0 && file <= 7)
-		{
-			float* ptr = &out[17 * 64 + file * 8];
-			std::fill(ptr, ptr + 8, 1.0f); // fill only that file
-		}
-	}
-
-	// halfmove clock normalized
-	float val = static_cast<float>(board.GetHalfMoveClock()) / 50.0f;
-	float* ptr = &out[18 * 64];
-	std::fill(ptr, ptr + 64, val);
-
-	return out;
-}
 
 int NeraChessBot::LateMoveReduction(int depth, uint8_t ply, uint8_t moveIndex) const
 {
