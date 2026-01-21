@@ -3,7 +3,6 @@
 #include <cstdint>
 #include <array>
 
-
 namespace ChessCore
 {
     typedef uint64_t Bitboard;

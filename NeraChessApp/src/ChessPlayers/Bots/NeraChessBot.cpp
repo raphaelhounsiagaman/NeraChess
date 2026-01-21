@@ -13,7 +13,7 @@
 #include <future>
 #include <fstream>
 
-constexpr float INF = 1e2;
+constexpr float INF = 1e3;
 
 NeraChessBot::NeraChessBot(const std::string& modelPath)
  : m_OpeningBook(c_OpeningBookPath), m_NeuralNetwork(modelPath)
@@ -48,7 +48,7 @@ ChessCore::Move NeraChessBot::GetNextMove(const ChessCore::ChessBoard& givenBoar
 	}
 
 	ChessCore::ChessBoard board = givenBoard;
-	bestMove = IterativeDeepeningSearch(board, 200);
+	bestMove = IterativeDeepeningSearch(board, 100);
 	
 	if (m_StopSearching)
 	{
@@ -73,10 +73,7 @@ ChessCore::Move NeraChessBot::GetOpeningBookMove(const ChessCore::ChessBoard& bo
 		size_t position = line.find(',');
 		if (position == std::string::npos) continue;
 
-		// Extract fen
-		// Avoid extra allocations: compare directly
 		if (line.compare(0, position, fen) == 0) {
-			// Found → extract move
 			uciMove = line.substr(position + 1);
 			break;
 		}
@@ -104,7 +101,7 @@ ChessCore::Move NeraChessBot::GetOpeningBookMove(const ChessCore::ChessBoard& bo
 	return 0;
 }
 
-ChessCore::Move NeraChessBot::IterativeDeepeningSearch(ChessCore::ChessBoard& board, int maxDepth)
+ChessCore::Move NeraChessBot::IterativeDeepeningSearch(ChessCore::ChessBoard& board, uint32_t maxDepth)
 {
 	if (m_StopSearching)
 		return 0;
@@ -120,15 +117,15 @@ ChessCore::Move NeraChessBot::IterativeDeepeningSearch(ChessCore::ChessBoard& bo
 
 	uint8_t depthReached = 0;
 
-	for (uint8_t depth = 1; depth <= maxDepth; depth++)
+	for (m_CurrentDepth = 1; m_CurrentDepth <= maxDepth; m_CurrentDepth++)
 	{
 		m_SearchID++;
-		ChessCore::Move move = PVSRoot(board, depth);
+		ChessCore::Move move = PVSRoot(board, m_CurrentDepth);
 
 		if (m_TimeUp || m_StopSearching) break;
 
 		bestMove = move;
-		depthReached = depth;
+		depthReached = m_CurrentDepth;
 
 		std::cout << "Thinking of move " <<
 			bestMove.GetStartSquare().ToString() <<
@@ -149,6 +146,7 @@ ChessCore::Move NeraChessBot::IterativeDeepeningSearch(ChessCore::ChessBoard& bo
 		
 	}
 
+	std::cout << "Nodes per second: " << (int)(m_NodesSearched / 15) << "\n";
 	std::cout << "Searched Depth " << (int)depthReached << " fully\n";
 
 	return bestMove;
@@ -251,15 +249,8 @@ float NeraChessBot::PrincipalVariationSearch(ChessCore::ChessBoard& board, float
 		return beta;
 
 	ChessCore::MoveList<218> legalMoves = board.GetLegalMoves();
-	if (legalMoves.size() == 0)
+	if (board.GetGameOver())
 		return EvaluateTerminal(board);
-
-	for (ChessCore::Move move : legalMoves)
-	{
-		board.MakeMove(move);
-		m_NeuralNetwork.QueuePosition(board);
-		board.UndoMove(move);
-	}
 
 	SortMoves(board, legalMoves, ply, ttProbePtr ? ttProbePtr->bestMove : ChessCore::Move(0));
 
@@ -312,7 +303,7 @@ float NeraChessBot::PrincipalVariationSearch(ChessCore::ChessBoard& board, float
 			// Futility Pruning
 
 			float futilityMargin = ply;
-
+			
 			if (-EvaluateBoard(board) + futilityMargin < alpha)
 			{
 				board.UndoMove(move);
@@ -429,13 +420,6 @@ float NeraChessBot::QuiescenceSearch(ChessCore::ChessBoard& board, float alpha, 
 	if (forcingMoves.size() == 0)
 		return EvaluateBoard(board);
 
-	for (ChessCore::Move move : forcingMoves)
-	{
-		board.MakeMove(move);
-		m_NeuralNetwork.QueuePosition(board);
-		board.UndoMove(move);
-	}
-
 	if (forcingMoves.size() > 4)
 		SortMoves(board, forcingMoves, ply, ttEntryPtr ? ttEntryPtr->bestMove : ChessCore::Move(0));
 
@@ -515,7 +499,7 @@ void NeraChessBot::SortMoves(const ChessCore::ChessBoard& board, ChessCore::Move
 
 float NeraChessBot::EvaluateBoard(const ChessCore::ChessBoard& board)
 {
-	return m_NeuralNetwork.GetEvaluation(board);
+	return m_NeuralNetwork.GetEvaluation(board) + 2 * FastStaticEval(board);
 }
 
 float NeraChessBot::FastStaticEval(const ChessCore::ChessBoard& board)
@@ -535,32 +519,33 @@ float NeraChessBot::FastStaticEval(const ChessCore::ChessBoard& board)
 
 bool NeraChessBot::PositiveSEE(const ChessCore::ChessBoard& board, ChessCore::Move move)
 {
-	// implement a small SEE routine that returns true if capture is profitable (or equal).
-	// Quick cheap version: victim_value - attacker_value >= 0
-	int attacker = (int)c_PieceValues[move.GetMovePiece()];
-	int victim = (int)c_PieceValues[board.GetPiece(move.GetTargetSquare())];
+	float attacker = c_PieceValues[move.GetMovePiece()];
+	float victim = c_PieceValues[board.GetPiece(move.GetTargetSquare())];
 	return (victim - attacker) >= 0;
 }
 
 float NeraChessBot::EvaluateTerminal(const ChessCore::ChessBoard& board)
 {
-	if (board.IsInCheck())
+	uint16_t overFlags = board.GetGameOver();
+
+	if (overFlags & ChessCore::GameOverFlags::IS_CHECKMATE)
 		return -INF + board.GetFullMoveClock();
 	else
 		return 0;
 }
 
-
-
 int NeraChessBot::LateMoveReduction(int depth, uint8_t ply, uint8_t moveIndex) const
 {
-	if (ply < 3 || moveIndex < 2)
+	if (ply < 4 || moveIndex < 3)
 		return 0;
 	return 1 + moveIndex / 4;
 }
 
 bool NeraChessBot::IsTimeUp()
 {
+	if (m_CurrentDepth <= 1)
+		return false;
+
 	if (m_TimeUp)
 		return true;
 	m_TimeUp = (std::chrono::steady_clock::now() - m_SearchStartTime) >= m_TimeLimitS;

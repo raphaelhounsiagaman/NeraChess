@@ -28,11 +28,9 @@ namespace ChessCore
     }
 
     const std::array<std::array<uint64_t, 64>, 12> Zobrist::piecesArray = GetRandom2DArray<12, 64>();
-    // Each player has 4 possible castling right states: none, queenside, kingside, both.
-    // So, taking both sides into account, there are 16 possible states.
+
     const std::array<uint64_t, 16> Zobrist::castlingRights = GetRandomArray<16>();
-    // En passant file (0 = no ep).
-    //  Rank does not need to be specified since side to move is included in key
+
     const std::array<uint64_t, 9> Zobrist::enPassantFile = GetRandomArray<9>();
     const uint64_t Zobrist::sideToMove = rng();
 

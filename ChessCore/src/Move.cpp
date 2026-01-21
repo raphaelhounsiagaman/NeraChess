@@ -28,7 +28,7 @@ namespace ChessCore
 			switch (moveStr[4])
 			{
 			case 'q':
-				promoPiece = PieceType::WHITE_QUEEN; // Color can't be determined here.
+				promoPiece = PieceType::WHITE_QUEEN;
 				break;
 			case 'r':
 				promoPiece = PieceType::WHITE_ROOK;

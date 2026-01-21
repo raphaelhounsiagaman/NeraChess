@@ -46,7 +46,7 @@ from torch.utils.data import Dataset, DataLoader
 
 # ----------------------------- Dataset -----------------------------
 class FenDataset(Dataset):
-    def __init__(self, csv_path: str, index_path: str = None, clip_pawns: float = 15.0):
+    def __init__(self, csv_path: str, index_path: str = None, clip_pawns: float = 20.0):
         self.csv_path = Path(csv_path)
         self.clip_pawns = clip_pawns
         if index_path is None:
@@ -162,9 +162,9 @@ class ChessResNet(nn.Module):
         self.stem_conv = nn.Conv2d(in_channels, filters, 3, padding=1, bias=False)
         self.stem_bn = nn.BatchNorm2d(filters)
         self.blocks = nn.Sequential(*[ResidualBlock(filters) for _ in range(blocks)])
-        self.val_conv = nn.Conv2d(filters, 64, 1, bias=False)
-        self.val_bn = nn.BatchNorm2d(64)
-        self.val_fc1 = nn.Linear(64*8*8, 128)
+        self.val_conv = nn.Conv2d(filters, 32, 1, bias=False)
+        self.val_bn = nn.BatchNorm2d(32)
+        self.val_fc1 = nn.Linear(32*8*8, 128)
         self.val_fc2 = nn.Linear(128, 1)
     def forward(self, x):
         x = F.relu(self.stem_bn(self.stem_conv(x)))
@@ -190,7 +190,7 @@ def collate_fn(batch):
 def train(args):
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     print(f"Device: {device}")
-    dataset = FenDataset(args.csv, clip_pawns=15.0)
+    dataset = FenDataset(args.csv, clip_pawns=20.0)
     loader = DataLoader(dataset, batch_size=args.batch_size, shuffle=True, num_workers=args.workers,
                         pin_memory=True if device.type=='cuda' else False, collate_fn=collate_fn)
     model = ChessResNet(in_channels=19, filters=args.filters, blocks=args.blocks).to(device)

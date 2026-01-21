@@ -21,15 +21,22 @@ NeuralNetwork::NeuralNetwork(const std::string& modelPath)
 	m_SessionOptions.SetGraphOptimizationLevel(GraphOptimizationLevel::ORT_ENABLE_ALL);
 	m_SessionOptions.SetIntraOpNumThreads(std::thread::hardware_concurrency());
 
-	m_CudaOptions.arena_extend_strategy = 0;
-	m_CudaOptions.cudnn_conv_algo_search = OrtCudnnConvAlgoSearchHeuristic;
-	m_CudaOptions.do_copy_in_default_stream = 1;
-
-	m_SessionOptions.AppendExecutionProvider_CUDA(m_CudaOptions);
+	//m_CudaOptions.arena_extend_strategy = 0;
+	//m_CudaOptions.cudnn_conv_algo_search = OrtCudnnConvAlgoSearchHeuristic;
+	//m_CudaOptions.do_copy_in_default_stream = 1;
+	//
+	//m_SessionOptions.AppendExecutionProvider_CUDA(m_CudaOptions);
 	m_Session = Ort::Session(m_Env, wmodelPath, m_SessionOptions);
 
 	m_InputBuffer.resize(m_BatchSize * c_InputTensorSize);
 	m_InfoVector.reserve(m_BatchSize);
+
+	//ChessCore::ChessBoard board{"r1b1kb1r/1pp2ppp/p1p2n2/8/3qP3/P1N2N2/1PP2PPP/R1B1K2R w KQkq - 0 9"};
+
+	//std::print("Evaluation of position: {}", GetEvaluation(board));
+
+
+
 }
 
 NeuralNetwork::~NeuralNetwork()
@@ -40,10 +47,6 @@ NeuralNetwork::~NeuralNetwork()
 
 float NeuralNetwork::GetEvaluation(const ChessCore::ChessBoard& board)
 {
-	auto cacheIt = s_EvaluationCache.find(board.GetZobristKey());
-	if (cacheIt != s_EvaluationCache.end())
-		return cacheIt->second;
-
 	QueuePosition(board);
 	EvaluateQueue();
 	return s_EvaluationCache[board.GetZobristKey()];
@@ -125,6 +128,9 @@ void NeuralNetwork::BoardToTensor(const ChessCore::ChessBoard& board, float* out
 
 void NeuralNetwork::EvaluateQueue()
 {
+	if (m_InfoVector.size() == 0)
+		return;
+
 	m_InputShape[0] = m_InfoVector.size();
 
 	Ort::Value inputTensor = Ort::Value::CreateTensor<float>(

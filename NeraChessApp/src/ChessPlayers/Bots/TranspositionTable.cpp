@@ -86,14 +86,8 @@ void TranspositionTable::Write(TTEntry& e, uint64_t key, float value, int8_t dep
 
 int TranspositionTable::ReplacementScore(const TTEntry& e, int newDepth, int newAge) const
 {
-	// Common approach:
-	// Prefer overwriting:
-	//   - shallow entries
-	//   - old entries
-	//   - empty entries (key == 0)
 	if (e.zobristKey == 0) return 1'000'000'000;
 
-	// Example: weight age more than depth
 	int agePenalty = (newAge - e.age);
 	int depthPenalty = (e.depth - newDepth);
 

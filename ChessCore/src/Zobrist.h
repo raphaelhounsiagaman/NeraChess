@@ -12,11 +12,9 @@ namespace ChessCore
         static uint64_t CalculateZobristKey(ChessBoard board);
 
         static const std::array<std::array<uint64_t, 64>, 12> piecesArray;
-        // Each player has 4 possible castling right states: none, queenside, kingside, both.
-        // So, taking both sides into account, there are 16 possible states.
+ 
         static const std::array<uint64_t, 16> castlingRights;
-        // En passant file (0 = no ep).
-        //  Rank does not need to be specified since side to move is included in key
+
         static const std::array<uint64_t, 9> enPassantFile;
         static const uint64_t sideToMove;
 

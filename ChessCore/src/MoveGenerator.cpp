@@ -601,53 +601,51 @@ namespace ChessCore
 				int squareIndex = m_FriendlyKingSquare + directionOffset * (i + 1);
 				rayMask |= 1ULL << squareIndex;
 
-				// This square contains a piece
+				
 				if (m_AllPieces & (1ULL << squareIndex))
 				{
 					if (m_FriendlyPieces & (1ULL << squareIndex))
 					{
-						// First friendly piece we have come across in this direction, so it might be pinned
+						
 						if (!isFriendlyPieceAlongRay)
 						{
 							isFriendlyPieceAlongRay = true;
 						}
-						// This is the second friendly piece we've found in this direction, therefore pin is not possible
+						
 						else
 						{
 							break;
 						}
 					}
-					// This square contains an enemy piece
+					
 					else
 					{
 						Piece piece = GetPiece(squareIndex);
 
-						// Check if piece is in bitmask of pieces able to move in current direction
+						
 						if (isDiagonal && piece.IsDiagonalSlider() || !isDiagonal && piece.IsOrthogonalSlider())
 						{
-							// Friendly piece blocks the check, so this is a pin
+							
 							if (isFriendlyPieceAlongRay)
 							{
 								m_PinRays |= rayMask;
 							}
-							// No friendly piece blocking the attack, so this is a check
+							
 							else
 							{
 								m_CheckRayBitmask |= rayMask;
-								m_InDoubleCheck = m_InCheck; // if already in check, then this is double check
+								m_InDoubleCheck = m_InCheck;
 								m_InCheck = true;
 							}
 							break;
 						}
 						else
 						{
-							// This enemy piece is not able to move in the current direction, and so is blocking any checks/pins
 							break;
 						}
 					}
 				}
 			}
-			// Stop searching for pins if in double check, as the king is the only piece able to move in that case anyway
 			if (m_InDoubleCheck)
 			{
 				break;
@@ -674,14 +672,13 @@ namespace ChessCore
 			}
 		}
 
-		// Pawn attacks
 		m_OpponentPawnAttackMap = 0;
 
 		Bitboard opponentPawnsBoard = m_OpponentPawns;
 		m_OpponentPawnAttackMap = PawnAttacks(opponentPawnsBoard, !m_WhiteToMove);
 		if (m_FriendlyKingSquare.ContainsSquare(m_OpponentPawnAttackMap))
 		{
-			m_InDoubleCheck = m_InCheck; // if already in check, then this is double check
+			m_InDoubleCheck = m_InCheck;
 			m_InCheck = true;
 			Bitboard possiblePawnAttackOrigins = m_WhiteToMove ? s_WhitePawnAttackMasks[m_FriendlyKingSquare] : s_BlackPawnAttackMasks[m_FriendlyKingSquare];
 			Bitboard pawnCheckMap = opponentPawnsBoard & possiblePawnAttackOrigins;
@@ -782,13 +779,11 @@ namespace ChessCore
 
 	void MoveGenerator::CalculateSlidingMoves()
 	{
-		// Limit movement to empty or enemy squares, and must block check if king is in check.
 		Bitboard moveMask = ~m_FriendlyPieces & m_CheckRayBitmask;
 
 		Bitboard othogonalSliders = m_FriendlyOrthogonalSliders;
 		Bitboard diagonalSliders = m_FriendlyDiagonalSliders;
 
-		// Pinned pieces cannot move if king is in check
 		if (m_InCheck)
 		{
 			othogonalSliders &= ~m_PinRays;
@@ -801,7 +796,6 @@ namespace ChessCore
 			int startSquare = BitUtil::PopLSB(othogonalSliders);
 			Bitboard moveSquares = GetSlidingAttacks(startSquare, m_AllPieces, true) & moveMask;
 
-			// If piece is pinned, it can only move along the pin ray
 			if (IsPinned(startSquare))
 			{
 				moveSquares &= s_AlignMask[startSquare][m_FriendlyKingSquare];
@@ -825,7 +819,6 @@ namespace ChessCore
 			int startSquare = BitUtil::PopLSB(diagonalSliders);
 			Bitboard moveSquares = GetSlidingAttacks(startSquare, m_AllPieces, false) & moveMask;
 
-			// If piece is pinned, it can only move along the pin ray
 			if (IsPinned(startSquare))
 			{
 				moveSquares &= s_AlignMask[startSquare][m_FriendlyKingSquare];
@@ -847,7 +840,6 @@ namespace ChessCore
 
 	void MoveGenerator::CalculateKnightMoves()
 	{
-		// bitboard of all non-pinned knights
 		Bitboard knights = m_FriendlyKinghts & m_NotPinRays;
 		Bitboard moveMask = ~m_FriendlyPieces & m_CheckRayBitmask;
 
@@ -899,7 +891,6 @@ namespace ChessCore
 		captureB &= m_CheckRayBitmask & ~promotionRankMask;
 
 
-		// Generate single pawn pushes
 		while (singlePushNoPromotions != 0)
 		{
 			int targetSquare = BitUtil::PopLSB(singlePushNoPromotions);
@@ -914,7 +905,6 @@ namespace ChessCore
 			}
 		}
 
-		// Generate double pawn pushes
 		Bitboard doublePushTargetRankMask = m_WhiteToMove ? Square::Rank4 : Square::Rank5;
 		Bitboard doublePush = BitUtil::Shift(singlePush, pushOffset) & ~m_AllPieces & doublePushTargetRankMask & m_CheckRayBitmask;
 
@@ -1083,7 +1073,7 @@ namespace ChessCore
 	{
 		if (square >= 64)
 		{
-			return 0ULL; // Invalid square
+			return 0ULL;
 		}
 		if (orthogonal)
 		{

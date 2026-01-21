@@ -117,9 +117,6 @@ void BoardLayer::OnRender()
 	DrawFlyingPiece();
 
 	// Draw Timer / Players info
-
-
-
 }
 
 void BoardLayer::DrawBoard()

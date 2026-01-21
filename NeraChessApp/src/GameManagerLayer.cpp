@@ -14,6 +14,11 @@ void GameManagerLayer::SetPlayerTypes()
 	m_Player2 = std::make_unique<TPlayer2>();
 }
 
+GameManagerLayer::~GameManagerLayer()
+{
+	StopGame();
+}
+
 void GameManagerLayer::OnUpdate(float deltaTime)
 {
 
@@ -36,6 +41,7 @@ void GameManagerLayer::StartGame()
 		return;
 
 	m_ChessBoard = ChessCore::ChessBoard();
+	
 
 	BoardLayer* boardLayer = NeraCore::Application::Get().GetLayer<BoardLayer>();
 	if (boardLayer)
@@ -94,7 +100,7 @@ void GameManagerLayer::RunGame(ChessCore::ChessBoard board)
 			break;
 		}
 
-		board.MakeMove(move);
+		board.MakeMove(move, true);
 
 		m_MoveQueue.Push(move);
 

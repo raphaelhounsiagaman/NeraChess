@@ -6,7 +6,7 @@ def main():
     chkpt_name = input("Wie heist die Datei?")
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     ckpt = torch.load(chkpt_name, map_location=device)
-    model = ChessResNet(in_channels=19, filters=256, blocks=15).to(device)
+    model = ChessResNet(in_channels=19, filters=48, blocks=6).to(device)
     model.load_state_dict(ckpt['model'])
 
     model.eval()

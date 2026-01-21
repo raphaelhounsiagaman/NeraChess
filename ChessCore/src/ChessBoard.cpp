@@ -582,6 +582,8 @@ namespace ChessCore
 
 	uint16_t ChessBoard::GetGameOver(bool gameCheck) const
 	{
+		gameCheck = true;
+
 		if (m_WasBoardStateChanged)
 		{
 			m_LegalMoves = m_MoveGenerator.GenerateMoves(m_BoardState);

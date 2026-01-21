@@ -13,6 +13,7 @@ int main()
 	appSpecs.WindowSpec.Height = 720;
 
 	NeraCore::Application app(appSpecs);
+
 	app.PushLayer<BackgroundLayer>();
 	app.PushLayer<BoardLayer>();
 	app.PushLayer<GameManagerLayer>();
