@@ -39,7 +39,7 @@ private:
 	ChessCore::MoveQueue m_MoveQueue;
 
 	std::unique_ptr<ChessPlayer> m_Player1 = std::make_unique<Human>();
-	std::unique_ptr<ChessPlayer> m_Player2 = std::make_unique<Human>();
+	std::unique_ptr<ChessPlayer> m_Player2 = std::make_unique<NeraChessBot>();
 
 	bool m_Player1IsWhite = true;
 	std::atomic<bool> m_Player1Turn = true;

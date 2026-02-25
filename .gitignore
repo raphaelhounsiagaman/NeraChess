@@ -12,10 +12,8 @@ ChessAITrainingStuff/data
 Makefile
 NeraChessApp/imgui.ini
 
-# Big Files
-NeraChessApp/vendor/onnxruntime-win-x64-gpu-1.23.2/lib/onnxruntime.pdb
-NeraChessApp/vendor/onnxruntime-win-x64-gpu-1.23.2/lib/onnxruntime_providers_cuda.dll
-NeraChessApp/vendor/onnxruntime-win-x64-gpu-1.23.2/lib/onnxruntime_providers_cuda.pdb
+# Big Library
+NeraChessApp/vendor/onnxruntime-win-x64-gpu-1.24.2
 
 # Exclude
 !vendor

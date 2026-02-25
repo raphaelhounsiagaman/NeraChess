@@ -29,12 +29,12 @@ project "NeraChessApp"
     "../NeraCore/vendor/SDL2_image/include",
     "../NeraCore/vendor/SDL2_mixer/include",
 
-    "vendor/onnxruntime-win-x64-gpu-1.23.2/include",
+    "vendor/onnxruntime-win-x64-gpu-1.24.2/include",
   }
 
   libdirs
   {
-    "vendor/onnxruntime-win-x64-gpu-1.23.2/lib",
+    "vendor/onnxruntime-win-x64-gpu-1.24.2/lib",
   }
 
   links
@@ -57,7 +57,7 @@ project "NeraChessApp"
   {
     '{COPY} "%{prj.location}/../bin/%{cfg.buildcfg}/NeraCore/**.dll" "%{cfg.targetdir}"',
 
-    '{COPY} "%{prj.location}/vendor/onnxruntime-win-x64-gpu-1.23.2/lib/**.dll" "%{cfg.targetdir}"',
+    '{COPY} "%{prj.location}/vendor/onnxruntime-win-x64-gpu-1.24.2/lib/**.dll" "%{cfg.targetdir}"',
   }
 
   -- SYSTEM SPECIFICS
