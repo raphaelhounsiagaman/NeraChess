@@ -1,5 +1,7 @@
 # NeraChess
 
+![NeraChess Screenshot](<assets/screenshots/NeraChessUIStartingPosition.png>)
+
 NeraChess is a chess engine written in modern C++.  
 It combines classical search techniques with neural network evaluation using ONNX Runtime and CUDA.
 
@@ -170,7 +172,7 @@ https://github.com/microsoft/onnxruntime/releases/download/v1.24.2/onnxruntime-w
 Extract the archive into:
 
 ```
-NeraChess/NeraChessApp/vendor
+NeraChessApp/vendor
 ```
 
 The extracted folder should contain at least:
@@ -180,8 +182,6 @@ include/
 lib/
 ```
 
-
-
 ---
 
 ### 3. Generate Project Files
@@ -189,7 +189,7 @@ lib/
 Run the script located at:
 
 ```
-NeraChess/scripts/Setup-Windows.bat
+scripts/Setup-Windows.bat
 ```
 
 to create Visual Studio 2022 files.
@@ -199,8 +199,6 @@ to create Visual Studio 2022 files.
 ### 4. Build
 
 Open the generated solution in Visual Studio and build in Release mode.
-
-
 
 ---
 
