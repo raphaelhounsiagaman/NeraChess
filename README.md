@@ -223,22 +223,6 @@ Open the generated solution in Visual Studio and build in Release mode.
 
 ---
 
-## Why This Exists
-
-This engine exists primarily as a learning project.
-
-It explores:
-
-- Bitboards and magic bitboards
-- Zobrist hashing
-- Search tree optimization
-- Neural network integration in C++
-- Trade-offs between evaluation accuracy and search depth
-
-It is an ongoing experiment in combining classical chess engine design with machine learning under realistic hardware constraints.
-
----
-
 ## License
 
 MIT License as in LICENSE.TXT
