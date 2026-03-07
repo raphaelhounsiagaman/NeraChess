@@ -5,7 +5,7 @@
 
 #include <format>
 
-namespace NeraCore
+namespace ApplicationCore
 {
 	class WindowClosedEvent : public Event
 	{

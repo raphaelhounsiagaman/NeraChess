@@ -11,26 +11,26 @@
 #include <assert.h>
 
 BoardLayer::BoardLayer()
-	: m_Renderer(NeraCore::Application::Get().GetWindow()->GetRenderer()),
-	m_SoundPlayer(NeraCore::Application::Get().GetWindow()->GetSoundPlayer()),
+	: m_Renderer(ApplicationCore::Application::Get().GetWindow()->GetRenderer()),
+	m_SoundPlayer(ApplicationCore::Application::Get().GetWindow()->GetSoundPlayer()),
 	m_Texture("Ressources/Sprites/ChessPieces.png"),
 	m_PieceSprites(
 	{
-		NeraCore::Sprite{ m_Texture },
-		NeraCore::Sprite{ m_Texture },
-		NeraCore::Sprite{ m_Texture },
-		NeraCore::Sprite{ m_Texture },
-		NeraCore::Sprite{ m_Texture },
-		NeraCore::Sprite{ m_Texture },
-		NeraCore::Sprite{ m_Texture },
-		NeraCore::Sprite{ m_Texture },
-		NeraCore::Sprite{ m_Texture },
-		NeraCore::Sprite{ m_Texture },
-		NeraCore::Sprite{ m_Texture },
-		NeraCore::Sprite{ m_Texture } 
+		ApplicationCore::Sprite{ m_Texture },
+		ApplicationCore::Sprite{ m_Texture },
+		ApplicationCore::Sprite{ m_Texture },
+		ApplicationCore::Sprite{ m_Texture },
+		ApplicationCore::Sprite{ m_Texture },
+		ApplicationCore::Sprite{ m_Texture },
+		ApplicationCore::Sprite{ m_Texture },
+		ApplicationCore::Sprite{ m_Texture },
+		ApplicationCore::Sprite{ m_Texture },
+		ApplicationCore::Sprite{ m_Texture },
+		ApplicationCore::Sprite{ m_Texture },
+		ApplicationCore::Sprite{ m_Texture } 
 	})
 {
-	UpdateSize(NeraCore::Application::Get().GetWindow()->GetSize());
+	UpdateSize(ApplicationCore::Application::Get().GetWindow()->GetSize());
 	
 	uint32_t pieceWidth = m_Texture.GetSize().X / 6;
 	uint32_t pieceHeight = m_Texture.GetSize().Y / 2;
@@ -63,14 +63,14 @@ BoardLayer::~BoardLayer()
 	
 }
 
-void BoardLayer::OnEvent(NeraCore::Event& event)
+void BoardLayer::OnEvent(ApplicationCore::Event& event)
 {
-	NeraCore::EventDispatcher dispatcher(event);
+	ApplicationCore::EventDispatcher dispatcher(event);
 
-	dispatcher.Dispatch<NeraCore::WindowResizeEvent>([this](NeraCore::WindowResizeEvent& e) { return OnWindowResize(e); });
-	dispatcher.Dispatch<NeraCore::MouseMovedEvent>([this](NeraCore::MouseMovedEvent& e) {return OnMouseMoved(e); });
-	dispatcher.Dispatch<NeraCore::MouseButtonPressedEvent>([this](NeraCore::MouseButtonPressedEvent& e) {return OnMouseButtonPressed(e); });
-	dispatcher.Dispatch<NeraCore::MouseButtonReleasedEvent>([this](NeraCore::MouseButtonReleasedEvent& e) {return OnMouseButtonReleased(e); });
+	dispatcher.Dispatch<ApplicationCore::WindowResizeEvent>([this](ApplicationCore::WindowResizeEvent& e) { return OnWindowResize(e); });
+	dispatcher.Dispatch<ApplicationCore::MouseMovedEvent>([this](ApplicationCore::MouseMovedEvent& e) {return OnMouseMoved(e); });
+	dispatcher.Dispatch<ApplicationCore::MouseButtonPressedEvent>([this](ApplicationCore::MouseButtonPressedEvent& e) {return OnMouseButtonPressed(e); });
+	dispatcher.Dispatch<ApplicationCore::MouseButtonReleasedEvent>([this](ApplicationCore::MouseButtonReleasedEvent& e) {return OnMouseButtonReleased(e); });
 
 }
 
@@ -126,9 +126,9 @@ void BoardLayer::DrawBoard()
 		for (uint8_t rank = 0; rank < 8; rank++)
 		{
 			bool isLightSquare = (file + rank) % 2 == 0;
-			NeraCore::Color squareColor = isLightSquare ? m_LightSquareColor : m_DarkSquareColor;
+			ApplicationCore::Color squareColor = isLightSquare ? m_LightSquareColor : m_DarkSquareColor;
 			
-			NeraCore::Vec2<uint32_t> squarePos = {
+			ApplicationCore::Vec2<uint32_t> squarePos = {
 				m_Margin.X + file * m_SquareSize.X,
 				m_Margin.Y + rank * m_SquareSize.Y
 			};
@@ -157,7 +157,7 @@ void BoardLayer::DrawHighlights()
 		uint8_t targetRank = m_WhiteBottom ? 7 - targetSquare.GetRank() :
 			targetSquare.GetRank();
 
-		NeraCore::Vec2<uint32_t> squarePos = {
+		ApplicationCore::Vec2<uint32_t> squarePos = {
 			m_Margin.X + fromFile * m_SquareSize.X,
 			m_Margin.Y + fromRank * m_SquareSize.Y
 		};
@@ -181,7 +181,7 @@ void BoardLayer::DrawHighlights()
 		uint8_t rank = m_WhiteBottom ? 7 - m_SelectedPieceSquare.GetRank() :
 			m_SelectedPieceSquare.GetRank();
 
-		NeraCore::Vec2<uint32_t> squarePos = {
+		ApplicationCore::Vec2<uint32_t> squarePos = {
 			m_Margin.X + file * m_SquareSize.X,
 			m_Margin.Y + rank * m_SquareSize.Y
 		};
@@ -202,7 +202,7 @@ void BoardLayer::DrawHighlights()
 		uint8_t rank = m_WhiteBottom ? 7 - square.GetRank() :
 			square.GetRank();
 
-		NeraCore::Vec2<uint32_t> squarePos = {
+		ApplicationCore::Vec2<uint32_t> squarePos = {
 			m_Margin.X + file * m_SquareSize.X,
 			m_Margin.Y + rank * m_SquareSize.Y
 		};
@@ -221,7 +221,7 @@ void BoardLayer::DrawAnimatedPiece()
 	uint8_t fromRank = m_WhiteBottom ? 7 - m_AnimationFromSquare.GetRank() :
 		m_AnimationFromSquare.GetRank();
 
-	NeraCore::Vec2<uint32_t> fromPos = {
+	ApplicationCore::Vec2<uint32_t> fromPos = {
 		m_Margin.X + fromFile * m_SquareSize.X,
 		m_Margin.Y + fromRank * m_SquareSize.Y
 	};
@@ -233,12 +233,12 @@ void BoardLayer::DrawAnimatedPiece()
 	uint8_t targetRank = m_WhiteBottom ? 7 - targetSquare.GetRank() :
 		targetSquare.GetRank();
 
-	NeraCore::Vec2<uint32_t> targetPos = {
+	ApplicationCore::Vec2<uint32_t> targetPos = {
 		m_Margin.X + targetFile * m_SquareSize.X,
 		m_Margin.Y + targetRank * m_SquareSize.Y
 	};
 
-	NeraCore::Vec2<uint32_t> piecePos
+	ApplicationCore::Vec2<uint32_t> piecePos
 	{ 
 		uint32_t(fromPos.X + long((long(targetPos.X) - long(fromPos.X)) * m_AnimationDone)),
 		uint32_t(fromPos.Y + long((long(targetPos.Y) - long(fromPos.Y)) * m_AnimationDone))
@@ -270,7 +270,7 @@ void BoardLayer::DrawPieces()
 		file = m_WhiteBottom ? file : 7 - file;
 		rank = m_WhiteBottom ? rank : 7 - rank;
 
-		NeraCore::Vec2<uint32_t> squarePos = {
+		ApplicationCore::Vec2<uint32_t> squarePos = {
 			m_Margin.X + file * m_SquareSize.X,
 			m_Margin.Y + (7 - rank) * m_SquareSize.Y
 		};
@@ -291,7 +291,7 @@ void BoardLayer::DrawFlyingPiece()
 
 	m_Renderer.DrawSprite(
 		m_PieceSprites[m_FlyingPiece],
-		m_MousePosition - NeraCore::Vec2<uint32_t>(uint32_t(m_SquareSize.X * 0.5), uint32_t(m_SquareSize.Y * 0.5)),
+		m_MousePosition - ApplicationCore::Vec2<uint32_t>(uint32_t(m_SquareSize.X * 0.5), uint32_t(m_SquareSize.Y * 0.5)),
 		m_SquareSize
 	);
 }
@@ -305,7 +305,7 @@ void BoardLayer::TryMakeMove(ChessCore::Move move)
 	m_MovePtr = nullptr;
 }
 
-void BoardLayer::AddSoundsToList(std::filesystem::path path, std::vector<NeraCore::Sound>& list)
+void BoardLayer::AddSoundsToList(std::filesystem::path path, std::vector<ApplicationCore::Sound>& list)
 {
 
 	if (std::filesystem::exists(path) && std::filesystem::is_directory(path))
@@ -327,7 +327,7 @@ void BoardLayer::AddSoundsToList(std::filesystem::path path, std::vector<NeraCor
 }
 
 
-void BoardLayer::PlayRandomSoundFromList(const std::vector<NeraCore::Sound>& sounds)
+void BoardLayer::PlayRandomSoundFromList(const std::vector<ApplicationCore::Sound>& sounds)
 {
 	if (sounds.empty())
 	{
@@ -397,7 +397,7 @@ void BoardLayer::SetMovePtr(ChessCore::Move* move)
 	m_MovePtr = move;
 }
 
-bool BoardLayer::OnMouseButtonPressed(NeraCore::MouseButtonPressedEvent& event)
+bool BoardLayer::OnMouseButtonPressed(ApplicationCore::MouseButtonPressedEvent& event)
 {
 	bool mouseInBoardX = m_Margin.X <= m_MousePosition.X && m_MousePosition.X <= m_Margin.X + 8 * m_SquareSize.X;
 	bool mouseInBoardY = m_Margin.Y <= m_MousePosition.Y && m_MousePosition.Y <= m_Margin.Y + 8 * m_SquareSize.Y;
@@ -455,7 +455,7 @@ bool BoardLayer::OnMouseButtonPressed(NeraCore::MouseButtonPressedEvent& event)
 	return true;
 }
 
-bool BoardLayer::OnMouseButtonReleased(NeraCore::MouseButtonReleasedEvent& event)
+bool BoardLayer::OnMouseButtonReleased(ApplicationCore::MouseButtonReleasedEvent& event)
 {
 	bool mouseInBoardX = m_Margin.X <= m_MousePosition.X && m_MousePosition.X <= m_Margin.X + 8 * m_SquareSize.X;
 	bool mouseInBoardY = m_Margin.Y <= m_MousePosition.Y && m_MousePosition.Y <= m_Margin.Y + 8 * m_SquareSize.Y;
@@ -516,7 +516,7 @@ bool BoardLayer::OnMouseButtonReleased(NeraCore::MouseButtonReleasedEvent& event
 	return true;
 }
 
-bool BoardLayer::OnMouseMoved(NeraCore::MouseMovedEvent& event)
+bool BoardLayer::OnMouseMoved(ApplicationCore::MouseMovedEvent& event)
 {
 
 	m_MousePosition = event.GetPosition();
@@ -524,14 +524,14 @@ bool BoardLayer::OnMouseMoved(NeraCore::MouseMovedEvent& event)
 	return true;
 }
 
-bool BoardLayer::OnWindowResize(NeraCore::WindowResizeEvent& event)
+bool BoardLayer::OnWindowResize(ApplicationCore::WindowResizeEvent& event)
 {
 	UpdateSize(event.GetNewSize());
 
 	return false;
 }
 
-void BoardLayer::UpdateSize(NeraCore::Vec2<uint32_t> windowSize)
+void BoardLayer::UpdateSize(ApplicationCore::Vec2<uint32_t> windowSize)
 {
 	uint32_t smallerSide = std::min(windowSize.X, windowSize.Y);
 

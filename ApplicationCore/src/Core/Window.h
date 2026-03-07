@@ -10,7 +10,7 @@
 #include <string>
 #include <functional>
 
-namespace NeraCore
+namespace ApplicationCore
 {
 	struct WindowSpecification
 	{

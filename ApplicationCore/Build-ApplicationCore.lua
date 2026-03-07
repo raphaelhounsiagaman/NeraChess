@@ -1,4 +1,4 @@
-project "NeraCore"
+project "ApplicationCore"
   kind "StaticLib"
   language "C++"
   cppdialect "C++23"

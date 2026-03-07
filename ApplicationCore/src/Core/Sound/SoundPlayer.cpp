@@ -5,7 +5,7 @@
 #include <assert.h>
 #include <print>
 
-namespace NeraCore
+namespace ApplicationCore
 {
 
 	void SoundPlayer::PlaySound(const Sound& sound, int loops)

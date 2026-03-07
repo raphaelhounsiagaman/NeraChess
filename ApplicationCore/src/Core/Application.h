@@ -6,7 +6,7 @@
 #include <string>
 #include <memory>
 
-namespace NeraCore
+namespace ApplicationCore
 {
 	struct ApplicationSpecification
 	{

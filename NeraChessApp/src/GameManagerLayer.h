@@ -11,13 +11,13 @@
 #include <memory>
 #include <atomic>
 
-class GameManagerLayer : public NeraCore::Layer
+class GameManagerLayer : public ApplicationCore::Layer
 {
 public:
 	GameManagerLayer() = default;
 	~GameManagerLayer();
 
-	virtual void OnEvent(NeraCore::Event& event) override {};
+	virtual void OnEvent(ApplicationCore::Event& event) override {};
 	virtual void OnUpdate(float deltaTime) override;
 	virtual void OnRender() override {};
 

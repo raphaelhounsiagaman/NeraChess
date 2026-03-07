@@ -3,7 +3,7 @@
 #include <print>
 #include <assert.h>
 
-namespace NeraCore
+namespace ApplicationCore
 {
 
 	Sound::Sound(const std::string& soundPath)

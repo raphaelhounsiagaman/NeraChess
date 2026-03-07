@@ -3,7 +3,7 @@
 #include "Core/Math/Vec2.h"
 #include "Texture.h"
 
-namespace NeraCore
+namespace ApplicationCore
 {
 	struct Sprite
 	{
@@ -12,4 +12,4 @@ namespace NeraCore
 		Vec2<uint32_t> Size{ 0, 0 };
 	};
 
-} // namespace NeraCore
+} // namespace ApplicationCore

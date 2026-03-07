@@ -3,7 +3,7 @@
 #include <string>
 #include <functional>
 
-namespace NeraCore
+namespace ApplicationCore
 {
 
 	enum class EventType

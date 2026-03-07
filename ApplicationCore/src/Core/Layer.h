@@ -4,7 +4,7 @@
 
 #include <memory>
 
-namespace NeraCore
+namespace ApplicationCore
 {
 	class Layer
 	{

@@ -8,7 +8,7 @@
 
 void UILayer::OnRender()
 {
-	GameManagerLayer* gameManager = NeraCore::Application::Get().GetLayer<GameManagerLayer>();
+	GameManagerLayer* gameManager = ApplicationCore::Application::Get().GetLayer<GameManagerLayer>();
 
 	ImGui::Begin("Nera Chess");
 

@@ -1,7 +1,7 @@
 #include "BackgroundLayer.h"
 
 BackgroundLayer::BackgroundLayer()
-	: m_Renderer(NeraCore::Application::Get().GetWindow()->GetRenderer())
+	: m_Renderer(ApplicationCore::Application::Get().GetWindow()->GetRenderer())
 {
 }
 

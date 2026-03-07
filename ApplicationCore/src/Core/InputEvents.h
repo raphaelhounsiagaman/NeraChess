@@ -6,7 +6,7 @@
 
 #include <format>
 
-namespace NeraCore
+namespace ApplicationCore
 {
 
 	//

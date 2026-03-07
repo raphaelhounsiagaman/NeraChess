@@ -4,21 +4,21 @@
 
 #include "Core/Application.h"
 
-class BackgroundLayer : public NeraCore::Layer
+class BackgroundLayer : public ApplicationCore::Layer
 {
 public:
 	BackgroundLayer();
 	virtual ~BackgroundLayer() = default;
 
-	virtual void OnEvent(NeraCore::Event& event) override {};
+	virtual void OnEvent(ApplicationCore::Event& event) override {};
 	virtual void OnUpdate(float deltaTime) override {};
 	virtual void OnRender() override;
 
 private:
 
-	const NeraCore::Color c_BackgroundColor = NeraCore::Color(3, 20, 28);
+	const ApplicationCore::Color c_BackgroundColor = ApplicationCore::Color(3, 20, 28);
 
-	NeraCore::Renderer& m_Renderer;
+	ApplicationCore::Renderer& m_Renderer;
 
 
 };

@@ -9,7 +9,7 @@
 
 ChessCore::Move Human::GetNextMove(const ChessCore::ChessBoard& board, const ChessCore::Clock& timer)
 {
-    NeraCore::Application& app = NeraCore::Application::Get();
+    ApplicationCore::Application& app = ApplicationCore::Application::Get();
 
     BoardLayer* boardLayer = app.GetLayer<BoardLayer>();
 

@@ -2,7 +2,7 @@
 
 #include "Sound.h"
 
-namespace NeraCore
+namespace ApplicationCore
 {
 
 	struct SoundPlayerSpecification

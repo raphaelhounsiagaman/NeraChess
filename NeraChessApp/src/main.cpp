@@ -7,12 +7,12 @@
 
 int main()
 {
-	NeraCore::ApplicationSpecification appSpecs;
+	ApplicationCore::ApplicationSpecification appSpecs;
 	appSpecs.Name = "NeraChess App";
 	appSpecs.WindowSpec.Width = 1280;
 	appSpecs.WindowSpec.Height = 720;
 
-	NeraCore::Application app(appSpecs);
+	ApplicationCore::Application app(appSpecs);
 
 	app.PushLayer<BackgroundLayer>();
 	app.PushLayer<BoardLayer>();

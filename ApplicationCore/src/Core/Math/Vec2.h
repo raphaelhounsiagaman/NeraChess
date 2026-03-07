@@ -2,7 +2,7 @@
 
 #include <cstdint>
 
-namespace NeraCore
+namespace ApplicationCore
 {
 	template<typename T>
 	struct Vec2

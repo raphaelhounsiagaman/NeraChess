@@ -1,7 +1,7 @@
 #include "Color.h"
 
 
-namespace NeraCore
+namespace ApplicationCore
 {
 
 	const Color Color::BLACK(0, 0, 0);

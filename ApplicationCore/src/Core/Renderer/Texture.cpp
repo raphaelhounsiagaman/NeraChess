@@ -4,7 +4,7 @@
 
 #include <print>
 
-namespace NeraCore
+namespace ApplicationCore
 {
 	Texture::Texture(const std::string& fileName)
 	{
@@ -28,4 +28,4 @@ namespace NeraCore
 	}
 
 
-} // namespace NeraCore
+} // namespace ApplicationCore

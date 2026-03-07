@@ -28,7 +28,7 @@ void GameManagerLayer::OnUpdate(float deltaTime)
 	{
 		m_ChessBoard.MakeMove(move);
 
-		BoardLayer* boardLayer = NeraCore::Application::Get().GetLayer<BoardLayer>();
+		BoardLayer* boardLayer = ApplicationCore::Application::Get().GetLayer<BoardLayer>();
 		if (boardLayer)
 			boardLayer->PlayMove(move);
 	}
@@ -43,7 +43,7 @@ void GameManagerLayer::StartGame()
 	m_ChessBoard = ChessCore::ChessBoard();
 	
 
-	BoardLayer* boardLayer = NeraCore::Application::Get().GetLayer<BoardLayer>();
+	BoardLayer* boardLayer = ApplicationCore::Application::Get().GetLayer<BoardLayer>();
 	if (boardLayer)
 	{
 		boardLayer->SetChessBoard(m_ChessBoard);

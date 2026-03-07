@@ -3,7 +3,7 @@
 #include <ranges>
 #include <chrono>
 
-namespace NeraCore
+namespace ApplicationCore
 {
 
 	static Application* s_Application = nullptr;

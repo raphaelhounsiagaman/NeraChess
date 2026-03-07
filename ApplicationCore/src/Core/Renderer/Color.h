@@ -2,7 +2,7 @@
 
 #include <cstdint>
 
-namespace NeraCore
+namespace ApplicationCore
 {
 
 	struct Color

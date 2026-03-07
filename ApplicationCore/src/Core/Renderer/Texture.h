@@ -7,7 +7,7 @@
 
 #include <string>
 
-namespace NeraCore
+namespace ApplicationCore
 {
 	class Texture
 	{

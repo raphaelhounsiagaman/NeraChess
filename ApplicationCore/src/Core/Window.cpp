@@ -9,14 +9,14 @@
 #include <iostream>
 #include <assert.h>
 
-namespace NeraCore
+namespace ApplicationCore
 {
 
 	Window::Window(const WindowSpecification& specification)
 		: m_Specification(specification)
 	{
 		if (m_Specification.Title.empty())
-			m_Specification.Title = "NeraCore Application";
+			m_Specification.Title = "Nera Chess Application";
 	}
 
 	Window::~Window()

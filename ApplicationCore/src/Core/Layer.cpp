@@ -2,7 +2,7 @@
 
 #include "Application.h"
 
-namespace NeraCore
+namespace ApplicationCore
 {
 	void Layer::QueueTransition(std::unique_ptr<Layer> toLayer)
 	{

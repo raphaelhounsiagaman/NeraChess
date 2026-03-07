@@ -9,6 +9,6 @@ workspace "NeraChess"
 
 include "ChessCore/Build-ChessCore.lua"
 
-include "NeraCore/Build-NeraCore.lua"
+include "ApplicationCore/Build-ApplicationCore.lua"
 
 include "NeraChessApp/Build-NeraChessApp.lua"
