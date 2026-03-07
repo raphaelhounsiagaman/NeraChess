@@ -8,7 +8,7 @@
 int main()
 {
 	NeraCore::ApplicationSpecification appSpecs;
-	appSpecs.Name = "Nera Chess App";
+	appSpecs.Name = "NeraChess App";
 	appSpecs.WindowSpec.Width = 1280;
 	appSpecs.WindowSpec.Height = 720;
 

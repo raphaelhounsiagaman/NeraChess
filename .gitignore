@@ -1,7 +1,6 @@
 # Directories
 .vs/
 bin/
-ChessAITrainingStuff/data
 
 # Files
 *.vcxproj
