@@ -15,7 +15,7 @@
 #include "MoveGenerator.h"
 
 
-namespace ChessCore
+namespace NeraChessEngine
 {
     using  Bitboard = uint64_t;
 
@@ -116,4 +116,4 @@ namespace ChessCore
         uint8_t m_Error = 0;
     };
 
-} // namespace ChessCore
+} // namespace NeraChessEngine

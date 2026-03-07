@@ -35,24 +35,24 @@ BoardLayer::BoardLayer()
 	uint32_t pieceWidth = m_Texture.GetSize().X / 6;
 	uint32_t pieceHeight = m_Texture.GetSize().Y / 2;
 
-	for (ChessCore::Piece piece = 0; piece < 12; piece++)
+	for (NeraChessEngine::Piece piece = 0; piece < 12; piece++)
 	{
 		m_PieceSprites[piece].Position.Y = piece < 6 ? 0 : pieceHeight;
 		m_PieceSprites[piece].Size = { pieceWidth,  pieceHeight };
 	}
 
-	m_PieceSprites[ChessCore::WHITE_KING].Position.X = pieceWidth * 0;
-	m_PieceSprites[ChessCore::WHITE_QUEEN].Position.X = pieceWidth * 1;
-	m_PieceSprites[ChessCore::WHITE_BISHOP].Position.X = pieceWidth * 2;
-	m_PieceSprites[ChessCore::WHITE_KNIGHT].Position.X = pieceWidth * 3;
-	m_PieceSprites[ChessCore::WHITE_ROOK].Position.X = pieceWidth * 4;
-	m_PieceSprites[ChessCore::WHITE_PAWN].Position.X = pieceWidth * 5;
-	m_PieceSprites[ChessCore::BLACK_KING].Position.X = pieceWidth * 0;
-	m_PieceSprites[ChessCore::BLACK_QUEEN].Position.X = pieceWidth * 1;
-	m_PieceSprites[ChessCore::BLACK_BISHOP].Position.X = pieceWidth * 2;
-	m_PieceSprites[ChessCore::BLACK_KNIGHT].Position.X = pieceWidth * 3;
-	m_PieceSprites[ChessCore::BLACK_ROOK].Position.X = pieceWidth * 4;
-	m_PieceSprites[ChessCore::BLACK_PAWN].Position.X = pieceWidth * 5;
+	m_PieceSprites[NeraChessEngine::WHITE_KING].Position.X = pieceWidth * 0;
+	m_PieceSprites[NeraChessEngine::WHITE_QUEEN].Position.X = pieceWidth * 1;
+	m_PieceSprites[NeraChessEngine::WHITE_BISHOP].Position.X = pieceWidth * 2;
+	m_PieceSprites[NeraChessEngine::WHITE_KNIGHT].Position.X = pieceWidth * 3;
+	m_PieceSprites[NeraChessEngine::WHITE_ROOK].Position.X = pieceWidth * 4;
+	m_PieceSprites[NeraChessEngine::WHITE_PAWN].Position.X = pieceWidth * 5;
+	m_PieceSprites[NeraChessEngine::BLACK_KING].Position.X = pieceWidth * 0;
+	m_PieceSprites[NeraChessEngine::BLACK_QUEEN].Position.X = pieceWidth * 1;
+	m_PieceSprites[NeraChessEngine::BLACK_BISHOP].Position.X = pieceWidth * 2;
+	m_PieceSprites[NeraChessEngine::BLACK_KNIGHT].Position.X = pieceWidth * 3;
+	m_PieceSprites[NeraChessEngine::BLACK_ROOK].Position.X = pieceWidth * 4;
+	m_PieceSprites[NeraChessEngine::BLACK_PAWN].Position.X = pieceWidth * 5;
 
 	AddSoundsToList("Ressources/Sounds/Moves", m_MoveSounds);
 	AddSoundsToList("Ressources/Sounds/Captures", m_CaptureSounds);
@@ -81,9 +81,9 @@ void BoardLayer::OnUpdate(float deltaTime)
 	if (m_AnimationDone > 1)
 	{
 		m_ChessBoard.MakeMove(m_AnimationMove, true);
-		if (m_AnimationMove.GetMoveFlags() & ChessCore::IS_CAPTURE)
+		if (m_AnimationMove.GetMoveFlags() & NeraChessEngine::IS_CAPTURE)
 			PlayRandomSoundFromList(m_CaptureSounds);
-		else if (m_AnimationMove.GetMoveFlags() & ChessCore::IS_CASTLES)
+		else if (m_AnimationMove.GetMoveFlags() & NeraChessEngine::IS_CASTLES)
 		{
 			PlayRandomSoundFromList(m_MoveSounds);
 			PlayRandomSoundFromList(m_MoveSounds);
@@ -94,7 +94,7 @@ void BoardLayer::OnUpdate(float deltaTime)
 		m_AnimationSkipped = false;
 		m_AnimationDone = 0.f;
 		m_AnimationMove = 0;
-		m_AnimationPiece = ChessCore::PieceType::NO_PIECE;
+		m_AnimationPiece = NeraChessEngine::PieceType::NO_PIECE;
 		m_AnimationFromSquare = 64;
 		
 	}
@@ -144,8 +144,8 @@ void BoardLayer::DrawHighlights()
 	if (m_LastMovePlayed)
 	{
 		// TODO: make this prettier and more efficient / more readable / more custom
-		ChessCore::Square fromSquare = m_LastMovePlayed.GetStartSquare();
-		ChessCore::Square targetSquare = m_LastMovePlayed.GetTargetSquare();
+		NeraChessEngine::Square fromSquare = m_LastMovePlayed.GetStartSquare();
+		NeraChessEngine::Square targetSquare = m_LastMovePlayed.GetTargetSquare();
 
 		uint8_t fromFile = m_WhiteBottom ? fromSquare.GetFile() :
 			7 - fromSquare.GetFile();
@@ -191,11 +191,11 @@ void BoardLayer::DrawHighlights()
 
 	// Draw Things the player has higlighted
 
-	ChessCore::Bitboard squares = m_MarkedSquares;
+	NeraChessEngine::Bitboard squares = m_MarkedSquares;
 
 	while (squares)
 	{
-		ChessCore::Square square = ChessCore::BitUtil::PopLSB(squares);
+		NeraChessEngine::Square square = NeraChessEngine::BitUtil::PopLSB(squares);
 
 		uint8_t file = m_WhiteBottom ? square.GetFile() :
 			7 - square.GetFile();
@@ -213,7 +213,7 @@ void BoardLayer::DrawHighlights()
 
 void BoardLayer::DrawAnimatedPiece()
 {
-	if (m_AnimationPiece == ChessCore::PieceType::NO_PIECE)
+	if (m_AnimationPiece == NeraChessEngine::PieceType::NO_PIECE)
 		return;
 
 	uint8_t fromFile = m_WhiteBottom ? m_AnimationFromSquare.GetFile() :
@@ -226,7 +226,7 @@ void BoardLayer::DrawAnimatedPiece()
 		m_Margin.Y + fromRank * m_SquareSize.Y
 	};
 
-	ChessCore::Square targetSquare = m_AnimationMove.GetTargetSquare();
+	NeraChessEngine::Square targetSquare = m_AnimationMove.GetTargetSquare();
 
 	uint8_t targetFile = m_WhiteBottom ? targetSquare.GetFile() :
 		7 - targetSquare.GetFile();
@@ -254,10 +254,10 @@ void BoardLayer::DrawAnimatedPiece()
 
 void BoardLayer::DrawPieces()
 {
-	for (ChessCore::Square square = 0; square < 64; square++)
+	for (NeraChessEngine::Square square = 0; square < 64; square++)
 	{
-		ChessCore::Piece piece = m_ChessBoard.GetPiece(square);
-		if (piece == ChessCore::PieceType::NO_PIECE)
+		NeraChessEngine::Piece piece = m_ChessBoard.GetPiece(square);
+		if (piece == NeraChessEngine::PieceType::NO_PIECE)
 			continue;
 
 		uint8_t file = square.GetFile();
@@ -286,7 +286,7 @@ void BoardLayer::DrawPieces()
 
 void BoardLayer::DrawFlyingPiece()
 {
-	if (m_FlyingPiece == ChessCore::PieceType::NO_PIECE)
+	if (m_FlyingPiece == NeraChessEngine::PieceType::NO_PIECE)
 		return;
 
 	m_Renderer.DrawSprite(
@@ -296,7 +296,7 @@ void BoardLayer::DrawFlyingPiece()
 	);
 }
 
-void BoardLayer::TryMakeMove(ChessCore::Move move)
+void BoardLayer::TryMakeMove(NeraChessEngine::Move move)
 {
 	if (m_MovePtr)
 	{
@@ -345,14 +345,14 @@ void BoardLayer::PlayRandomSoundFromList(const std::vector<ApplicationCore::Soun
 	m_SoundPlayer.PlaySound(sounds[soundIndex]);
 }
 
-void BoardLayer::PlayMove(ChessCore::Move move)
+void BoardLayer::PlayMove(NeraChessEngine::Move move)
 {
 	if (m_AnimationMove)
 	{
 		m_ChessBoard.MakeMove(m_AnimationMove, true);
-		if (m_AnimationMove.GetMoveFlags() & ChessCore::IS_CAPTURE)
+		if (m_AnimationMove.GetMoveFlags() & NeraChessEngine::IS_CAPTURE)
 			PlayRandomSoundFromList(m_CaptureSounds);
-		else if (m_AnimationMove.GetMoveFlags() & ChessCore::IS_CASTLES)
+		else if (m_AnimationMove.GetMoveFlags() & NeraChessEngine::IS_CASTLES)
 		{
 			PlayRandomSoundFromList(m_MoveSounds);
 			PlayRandomSoundFromList(m_MoveSounds);
@@ -362,15 +362,15 @@ void BoardLayer::PlayMove(ChessCore::Move move)
 		m_LastMovePlayed = m_AnimationMove;
 		m_AnimationDone = 0.f;
 		m_AnimationMove = 0;
-		m_AnimationPiece = ChessCore::PieceType::NO_PIECE;
+		m_AnimationPiece = NeraChessEngine::PieceType::NO_PIECE;
 		m_AnimationFromSquare = 64;
 	}
 
 	if (m_AnimationSkipped)
 	{
-		if (move.GetMoveFlags() & ChessCore::IS_CAPTURE)
+		if (move.GetMoveFlags() & NeraChessEngine::IS_CAPTURE)
 			PlayRandomSoundFromList(m_CaptureSounds);
-		else if (move.GetMoveFlags() & ChessCore::IS_CASTLES)
+		else if (move.GetMoveFlags() & NeraChessEngine::IS_CASTLES)
 		{
 			PlayRandomSoundFromList(m_MoveSounds);
 			PlayRandomSoundFromList(m_MoveSounds);
@@ -392,7 +392,7 @@ void BoardLayer::PlayMove(ChessCore::Move move)
 
 }
 
-void BoardLayer::SetMovePtr(ChessCore::Move* move)
+void BoardLayer::SetMovePtr(NeraChessEngine::Move* move)
 {
 	m_MovePtr = move;
 }
@@ -411,15 +411,15 @@ bool BoardLayer::OnMouseButtonPressed(ApplicationCore::MouseButtonPressedEvent& 
 	uint8_t file = m_WhiteBottom ? (m_MousePosition.X - m_Margin.X) / m_SquareSize.X : 
 		7 - (m_MousePosition.X - m_Margin.X) / m_SquareSize.X;
 
-	ChessCore::Square square = file + 8 * rank;
+	NeraChessEngine::Square square = file + 8 * rank;
 
 	// If we already selected a Square,
-	if (m_SelectedPiece != ChessCore::PieceType::NO_PIECE)
+	if (m_SelectedPiece != NeraChessEngine::PieceType::NO_PIECE)
 	{
-		ChessCore::Move move = 0;
+		NeraChessEngine::Move move = 0;
 		// TODO: fix this, don't recalculate this here everytime
 		m_LegalMoves = m_ChessBoard.GetLegalMoves();
-		for (ChessCore::Move legalMove : m_LegalMoves)
+		for (NeraChessEngine::Move legalMove : m_LegalMoves)
 		{
 			if (legalMove.GetStartSquare() == m_SelectedPieceSquare &&
 				legalMove.GetTargetSquare() == square)
@@ -432,16 +432,16 @@ bool BoardLayer::OnMouseButtonPressed(ApplicationCore::MouseButtonPressedEvent& 
 		if (move)
 			TryMakeMove(move);
 
-		m_FlyingPiece = ChessCore::PieceType::NO_PIECE;
+		m_FlyingPiece = NeraChessEngine::PieceType::NO_PIECE;
 		m_FlyingPieceSquare = 64;
 
-		m_SelectedPiece = ChessCore::PieceType::NO_PIECE;
+		m_SelectedPiece = NeraChessEngine::PieceType::NO_PIECE;
 		m_SelectedPieceSquare = 64;
 	}
 	else
 	{
-		ChessCore::Piece piece = m_ChessBoard.GetPiece(square);
-		if (piece == ChessCore::PieceType::NO_PIECE)
+		NeraChessEngine::Piece piece = m_ChessBoard.GetPiece(square);
+		if (piece == NeraChessEngine::PieceType::NO_PIECE)
 			return true;
 
 		m_FlyingPiece = piece;
@@ -463,7 +463,7 @@ bool BoardLayer::OnMouseButtonReleased(ApplicationCore::MouseButtonReleasedEvent
 
 	if (!mouseInBoard)
 	{
-		m_FlyingPiece = ChessCore::PieceType::NO_PIECE;
+		m_FlyingPiece = NeraChessEngine::PieceType::NO_PIECE;
 		m_FlyingPieceSquare = 64;
 
 		return true;
@@ -474,22 +474,22 @@ bool BoardLayer::OnMouseButtonReleased(ApplicationCore::MouseButtonReleasedEvent
 	uint8_t file = m_WhiteBottom ? (m_MousePosition.X - m_Margin.X) / m_SquareSize.X : 
 		7 - (m_MousePosition.X - m_Margin.X) / m_SquareSize.X;
 
-	ChessCore::Square square = file + 8 * rank;
+	NeraChessEngine::Square square = file + 8 * rank;
 
-	if (m_FlyingPiece != ChessCore::PieceType::NO_PIECE)
+	if (m_FlyingPiece != NeraChessEngine::PieceType::NO_PIECE)
 	{
 		if (square == m_SelectedPieceSquare)
 		{
-			m_FlyingPiece = ChessCore::PieceType::NO_PIECE;
+			m_FlyingPiece = NeraChessEngine::PieceType::NO_PIECE;
 			m_FlyingPieceSquare = 64;
 
 			return true;
 		}
 
-		ChessCore::Move move = 0;
+		NeraChessEngine::Move move = 0;
 		// TODO: fix this, don't recalculate this here everytime
 		m_LegalMoves = m_ChessBoard.GetLegalMoves();
-		for (ChessCore::Move legalMove : m_LegalMoves)
+		for (NeraChessEngine::Move legalMove : m_LegalMoves)
 		{
 			if (legalMove.GetStartSquare() == m_SelectedPieceSquare &&
 				legalMove.GetTargetSquare() == square)
@@ -505,10 +505,10 @@ bool BoardLayer::OnMouseButtonReleased(ApplicationCore::MouseButtonReleasedEvent
 			TryMakeMove(move);
 		}
 
-		m_FlyingPiece = ChessCore::PieceType::NO_PIECE;
+		m_FlyingPiece = NeraChessEngine::PieceType::NO_PIECE;
 		m_FlyingPieceSquare = 64;
 
-		m_SelectedPiece = ChessCore::PieceType::NO_PIECE;
+		m_SelectedPiece = NeraChessEngine::PieceType::NO_PIECE;
 		m_SelectedPieceSquare = 64;
 
 	}

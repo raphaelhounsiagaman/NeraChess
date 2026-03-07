@@ -3,7 +3,7 @@
 #include <cstdint>
 #include <string>
 
-namespace ChessCore
+namespace NeraChessEngine
 {
 	using Bitboard = uint64_t;
 
@@ -88,4 +88,4 @@ namespace ChessCore
 	Square operator+(const Square& lhs, int rhs);
 	Square operator+(int lhs, const Square& rhs);
 
-} // namespace ChessCore
+} // namespace NeraChessEngine

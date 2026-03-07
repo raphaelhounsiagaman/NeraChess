@@ -1,4 +1,4 @@
-project "ChessCore"
+project "NeraChessEngine"
   kind "StaticLib"
   language "C++"
   cppdialect "C++23"

@@ -1,6 +1,6 @@
 #include "Square.h"
 
-namespace ChessCore
+namespace NeraChessEngine
 {
 	const Square Square::a1{ 0 };
 	const Square Square::b1{ 1 };
@@ -83,4 +83,4 @@ namespace ChessCore
 		return Square(lhs + rhs.square);
 	}
 
-} // namespace ChessCore
+} // namespace NeraChessEngine

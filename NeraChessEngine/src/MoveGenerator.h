@@ -7,7 +7,7 @@
 #include "MoveList.h"
 #include "BoardState.h"
 
-namespace ChessCore
+namespace NeraChessEngine
 {
 
 	class MoveGenerator
@@ -178,4 +178,4 @@ namespace ChessCore
 		static const std::array<std::array<Bitboard, 64>, 64> s_AlignMask;
 	};
 
-} // namespace ChessCore
+} // namespace NeraChessEngine

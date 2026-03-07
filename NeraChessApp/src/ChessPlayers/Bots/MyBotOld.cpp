@@ -3,24 +3,24 @@
 #include <algorithm>
 #include <chrono>
 
-ChessCore::Move MyBotOld::GetNextMove(const ChessCore::ChessBoard& givenBoard, const ChessCore::Clock& timer)
+NeraChessEngine::Move MyBotOld::GetNextMove(const NeraChessEngine::ChessBoard& givenBoard, const NeraChessEngine::Clock& timer)
 {
-	ChessCore::ChessBoard board = givenBoard;
+	NeraChessEngine::ChessBoard board = givenBoard;
 
-	ChessCore::MoveList<218> legalMoves = board.GetLegalMoves();
+	NeraChessEngine::MoveList<218> legalMoves = board.GetLegalMoves();
 	if (legalMoves.size() < 2)
 		return legalMoves[0];
 
 	SortMoves(board, legalMoves);
 
-	ChessCore::BoardState boardState = board.GetBoardState();
-	bool whiteToPlay = boardState.HasFlag(ChessCore::BoardStateFlags::WhiteToMove);
+	NeraChessEngine::BoardState boardState = board.GetBoardState();
+	bool whiteToPlay = boardState.HasFlag(NeraChessEngine::BoardStateFlags::WhiteToMove);
 	int8_t colorMultiplier = whiteToPlay ? 1 : -1;
 
-	ChessCore::Move bestMove{};
+	NeraChessEngine::Move bestMove{};
 	double bestEval = whiteToPlay ? -999999 : 999999;
 
-	for (const ChessCore::Move& move : legalMoves)
+	for (const NeraChessEngine::Move& move : legalMoves)
 	{
 		board.MakeMove(move);
 		double eval = Minimax(board, 4, !whiteToPlay, -99999, 99999);
@@ -39,16 +39,16 @@ ChessCore::Move MyBotOld::GetNextMove(const ChessCore::ChessBoard& givenBoard, c
     return bestMove;
 }
 
-double MyBotOld::Minimax(ChessCore::ChessBoard& board, int depth, bool whiteMaximizingPlayer, double alpha, double beta)
+double MyBotOld::Minimax(NeraChessEngine::ChessBoard& board, int depth, bool whiteMaximizingPlayer, double alpha, double beta)
 {
 	uint16_t gameOverFlags = board.GetGameOver();
 
 	double originAlpha = alpha;
 	double originBeta = beta;
 
-	if (gameOverFlags & ChessCore::IS_GAME_OVER)
+	if (gameOverFlags & NeraChessEngine::IS_GAME_OVER)
 	{
-		if (gameOverFlags & ChessCore::IS_CHECKMATE)
+		if (gameOverFlags & NeraChessEngine::IS_CHECKMATE)
 			return whiteMaximizingPlayer ? -99999 : 99999;
 		else
 			return 0;
@@ -86,12 +86,12 @@ double MyBotOld::Minimax(ChessCore::ChessBoard& board, int depth, bool whiteMaxi
 		}
 	}
 
-	ChessCore::MoveList<218> legalMoves = board.GetLegalMoves();
+	NeraChessEngine::MoveList<218> legalMoves = board.GetLegalMoves();
 
 
 	double bestEval = whiteMaximizingPlayer ? -99999 : 99999;
 
-	for (const ChessCore::Move& move : legalMoves)
+	for (const NeraChessEngine::Move& move : legalMoves)
 	{
 		board.MakeMove(move);
 		double eval = Minimax(board, depth - 1, !whiteMaximizingPlayer, alpha, beta);
@@ -133,40 +133,40 @@ double MyBotOld::Minimax(ChessCore::ChessBoard& board, int depth, bool whiteMaxi
 	return bestEval;
 }
 
-double MyBotOld::EvaluateBoard(const ChessCore::BoardState& boardState, bool whiteToMove) const
+double MyBotOld::EvaluateBoard(const NeraChessEngine::BoardState& boardState, bool whiteToMove) const
 {
 	double evaluation = 0.0;
 
 	float pieceValueMultiplier = 5.f;
 
-	ChessCore::Bitboard importantPieces =
-		boardState.pieceBitboards[ChessCore::WHITE_PAWN]   |
-		boardState.pieceBitboards[ChessCore::WHITE_KNIGHT] |
-		boardState.pieceBitboards[ChessCore::WHITE_BISHOP] |
-		boardState.pieceBitboards[ChessCore::WHITE_ROOK]   |
-		boardState.pieceBitboards[ChessCore::WHITE_QUEEN]  |
-		boardState.pieceBitboards[ChessCore::WHITE_KING]   |
-		boardState.pieceBitboards[ChessCore::BLACK_PAWN]   |
-		boardState.pieceBitboards[ChessCore::BLACK_KNIGHT] |
-		boardState.pieceBitboards[ChessCore::BLACK_BISHOP] |
-		boardState.pieceBitboards[ChessCore::BLACK_ROOK]   |
-		boardState.pieceBitboards[ChessCore::BLACK_QUEEN]  |
-		boardState.pieceBitboards[ChessCore::BLACK_KING];
+	NeraChessEngine::Bitboard importantPieces =
+		boardState.pieceBitboards[NeraChessEngine::WHITE_PAWN]   |
+		boardState.pieceBitboards[NeraChessEngine::WHITE_KNIGHT] |
+		boardState.pieceBitboards[NeraChessEngine::WHITE_BISHOP] |
+		boardState.pieceBitboards[NeraChessEngine::WHITE_ROOK]   |
+		boardState.pieceBitboards[NeraChessEngine::WHITE_QUEEN]  |
+		boardState.pieceBitboards[NeraChessEngine::WHITE_KING]   |
+		boardState.pieceBitboards[NeraChessEngine::BLACK_PAWN]   |
+		boardState.pieceBitboards[NeraChessEngine::BLACK_KNIGHT] |
+		boardState.pieceBitboards[NeraChessEngine::BLACK_BISHOP] |
+		boardState.pieceBitboards[NeraChessEngine::BLACK_ROOK]   |
+		boardState.pieceBitboards[NeraChessEngine::BLACK_QUEEN]  |
+		boardState.pieceBitboards[NeraChessEngine::BLACK_KING];
 
-	float endGame = 1.0f - (float)(ChessCore::BitUtil::PopCnt(importantPieces) / 17);
+	float endGame = 1.0f - (float)(NeraChessEngine::BitUtil::PopCnt(importantPieces) / 17);
 
-	for (ChessCore::Piece piece = 0; piece < 12; piece++)
+	for (NeraChessEngine::Piece piece = 0; piece < 12; piece++)
 	{
-		ChessCore::Bitboard pieceBB = boardState.pieceBitboards[piece];
+		NeraChessEngine::Bitboard pieceBB = boardState.pieceBitboards[piece];
 		if (pieceBB == 0)
 			continue;
 
-		evaluation += m_PieceValues[piece] * ChessCore::BitUtil::PopCnt(pieceBB) * pieceValueMultiplier;
+		evaluation += m_PieceValues[piece] * NeraChessEngine::BitUtil::PopCnt(pieceBB) * pieceValueMultiplier;
 
-		ChessCore::Bitboard squareBB = pieceBB;
+		NeraChessEngine::Bitboard squareBB = pieceBB;
 		while (squareBB != 0)
 		{
-			ChessCore::Square square(ChessCore::BitUtil::PopLSB(squareBB));
+			NeraChessEngine::Square square(NeraChessEngine::BitUtil::PopLSB(squareBB));
 
 			uint8_t file = square.GetFile();
 			uint8_t rank = square.GetRank();
@@ -177,40 +177,40 @@ double MyBotOld::EvaluateBoard(const ChessCore::BoardState& boardState, bool whi
 
 			switch (piece)
 			{
-			case ChessCore::PieceType::WHITE_PAWN:
+			case NeraChessEngine::PieceType::WHITE_PAWN:
 				evaluation += m_PawnPositionValues[whiteIndex];
 				break;
-			case ChessCore::PieceType::WHITE_KNIGHT:
+			case NeraChessEngine::PieceType::WHITE_KNIGHT:
 				evaluation += m_KnightPositionValues[whiteIndex];
 				break;
-			case ChessCore::PieceType::WHITE_BISHOP:
+			case NeraChessEngine::PieceType::WHITE_BISHOP:
 				evaluation += m_BishopPositionValues[whiteIndex];
 				break;
-			case ChessCore::PieceType::WHITE_ROOK:
+			case NeraChessEngine::PieceType::WHITE_ROOK:
 				evaluation += m_RookPositionValues[whiteIndex];
 				break;
-			case ChessCore::PieceType::WHITE_QUEEN:
+			case NeraChessEngine::PieceType::WHITE_QUEEN:
 				evaluation += m_QueenPositionValues[whiteIndex];
 				break;
-			case ChessCore::PieceType::WHITE_KING:
+			case NeraChessEngine::PieceType::WHITE_KING:
 				evaluation += m_KingPositionMiddleGameValues[whiteIndex] * (1 - endGame) + m_KingPositionEndGameValues[whiteIndex] * endGame;
 				break;
-			case ChessCore::PieceType::BLACK_PAWN:
+			case NeraChessEngine::PieceType::BLACK_PAWN:
 				evaluation -= m_PawnPositionValues[blackIndex];
 				break;
-			case ChessCore::PieceType::BLACK_KNIGHT:
+			case NeraChessEngine::PieceType::BLACK_KNIGHT:
 				evaluation -= m_KnightPositionValues[blackIndex];
 				break;
-			case ChessCore::PieceType::BLACK_BISHOP:
+			case NeraChessEngine::PieceType::BLACK_BISHOP:
 				evaluation -= m_BishopPositionValues[blackIndex];
 				break;
-			case ChessCore::PieceType::BLACK_ROOK:
+			case NeraChessEngine::PieceType::BLACK_ROOK:
 				evaluation -= m_RookPositionValues[blackIndex];
 				break;
-			case ChessCore::PieceType::BLACK_QUEEN:
+			case NeraChessEngine::PieceType::BLACK_QUEEN:
 				evaluation -= m_QueenPositionValues[blackIndex];
 				break;
-			case ChessCore::PieceType::BLACK_KING:
+			case NeraChessEngine::PieceType::BLACK_KING:
 				evaluation -= m_KingPositionMiddleGameValues[blackIndex] * (1 - endGame) + m_KingPositionEndGameValues[blackIndex] * endGame;
 				break;
 			default:
@@ -223,24 +223,24 @@ double MyBotOld::EvaluateBoard(const ChessCore::BoardState& boardState, bool whi
 	return evaluation;
 }
 
-void MyBotOld::SortMoves(const ChessCore::ChessBoard& board, ChessCore::MoveList<218>& moves)
+void MyBotOld::SortMoves(const NeraChessEngine::ChessBoard& board, NeraChessEngine::MoveList<218>& moves)
 {
 	std::array<float, 218> moveValues{};
 
 	for (uint8_t i = 0; i < moves.size(); i++)
 	{
 		float moveScoreGuess = 0;
-		ChessCore::Piece movePiece = moves[i].GetMovePiece();
-		ChessCore::Piece capturePiece = board.GetPiece(moves[i].GetTargetSquare());
+		NeraChessEngine::Piece movePiece = moves[i].GetMovePiece();
+		NeraChessEngine::Piece capturePiece = board.GetPiece(moves[i].GetTargetSquare());
 
-		if (capturePiece != ChessCore::PieceType::NO_PIECE)
+		if (capturePiece != NeraChessEngine::PieceType::NO_PIECE)
 			moveScoreGuess += 10 * m_PieceValues[capturePiece] - m_PieceValues[movePiece];
-		if (moves[i].GetMoveFlags() & ChessCore::MoveFlags::IS_PROMOTION)
+		if (moves[i].GetMoveFlags() & NeraChessEngine::MoveFlags::IS_PROMOTION)
 			moveScoreGuess += m_PieceValues[moves[i].GetPromoPiece()];
 		//if (board.SquareIsAttackedByOpponent(moves[i].TargetSquare))
 		//	moveScoreGuess -= (float)(piece_values[move_piece_type]);
 
-		if (moves[i].GetMoveFlags() & ChessCore::MoveFlags::IS_PROMOTION)
+		if (moves[i].GetMoveFlags() & NeraChessEngine::MoveFlags::IS_PROMOTION)
 			moveScoreGuess += 10;
 
 		moveValues[i] = moveScoreGuess;
@@ -248,7 +248,7 @@ void MyBotOld::SortMoves(const ChessCore::ChessBoard& board, ChessCore::MoveList
 	
 	struct MoveValuePair
 	{
-		ChessCore::Move move;
+		NeraChessEngine::Move move;
 		float value;
 	};
 

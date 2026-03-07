@@ -20,7 +20,7 @@
 * 
 */
 
-namespace ChessCore
+namespace NeraChessEngine
 {
 
 	enum MoveFlags : uint8_t
@@ -57,4 +57,4 @@ namespace ChessCore
 	};
 
 
-} // namespace ChessCore
+} // namespace NeraChessEngine

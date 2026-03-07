@@ -21,7 +21,7 @@ project "NeraChessApp"
   {
     "src",
 
-	  "../ChessCore/src",
+	  "../NeraChessEngine/src",
 
     "../ApplicationCore/src",
     "../ApplicationCore/vendor/DearImGUI",
@@ -39,7 +39,7 @@ project "NeraChessApp"
 
   links
   {
-    "ChessCore",
+    "NeraChessEngine",
     "ApplicationCore",
         
     "onnxruntime",

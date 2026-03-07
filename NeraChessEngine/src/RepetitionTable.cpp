@@ -1,6 +1,6 @@
 #include "RepetitionTable.h"
 
-namespace ChessCore
+namespace NeraChessEngine
 {
 
 	void RepetitionTable::AddEntry(const std::array<Bitboard, 12>& pieceBitboards)
@@ -79,4 +79,4 @@ namespace ChessCore
 		return same;
 	}
 
-} // namespace ChessCore
+} // namespace NeraChessEngine

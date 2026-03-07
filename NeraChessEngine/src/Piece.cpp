@@ -1,6 +1,6 @@
 #include "Piece.h"
 
-namespace ChessCore
+namespace NeraChessEngine
 {
 
 	bool Piece::IsDiagonalSlider() const
@@ -31,4 +31,4 @@ namespace ChessCore
 		return Piece(lhs + rhs.piece);
 	}
 
-} // namespace ChessCore
+} // namespace NeraChessEngine

@@ -2,7 +2,7 @@
 
 #include <bit>
 
-namespace ChessCore 
+namespace NeraChessEngine 
 {
 	namespace BitUtil
 	{
@@ -42,4 +42,4 @@ namespace ChessCore
 
 	} // namespace BitUtil
 
-} // namespace ChessCore
+} // namespace NeraChessEngine

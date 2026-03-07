@@ -5,7 +5,7 @@
 
 #include "Move.h"
 
-namespace ChessCore
+namespace NeraChessEngine
 {
 
     template<size_t maxMoves>

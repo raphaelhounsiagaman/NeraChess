@@ -29,7 +29,7 @@
 	#endif
 #endif //  DEBUG
 
-namespace ChessCore
+namespace NeraChessEngine
 { 
 
 	ChessBoard::ChessBoard(const std::string& fen)
@@ -912,4 +912,4 @@ namespace ChessCore
 	}
 
 
-} // namespace ChessCore
+} // namespace NeraChessEngine

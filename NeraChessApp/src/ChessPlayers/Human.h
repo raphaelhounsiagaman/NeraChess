@@ -10,7 +10,7 @@ public:
 	Human() = default;
 	virtual ~Human() = default;
 
-	virtual ChessCore::Move GetNextMove(const ChessCore::ChessBoard& board, const ChessCore::Clock& timer) override;
+	virtual NeraChessEngine::Move GetNextMove(const NeraChessEngine::ChessBoard& board, const NeraChessEngine::Clock& timer) override;
 	virtual void ResetGame() override {};
 	virtual void StopSearching() override { m_StopSearching = true; }
 

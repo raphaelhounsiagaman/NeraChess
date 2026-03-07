@@ -14,7 +14,7 @@ struct TTEntry
 	float value = 0;       // eval from search
 	int8_t depth = -1;        // search depth
 	EntryFlag flag = EntryFlag::EXACT;       // exact/lower/upper
-	ChessCore::Move bestMove = 0;  // packed move
+	NeraChessEngine::Move bestMove = 0;  // packed move
 	int16_t age = 0;         // ply or generation
 };
 

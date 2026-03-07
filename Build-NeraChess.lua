@@ -7,7 +7,7 @@ workspace "NeraChess"
       buildoptions { "/Zc:preprocessor" }
    filter {}
 
-include "ChessCore/Build-ChessCore.lua"
+include "NeraChessEngine/Build-NeraChessEngine.lua"
 
 include "ApplicationCore/Build-ApplicationCore.lua"
 

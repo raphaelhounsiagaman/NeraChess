@@ -3,7 +3,7 @@
 #include <cstdint>
 #include <array>
 
-namespace ChessCore
+namespace NeraChessEngine
 {
 
     struct UndoInfo 
@@ -30,4 +30,4 @@ namespace ChessCore
         inline UndoInfo& top() noexcept { return data[count - 1]; }
     };
 
-} // namespace ChessCore
+} // namespace NeraChessEngine

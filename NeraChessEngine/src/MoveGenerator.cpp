@@ -5,7 +5,7 @@
 
 #include "ChessUtil.h"
 
-namespace ChessCore
+namespace NeraChessEngine
 {
 
 	Bitboard MoveGenerator::GetStraightSlidingMask(Square square)
@@ -1133,4 +1133,4 @@ namespace ChessCore
 		return ((pawns >> 7) & Square::NotAFile) | ((pawns >> 9) & Square::NotHFile);
 	}
 
-} // namespace ChessCore
+} // namespace NeraChessEngine

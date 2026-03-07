@@ -2,7 +2,7 @@
 
 #include <chrono>
 
-namespace ChessCore
+namespace NeraChessEngine
 {
 
 	class Clock

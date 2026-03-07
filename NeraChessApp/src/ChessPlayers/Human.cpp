@@ -7,13 +7,13 @@
 #include <thread>
 #include <chrono>
 
-ChessCore::Move Human::GetNextMove(const ChessCore::ChessBoard& board, const ChessCore::Clock& timer)
+NeraChessEngine::Move Human::GetNextMove(const NeraChessEngine::ChessBoard& board, const NeraChessEngine::Clock& timer)
 {
     ApplicationCore::Application& app = ApplicationCore::Application::Get();
 
     BoardLayer* boardLayer = app.GetLayer<BoardLayer>();
 
-    ChessCore::Move move = 0;
+    NeraChessEngine::Move move = 0;
 
     boardLayer->SetMovePtr(&move);
 

@@ -2,7 +2,7 @@
 
 #include <random>
 
-ChessCore::Move BotRandom::GetNextMove(const ChessCore::ChessBoard& board, const ChessCore::Clock& timer)
+NeraChessEngine::Move BotRandom::GetNextMove(const NeraChessEngine::ChessBoard& board, const NeraChessEngine::Clock& timer)
 {
     std::random_device rd;
 

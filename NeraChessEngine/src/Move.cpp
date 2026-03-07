@@ -1,6 +1,6 @@
 #include "Move.h"
 
-namespace ChessCore
+namespace NeraChessEngine
 {
 
 	Move::Move(Square startSquare, Square targetSquare, Piece movePiece, Piece promoPiece, uint8_t flags)
@@ -86,4 +86,4 @@ namespace ChessCore
 		return GetStartSquare().ToString() + GetTargetSquare().ToString() + promoPieceStr;
 	}
 
-} // namespace ChessCore
+} // namespace NeraChessEngine

@@ -11,19 +11,19 @@ public:
 	FirstNNBot(const std::string& modelPath = "Ressources/NeuralNetworks/model6b48.onnx");
 	~FirstNNBot();
 
-	virtual ChessCore::Move GetNextMove(const ChessCore::ChessBoard& givenBoard, const ChessCore::Clock& timer) override;
+	virtual NeraChessEngine::Move GetNextMove(const NeraChessEngine::ChessBoard& givenBoard, const NeraChessEngine::Clock& timer) override;
 	virtual void ResetGame() override {};
 	virtual void StopSearching() override {};
 
 private:
 
-	float MinimaxSearch(ChessCore::ChessBoard& board, int depth, bool whiteMaximizingPlayer, float alpha, float beta);
+	float MinimaxSearch(NeraChessEngine::ChessBoard& board, int depth, bool whiteMaximizingPlayer, float alpha, float beta);
 
-	float EvaluateBoard(const ChessCore::ChessBoard& board, bool whiteToMove);
+	float EvaluateBoard(const NeraChessEngine::ChessBoard& board, bool whiteToMove);
 
-	static void SortMoves(const ChessCore::ChessBoard& board, ChessCore::MoveList<218>& moves);
+	static void SortMoves(const NeraChessEngine::ChessBoard& board, NeraChessEngine::MoveList<218>& moves);
 
-	std::array<float, 19 * 8 * 8> BoardToTensor(const ChessCore::ChessBoard& board) const;
+	std::array<float, 19 * 8 * 8> BoardToTensor(const NeraChessEngine::ChessBoard& board) const;
 
 private:
 

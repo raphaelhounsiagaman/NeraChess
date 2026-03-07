@@ -1,6 +1,6 @@
 #include "BoardState.h"
 
-namespace ChessCore
+namespace NeraChessEngine
 {
 	bool BoardState::operator==(const BoardState& other) const
 	{
@@ -16,4 +16,4 @@ namespace ChessCore
 		return same;
 	}
 
-} // namespace ChessCore
+} // namespace NeraChessEngine

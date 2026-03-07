@@ -5,7 +5,7 @@
 
 #include "ChessBoard.h"
 
-namespace ChessCore
+namespace NeraChessEngine
 {
     struct  Zobrist
     {
@@ -29,5 +29,5 @@ namespace ChessCore
 
     };
 
-} // namespace ChessCore
+} // namespace NeraChessEngine
 

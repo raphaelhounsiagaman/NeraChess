@@ -2,7 +2,7 @@
 
 #include <cstdint>
 
-namespace ChessCore
+namespace NeraChessEngine
 {
 
 	enum PieceType : uint8_t
@@ -65,4 +65,4 @@ namespace ChessCore
 	Piece operator+(const Piece& lhs, uint8_t rhs);
 	Piece operator+(uint8_t lhs, const Piece& rhs);
 	
-} // namespace ChessCore
+} // namespace NeraChessEngine

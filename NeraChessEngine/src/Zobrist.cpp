@@ -1,6 +1,6 @@
 #include "Zobrist.h"
 
-namespace ChessCore
+namespace NeraChessEngine
 {
 
     std::mt19937_64 Zobrist::rng(std::random_device{}());
@@ -60,4 +60,4 @@ namespace ChessCore
         return zobristKey;
     }
 
-} // namespace ChessCore
+} // namespace NeraChessEngine

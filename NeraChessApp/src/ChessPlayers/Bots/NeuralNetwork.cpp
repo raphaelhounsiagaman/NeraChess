@@ -31,7 +31,7 @@ NeuralNetwork::NeuralNetwork(const std::string& modelPath)
 	m_InputBuffer.resize(m_BatchSize * c_InputTensorSize);
 	m_InfoVector.reserve(m_BatchSize);
 
-	//ChessCore::ChessBoard board{"r1b1kb1r/1pp2ppp/p1p2n2/8/3qP3/P1N2N2/1PP2PPP/R1B1K2R w KQkq - 0 9"};
+	//NeraChessEngine::ChessBoard board{"r1b1kb1r/1pp2ppp/p1p2n2/8/3qP3/P1N2N2/1PP2PPP/R1B1K2R w KQkq - 0 9"};
 
 	//std::print("Evaluation of position: {}", GetEvaluation(board));
 
@@ -45,14 +45,14 @@ NeuralNetwork::~NeuralNetwork()
 	m_Env.release();
 }
 
-float NeuralNetwork::GetEvaluation(const ChessCore::ChessBoard& board)
+float NeuralNetwork::GetEvaluation(const NeraChessEngine::ChessBoard& board)
 {
 	QueuePosition(board);
 	EvaluateQueue();
 	return s_EvaluationCache[board.GetZobristKey()];
 }
 
-void NeuralNetwork::QueuePosition(const ChessCore::ChessBoard& board)
+void NeuralNetwork::QueuePosition(const NeraChessEngine::ChessBoard& board)
 {
 	for (BoardInfo& info : m_InfoVector)
 	{
@@ -68,21 +68,21 @@ void NeuralNetwork::QueuePosition(const ChessCore::ChessBoard& board)
 
 	BoardToTensor(board, pos);
 
-	m_InfoVector.emplace_back(board.GetZobristKey(), board.GetBoardState().HasFlag(ChessCore::BoardStateFlags::WhiteToMove));
+	m_InfoVector.emplace_back(board.GetZobristKey(), board.GetBoardState().HasFlag(NeraChessEngine::BoardStateFlags::WhiteToMove));
 
 	if (m_InfoVector.size() >= m_BatchSize)
 		EvaluateQueue();
 }
 
-void NeuralNetwork::BoardToTensor(const ChessCore::ChessBoard& board, float* out) const
+void NeuralNetwork::BoardToTensor(const NeraChessEngine::ChessBoard& board, float* out) const
 {
 
-	const ChessCore::BoardState& boardState = board.GetBoardState();
+	const NeraChessEngine::BoardState& boardState = board.GetBoardState();
 
-	for (ChessCore::Square square = 0; square < 64; square++)
+	for (NeraChessEngine::Square square = 0; square < 64; square++)
 	{
-		ChessCore::Piece piece = board.GetPiece(square);
-		if (piece != ChessCore::PieceType::NO_PIECE)
+		NeraChessEngine::Piece piece = board.GetPiece(square);
+		if (piece != NeraChessEngine::PieceType::NO_PIECE)
 		{
 			uint8_t file = square.GetFile();
 			uint8_t rank = square.GetRank();
@@ -91,7 +91,7 @@ void NeuralNetwork::BoardToTensor(const ChessCore::ChessBoard& board, float* out
 		}
 	}
 
-	if (boardState.HasFlag(ChessCore::BoardStateFlags::WhiteToMove))
+	if (boardState.HasFlag(NeraChessEngine::BoardStateFlags::WhiteToMove))
 	{
 		float* ptr = &out[12 * 64];
 		std::fill(ptr, ptr + 64, 1.0f);
@@ -103,13 +103,13 @@ void NeuralNetwork::BoardToTensor(const ChessCore::ChessBoard& board, float* out
 			std::fill(ptr, ptr + 64, 1.0f);
 		};
 
-	if (boardState.HasFlag(ChessCore::BoardStateFlags::CanWhiteCastleKing)) fill_castle(13);
-	if (boardState.HasFlag(ChessCore::BoardStateFlags::CanWhiteCastleQueen)) fill_castle(14);
-	if (boardState.HasFlag(ChessCore::BoardStateFlags::CanBlackCastleKing)) fill_castle(15);
-	if (boardState.HasFlag(ChessCore::BoardStateFlags::CanBlackCastleQueen)) fill_castle(16);
+	if (boardState.HasFlag(NeraChessEngine::BoardStateFlags::CanWhiteCastleKing)) fill_castle(13);
+	if (boardState.HasFlag(NeraChessEngine::BoardStateFlags::CanWhiteCastleQueen)) fill_castle(14);
+	if (boardState.HasFlag(NeraChessEngine::BoardStateFlags::CanBlackCastleKing)) fill_castle(15);
+	if (boardState.HasFlag(NeraChessEngine::BoardStateFlags::CanBlackCastleQueen)) fill_castle(16);
 
 	// en passant
-	if (boardState.HasFlag(ChessCore::BoardStateFlags::CanEnPassent))
+	if (boardState.HasFlag(NeraChessEngine::BoardStateFlags::CanEnPassent))
 	{
 		uint8_t file = boardState.enPassantFile;
 		if (file >= 0 && file <= 7)

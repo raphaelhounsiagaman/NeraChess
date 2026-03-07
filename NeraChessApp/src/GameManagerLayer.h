@@ -28,15 +28,15 @@ public:
 	void StopGame();
 
 private:
-	void RunGame(ChessCore::ChessBoard board);
+	void RunGame(NeraChessEngine::ChessBoard board);
 	void Reset();
 
 private:
 
-	ChessCore::Clock m_Clock{};
-	ChessCore::ChessBoard m_ChessBoard{};
+	NeraChessEngine::Clock m_Clock{};
+	NeraChessEngine::ChessBoard m_ChessBoard{};
 
-	ChessCore::MoveQueue m_MoveQueue;
+	NeraChessEngine::MoveQueue m_MoveQueue;
 
 	std::unique_ptr<ChessPlayer> m_Player1 = std::make_unique<Human>();
 	std::unique_ptr<ChessPlayer> m_Player2 = std::make_unique<NeraChessBot>();

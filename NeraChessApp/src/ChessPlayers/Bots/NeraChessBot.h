@@ -17,27 +17,27 @@ class NeraChessBot : public ChessPlayer
 public:
 	NeraChessBot(const std::string& modelPath = "Ressources/NeuralNetworks/model6b48.onnx");
 
-	virtual ChessCore::Move GetNextMove(const ChessCore::ChessBoard& givenBoard, const ChessCore::Clock& timer) override;
+	virtual NeraChessEngine::Move GetNextMove(const NeraChessEngine::ChessBoard& givenBoard, const NeraChessEngine::Clock& timer) override;
 	virtual void ResetGame() override { m_OpeningBookAvailable = true; m_StopSearching = false; };
 	virtual void StopSearching() override { m_StopSearching = true; };
 
 private:
 	
-	ChessCore::Move GetOpeningBookMove(const ChessCore::ChessBoard& board);
+	NeraChessEngine::Move GetOpeningBookMove(const NeraChessEngine::ChessBoard& board);
 
-	ChessCore::Move IterativeDeepeningSearch(ChessCore::ChessBoard& board, uint32_t maxDepth);
-	ChessCore::Move PVSRoot(ChessCore::ChessBoard& board, int depth);
+	NeraChessEngine::Move IterativeDeepeningSearch(NeraChessEngine::ChessBoard& board, uint32_t maxDepth);
+	NeraChessEngine::Move PVSRoot(NeraChessEngine::ChessBoard& board, int depth);
 
-	float PrincipalVariationSearch(ChessCore::ChessBoard& board, float alpha, float beta, int depth, uint8_t ply);
-	float QuiescenceSearch(ChessCore::ChessBoard& board, float alpha, float beta, uint8_t ply);
+	float PrincipalVariationSearch(NeraChessEngine::ChessBoard& board, float alpha, float beta, int depth, uint8_t ply);
+	float QuiescenceSearch(NeraChessEngine::ChessBoard& board, float alpha, float beta, uint8_t ply);
 
-	float EvaluateBoard(const ChessCore::ChessBoard& board);
-	float FastStaticEval(const ChessCore::ChessBoard& board);
-	float EvaluateTerminal(const ChessCore::ChessBoard& board);
+	float EvaluateBoard(const NeraChessEngine::ChessBoard& board);
+	float FastStaticEval(const NeraChessEngine::ChessBoard& board);
+	float EvaluateTerminal(const NeraChessEngine::ChessBoard& board);
 
-	bool PositiveSEE(const ChessCore::ChessBoard& board, ChessCore::Move move);
+	bool PositiveSEE(const NeraChessEngine::ChessBoard& board, NeraChessEngine::Move move);
 
-	void SortMoves(const ChessCore::ChessBoard& board, ChessCore::MoveList<218>& moves, uint8_t ply, ChessCore::Move ttMove = 0);
+	void SortMoves(const NeraChessEngine::ChessBoard& board, NeraChessEngine::MoveList<218>& moves, uint8_t ply, NeraChessEngine::Move ttMove = 0);
 
 	int LateMoveReduction(int depth, uint8_t ply, uint8_t moveIndex) const;
 
@@ -205,7 +205,7 @@ private:
 	TranspositionTable m_TranspositionTable{ 256 }; // 256 MB
 
 	// Search Heuristics
-	ChessCore::Move m_KillerMoves[100][2] = {};
+	NeraChessEngine::Move m_KillerMoves[100][2] = {};
 	int m_HistoryHeuristic[64][64] = {};
 
 	// Opening book

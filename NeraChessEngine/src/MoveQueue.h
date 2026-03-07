@@ -5,7 +5,7 @@
 #include <queue>
 #include <mutex>
 
-namespace ChessCore
+namespace NeraChessEngine
 {
 	class MoveQueue
 	{

@@ -3,7 +3,7 @@
 #include <cstdint>
 #include <array>
 
-namespace ChessCore
+namespace NeraChessEngine
 {
     typedef uint64_t Bitboard;
 
@@ -36,4 +36,4 @@ namespace ChessCore
 
     };
 
-} // namespace ChessCore
+} // namespace NeraChessEngine

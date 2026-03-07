@@ -22,7 +22,7 @@ GameManagerLayer::~GameManagerLayer()
 void GameManagerLayer::OnUpdate(float deltaTime)
 {
 
-	ChessCore::Move move{0};
+	NeraChessEngine::Move move{0};
 
 	while (m_MoveQueue.Pop(&move))
 	{
@@ -40,7 +40,7 @@ void GameManagerLayer::StartGame()
 	if (m_GameStarted)
 		return;
 
-	m_ChessBoard = ChessCore::ChessBoard();
+	m_ChessBoard = NeraChessEngine::ChessBoard();
 	
 
 	BoardLayer* boardLayer = ApplicationCore::Application::Get().GetLayer<BoardLayer>();
@@ -50,7 +50,7 @@ void GameManagerLayer::StartGame()
 		boardLayer->SetWhiteBottom(m_Player1IsWhite);
 	}
 
-	m_Player1Turn = m_Player1IsWhite == m_ChessBoard.GetBoardState().HasFlag(ChessCore::BoardStateFlags::WhiteToMove);
+	m_Player1Turn = m_Player1IsWhite == m_ChessBoard.GetBoardState().HasFlag(NeraChessEngine::BoardStateFlags::WhiteToMove);
 
 	m_MoveQueue.Clear();
 
@@ -73,7 +73,7 @@ void GameManagerLayer::StopGame()
 	currentPlayer->StopSearching();
 }
 
-void GameManagerLayer::RunGame(ChessCore::ChessBoard board)
+void GameManagerLayer::RunGame(NeraChessEngine::ChessBoard board)
 {
 	m_Clock.Start();
 	m_GameStarted = true;
@@ -83,7 +83,7 @@ void GameManagerLayer::RunGame(ChessCore::ChessBoard board)
 
 		ChessPlayer* currentPlayer = m_Player1Turn ? m_Player1.get() : m_Player2.get();
 		
-		ChessCore::Move move = currentPlayer->GetNextMove(board, m_Clock);
+		NeraChessEngine::Move move = currentPlayer->GetNextMove(board, m_Clock);
 
 		m_Clock.Pause();
 
@@ -93,7 +93,7 @@ void GameManagerLayer::RunGame(ChessCore::ChessBoard board)
 			break;
 		}
 
-		ChessCore::MoveList<218> legalMoves = board.GetLegalMoves();
+		NeraChessEngine::MoveList<218> legalMoves = board.GetLegalMoves();
 		if (std::find(legalMoves.begin(), legalMoves.end(), move) == legalMoves.end())
 		{
 			std::println("Player wants to play illegal move: {}", move.ToUCI());
@@ -109,25 +109,25 @@ void GameManagerLayer::RunGame(ChessCore::ChessBoard board)
 			move.GetTargetSquare().ToString());
 
 		uint16_t gameOverFlags = board.GetGameOver(true);
-		if (gameOverFlags & (uint16_t)ChessCore::GameOverFlags::IS_GAME_OVER)
+		if (gameOverFlags & (uint16_t)NeraChessEngine::GameOverFlags::IS_GAME_OVER)
 		{
 			std::string gameOverReason = "";
 
-			if (gameOverFlags & (uint16_t)ChessCore::GameOverFlags::IS_CHECKMATE)
+			if (gameOverFlags & (uint16_t)NeraChessEngine::GameOverFlags::IS_CHECKMATE)
 				gameOverReason = "Checkmate";
-			else if (gameOverFlags & (uint16_t)ChessCore::GameOverFlags::IS_RESIGN)
+			else if (gameOverFlags & (uint16_t)NeraChessEngine::GameOverFlags::IS_RESIGN)
 				gameOverReason = "Resignation";
-			else if (gameOverFlags & (uint16_t)ChessCore::GameOverFlags::IS_TIMEOUT)
+			else if (gameOverFlags & (uint16_t)NeraChessEngine::GameOverFlags::IS_TIMEOUT)
 				gameOverReason = "Timout";
-			else if (gameOverFlags & (uint16_t)ChessCore::GameOverFlags::IS_STALEMATE)
+			else if (gameOverFlags & (uint16_t)NeraChessEngine::GameOverFlags::IS_STALEMATE)
 				gameOverReason = "Stalemate";
-			else if (gameOverFlags & (uint16_t)ChessCore::GameOverFlags::IS_REPETITION)
+			else if (gameOverFlags & (uint16_t)NeraChessEngine::GameOverFlags::IS_REPETITION)
 				gameOverReason = "Repetition";
-			else if (gameOverFlags & (uint16_t)ChessCore::GameOverFlags::IS_50MOVE_RULE)
+			else if (gameOverFlags & (uint16_t)NeraChessEngine::GameOverFlags::IS_50MOVE_RULE)
 				gameOverReason = "50 Move Rule";
-			else if (gameOverFlags & (uint16_t)ChessCore::GameOverFlags::IS_INSUFFICIENT_MATERIAL)
+			else if (gameOverFlags & (uint16_t)NeraChessEngine::GameOverFlags::IS_INSUFFICIENT_MATERIAL)
 				gameOverReason = "Insufficient Material";
-			else if (gameOverFlags & (uint16_t)ChessCore::GameOverFlags::IS_AGREE_ON_DRAW)
+			else if (gameOverFlags & (uint16_t)NeraChessEngine::GameOverFlags::IS_AGREE_ON_DRAW)
 				gameOverReason = "Agree on Draw";
 
 			std::print("Game over, {} ends the game by {} \n\n", (m_Player1Turn ? "Player 1" : "Player 2"), gameOverReason);

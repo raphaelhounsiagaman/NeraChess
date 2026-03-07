@@ -12,13 +12,13 @@ public:
 	NeuralNetwork(const std::string& modelPath);
 	~NeuralNetwork();
 
-	float GetEvaluation(const ChessCore::ChessBoard& board);
+	float GetEvaluation(const NeraChessEngine::ChessBoard& board);
 
-	void QueuePosition(const ChessCore::ChessBoard& board);
+	void QueuePosition(const NeraChessEngine::ChessBoard& board);
 
 private:
 
-	void BoardToTensor(const ChessCore::ChessBoard& board, float* out) const;
+	void BoardToTensor(const NeraChessEngine::ChessBoard& board, float* out) const;
 
 	void EvaluateQueue();
 
