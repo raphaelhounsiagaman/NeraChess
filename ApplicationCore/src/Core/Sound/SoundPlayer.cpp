@@ -29,11 +29,16 @@ namespace ApplicationCore
 		Mix_QuerySpec(&m_AudioRate, &m_AudioFormat, &m_AudioChannels);
 		m_Bits = m_AudioFormat & 0xFF;
 		Mix_AllocateChannels(c_ChannelCount);
+		m_Initialized = true;
 	}
 
 	void SoundPlayer::Destroy()
 	{
-		Mix_CloseAudio();
+		if (m_Initialized)
+		{
+			Mix_CloseAudio();
+			m_Initialized = false;
+		}
 	}
 
 }

@@ -24,7 +24,11 @@ namespace ApplicationCore
 
 	Texture::~Texture()
 	{
-		// TODO: delete the texture if necessary
+		if (m_SDL_Texture)
+		{
+			SDL_DestroyTexture(m_SDL_Texture);
+			m_SDL_Texture = nullptr;
+		}
 	}
 
 

@@ -18,6 +18,9 @@ int main()
 	app.PushLayer<BoardLayer>();
 	app.PushLayer<GameManagerLayer>();
 	app.PushLayer<UILayer>();
+	// Keep the thread-owning manager last so reverse layer destruction joins its
+	// worker before any layer the worker can look up is removed.
+	app.PushLayer<GameManagerLayer>();
 
 	app.Run();
 }

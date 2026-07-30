@@ -32,6 +32,7 @@ namespace ApplicationCore
 
 		uint16_t m_AudioFormat{};
 		int m_Bits = 0;
+		bool m_Initialized = false;
 
 
 

@@ -15,6 +15,9 @@ namespace ApplicationCore
 		Texture(const std::string& fileName);
 		~Texture();
 
+		Texture(const Texture&) = delete;
+		Texture& operator=(const Texture&) = delete;
+
 		SDL_Texture* GetSDLTexture() const { return m_SDL_Texture; }
 		Vec2<int> GetSize() const { return m_Size; }
 	private:

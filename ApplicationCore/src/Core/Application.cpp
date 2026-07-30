@@ -24,6 +24,11 @@ namespace ApplicationCore
 
 	Application::~Application()
 	{
+		// Layers can own worker threads and SDL resources. Destroy them in reverse
+		// stacking order while the window/subsystems are still alive.
+		while (!m_LayerStack.empty())
+			m_LayerStack.pop_back();
+
 		m_Window->Destroy();
 
 		s_Application = nullptr;

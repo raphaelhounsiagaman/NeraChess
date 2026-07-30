@@ -3,7 +3,7 @@ project "ApplicationCore"
   language "C++"
   cppdialect "C++23"
   targetdir ("../bin/%{cfg.buildcfg}/%{prj.name}")
-  objdir ("../bin/Intermediates/%{cfg.builcfg}/%{prj.name}")
+  objdir ("../bin/Intermediates/%{cfg.buildcfg}/%{prj.name}")
   staticruntime "off"
 
   files
@@ -82,5 +82,6 @@ project "ApplicationCore"
     defines { "DIST" }
     runtime "Release"
     optimize "On"
+    linktimeoptimization "On"
     symbols "Off"
   filter{}
