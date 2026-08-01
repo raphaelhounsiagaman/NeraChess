@@ -5,7 +5,6 @@
 #include "Human.h"
 
 // Bots
-#include "Bots/BotRandom.h"
-#include "Bots/FirstNNBot.h"
-#include "Bots/MyBotOld.h"
-#include "Bots/NeraChessBot.h"
+#include "Bot/BotRandom.h"
+#include "Bot/MyBotOld.h"
+#include "Bot/NeraChessBot.h"

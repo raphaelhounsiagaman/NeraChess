@@ -28,24 +28,12 @@ project "NeraChessApp"
     "../ApplicationCore/vendor/SDL2/include",
     "../ApplicationCore/vendor/SDL2_image/include",
     "../ApplicationCore/vendor/SDL2_mixer/include",
-
-    "vendor/onnxruntime-win-x64-gpu-1.24.2/include",
-  }
-
-  libdirs
-  {
-    "vendor/onnxruntime-win-x64-gpu-1.24.2/lib",
   }
 
   links
   {
     "NeraChessEngine",
     "ApplicationCore",
-        
-    "onnxruntime",
-    "onnxruntime_providers_cuda",
-    "onnxruntime_providers_shared",
-    "onnxruntime_providers_tensorrt",
   }
 
   defines
@@ -56,8 +44,6 @@ project "NeraChessApp"
   postbuildcommands 
   {
     '{COPY} "%{prj.location}/../bin/%{cfg.buildcfg}/ApplicationCore/**.dll" "%{cfg.targetdir}"',
-
-    '{COPY} "%{prj.location}/vendor/onnxruntime-win-x64-gpu-1.24.2/lib/**.dll" "%{cfg.targetdir}"',
   }
 
   -- SYSTEM SPECIFICS
