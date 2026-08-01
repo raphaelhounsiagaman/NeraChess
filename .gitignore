@@ -7,6 +7,7 @@ bin/
 *.vcxproj.user
 *.vcxproj.filters
 *.sln
+*.slnx
 *.log
 Makefile
 NeraChessApp/imgui.ini
