@@ -3,7 +3,7 @@ project "NeraChessEngine"
   language "C++"
   cppdialect "C++23"
   targetdir ("../bin/%{cfg.buildcfg}/%{prj.name}")
-  objdir ("../bin/Intermediates/%{cfg.builcfg}/%{prj.name}")
+  objdir ("../bin/Intermediates/%{cfg.buildcfg}/%{prj.name}")
   staticruntime "off"
 
   files
@@ -27,6 +27,7 @@ project "NeraChessEngine"
   filter "system:windows"
     systemversion "latest"
     defines { }
+
   filter {}
 
   -- Configurations

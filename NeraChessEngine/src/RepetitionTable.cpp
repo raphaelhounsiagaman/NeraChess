@@ -1,5 +1,7 @@
 #include "RepetitionTable.h"
 
+#include <algorithm>
+
 namespace NeraChessEngine
 {
 

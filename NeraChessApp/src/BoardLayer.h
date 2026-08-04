@@ -9,7 +9,9 @@
 #include "Core/Math/Vec2.h"
 
 #include "ChessBoard.h"
+#include "MoveQueue.h"
 
+#include <atomic>
 #include <array>
 #include <vector>
 #include <functional>
@@ -31,7 +33,10 @@ public:
 
 	void SetWhiteBottom(bool whiteBottom) { m_WhiteBottom = whiteBottom;  }
 	void SetChessBoard(const NeraChessEngine::ChessBoard& board = NeraChessEngine::ChessBoard()) { m_ChessBoard = board; };
-	void SetMovePtr(NeraChessEngine::Move* move);
+
+	void BeginHumanMoveInput();
+	bool TryGetHumanMove(NeraChessEngine::Move* move);
+	void CancelHumanMoveInput();
 
 private:
 	bool OnMouseButtonPressed(ApplicationCore::MouseButtonPressedEvent& event);
@@ -109,7 +114,8 @@ private:
 	// Misc 
 
 	ApplicationCore::Vec2<uint32_t> m_MousePosition{ 0, 0 };
-	NeraChessEngine::Move* m_MovePtr = nullptr;
+	NeraChessEngine::MoveQueue m_HumanMoveQueue;
+	std::atomic<bool> m_AcceptingHumanMove{ false };
 	bool m_WhiteBottom = true;
 
 	

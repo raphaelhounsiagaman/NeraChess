@@ -1,0 +1,62 @@
+name: Build
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  macos:
+    name: macOS
+    runs-on: macos-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: brew install premake sdl2-compat sdl2_image sdl2_mixer
+
+      - name: Generate Makefiles
+        run: ./scripts/Setup-macOS.sh gmake
+
+      - name: Build Debug and Release
+        run: |
+          make config=debug -j"$(sysctl -n hw.logicalcpu)"
+          make config=release -j"$(sysctl -n hw.logicalcpu)"
+
+      - name: Run smoke test
+        env:
+          SDL_AUDIODRIVER: dummy
+          SDL_VIDEODRIVER: dummy
+        run: ./bin/Release/NeraChessApp/NeraChessApp --smoke-test
+
+  windows:
+    name: Windows
+    runs-on: windows-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Configure MSBuild
+        uses: microsoft/setup-msbuild@v2
+
+      - name: Generate Visual Studio solution
+        shell: cmd
+        run: scripts\Setup-Windows.bat vs2022
+
+      - name: Build Debug and Release
+        shell: cmd
+        run: |
+          msbuild NeraChess.sln /m /p:Configuration=Debug /p:Platform=x64
+          msbuild NeraChess.sln /m /p:Configuration=Release /p:Platform=x64
+
+      - name: Run smoke test
+        shell: cmd
+        env:
+          SDL_AUDIODRIVER: dummy
+          SDL_VIDEODRIVER: dummy
+        run: bin\Release\NeraChessApp\NeraChessApp.exe --smoke-test

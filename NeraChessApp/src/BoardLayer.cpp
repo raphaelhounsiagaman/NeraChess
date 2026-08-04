@@ -3,6 +3,7 @@
 #include "Core/Application.h"
 #include "Core/Event.h"
 
+#include "Resources.h"
 
 #include <string>
 #include <vector>
@@ -13,7 +14,7 @@
 BoardLayer::BoardLayer()
 	: m_Renderer(ApplicationCore::Application::Get().GetWindow()->GetRenderer()),
 	m_SoundPlayer(ApplicationCore::Application::Get().GetWindow()->GetSoundPlayer()),
-	m_Texture("Ressources/Sprites/ChessPieces.png"),
+	m_Texture(NeraChessApp::GetResourcePath("Sprites/ChessPieces.png").string()),
 	m_PieceSprites(
 	{
 		ApplicationCore::Sprite{ m_Texture },
@@ -54,8 +55,8 @@ BoardLayer::BoardLayer()
 	m_PieceSprites[NeraChessEngine::BLACK_ROOK].Position.X = pieceWidth * 4;
 	m_PieceSprites[NeraChessEngine::BLACK_PAWN].Position.X = pieceWidth * 5;
 
-	AddSoundsToList("Ressources/Sounds/Moves", m_MoveSounds);
-	AddSoundsToList("Ressources/Sounds/Captures", m_CaptureSounds);
+	AddSoundsToList(NeraChessApp::GetResourcePath("Sounds/Moves"), m_MoveSounds);
+	AddSoundsToList(NeraChessApp::GetResourcePath("Sounds/Captures"), m_CaptureSounds);
 }
 
 BoardLayer::~BoardLayer()
@@ -298,11 +299,8 @@ void BoardLayer::DrawFlyingPiece()
 
 void BoardLayer::TryMakeMove(NeraChessEngine::Move move)
 {
-	if (m_MovePtr)
-	{
-		*m_MovePtr = move;
-	}
-	m_MovePtr = nullptr;
+	if (m_AcceptingHumanMove.exchange(false))
+		m_HumanMoveQueue.Push(move);
 }
 
 void BoardLayer::AddSoundsToList(std::filesystem::path path, std::vector<ApplicationCore::Sound>& list)
@@ -392,9 +390,21 @@ void BoardLayer::PlayMove(NeraChessEngine::Move move)
 
 }
 
-void BoardLayer::SetMovePtr(NeraChessEngine::Move* move)
+void BoardLayer::BeginHumanMoveInput()
 {
-	m_MovePtr = move;
+	m_HumanMoveQueue.Clear();
+	m_AcceptingHumanMove = true;
+}
+
+bool BoardLayer::TryGetHumanMove(NeraChessEngine::Move* move)
+{
+	return m_HumanMoveQueue.Pop(move);
+}
+
+void BoardLayer::CancelHumanMoveInput()
+{
+	m_AcceptingHumanMove = false;
+	m_HumanMoveQueue.Clear();
 }
 
 bool BoardLayer::OnMouseButtonPressed(ApplicationCore::MouseButtonPressedEvent& event)

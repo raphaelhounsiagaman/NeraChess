@@ -1,4 +1,6 @@
-﻿#include "NeraChessBot.h"
+#include "NeraChessBot.h"
+
+#include "Resources.h"
 
 #include <filesystem>
 #include <algorithm>
@@ -15,12 +17,13 @@
 
 constexpr float INF = 1e3;
 
-NeraChessBot::NeraChessBot(const std::string& modelPath)
- : m_OpeningBook(c_OpeningBookPath)
+NeraChessBot::NeraChessBot()
+ : m_OpeningBookPath(NeraChessApp::GetResourcePath("OpeningBook/OpeningBook.txt")),
+ m_OpeningBook(m_OpeningBookPath)
 {
 	if (!m_OpeningBook)
 	{
-		std::cout << "Opening book missing (" + c_OpeningBookPath + ")\n";
+		std::cout << "Opening book missing (" << m_OpeningBookPath << ")\n";
 		m_OpeningBookAvailable = false;
 	}
 }
@@ -164,6 +167,8 @@ NeraChessEngine::Move NeraChessBot::PVSRoot(NeraChessEngine::ChessBoard& board, 
 		{
 		case EntryFlag::EXACT:
 			return ttProbePtr->bestMove;
+		default:
+			break;
 		}
 	}
 

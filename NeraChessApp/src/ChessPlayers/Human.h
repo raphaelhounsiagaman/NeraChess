@@ -11,7 +11,7 @@ public:
 	virtual ~Human() = default;
 
 	virtual NeraChessEngine::Move GetNextMove(const NeraChessEngine::ChessBoard& board, const NeraChessEngine::Clock& timer) override;
-	virtual void ResetGame() override {};
+	virtual void ResetGame() override { m_StopSearching = false; };
 	virtual void StopSearching() override { m_StopSearching = true; }
 
 private:

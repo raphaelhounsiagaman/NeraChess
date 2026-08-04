@@ -10,6 +10,7 @@
 
 #include <memory>
 #include <atomic>
+#include <thread>
 
 class GameManagerLayer : public ApplicationCore::Layer
 {
@@ -28,7 +29,7 @@ public:
 	void StopGame();
 
 private:
-	void RunGame(NeraChessEngine::ChessBoard board);
+	void RunGame(std::stop_token stopToken, NeraChessEngine::ChessBoard board);
 	void Reset();
 
 private:
@@ -46,6 +47,6 @@ private:
 
 	std::atomic<bool> m_GameStarted = false;
 	std::atomic<bool> m_GameStopRequested = false;
+	std::jthread m_GameThread;
 };
-
 

@@ -1,21 +1,18 @@
 # Directories
 .vs/
 bin/
+*.xcodeproj/
+*.xcworkspace/
+.DS_Store
 
 # Files
 *.vcxproj
 *.vcxproj.user
 *.vcxproj.filters
+*.xcuserstate
 *.sln
 *.slnx
 *.log
 Makefile
-NeraChessApp/imgui.ini
-
-# Exclude
-!vendor
-!NeraCore/vendor/DearImGUI
-!NeraCore/vendor/SDL2
-!NeraCore/vendor/SDL2_image
-!NeraCore/vendor/SDL2_mixer
-
+*.make
+imgui.ini

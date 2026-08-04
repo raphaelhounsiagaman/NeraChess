@@ -2,6 +2,7 @@
 
 #include <string>
 #include <chrono>
+#include <filesystem>
 #include <unordered_map>
 #include <fstream>
 
@@ -14,7 +15,7 @@
 class NeraChessBot : public ChessPlayer
 {
 public:
-	NeraChessBot(const std::string& modelPath = "Ressources/NeuralNetworks/model6b48.onnx");
+	NeraChessBot();
 
 	virtual NeraChessEngine::Move GetNextMove(const NeraChessEngine::ChessBoard& givenBoard, const NeraChessEngine::Clock& timer) override;
 	virtual void ResetGame() override { m_OpeningBookAvailable = true; m_StopSearching = false; };
@@ -189,7 +190,7 @@ private:
 		}
 	};
 
-	static inline const std::string c_OpeningBookPath = "Ressources/OpeningBook/OpeningBook.txt";
+	const std::filesystem::path m_OpeningBookPath;
 	std::ifstream m_OpeningBook;
 
 	// Timing Stuff
@@ -217,7 +218,6 @@ private:
 	// Misc
 	uint32_t m_CurrentDepth{ 1 };
 	uint32_t m_SearchID = 0;
-	std::atomic<bool> m_StopSearching;
+	std::atomic<bool> m_StopSearching{ false };
 
 };
-

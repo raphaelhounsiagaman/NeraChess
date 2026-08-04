@@ -4,6 +4,7 @@ project "NeraChessApp"
   cppdialect "C++23"
   targetdir ("../bin/%{cfg.buildcfg}/%{prj.name}")
   objdir ("../bin/Intermediates/%{cfg.buildcfg}/%{prj.name}")
+  debugdir ("%{cfg.targetdir}")
   staticruntime "off"
   
   files 
@@ -21,13 +22,10 @@ project "NeraChessApp"
   {
     "src",
 
-	  "../NeraChessEngine/src",
+    "../NeraChessEngine/src",
 
     "../ApplicationCore/src",
     "../ApplicationCore/vendor/DearImGUI",
-    "../ApplicationCore/vendor/SDL2/include",
-    "../ApplicationCore/vendor/SDL2_image/include",
-    "../ApplicationCore/vendor/SDL2_mixer/include",
   }
 
   links
@@ -41,24 +39,59 @@ project "NeraChessApp"
     "SDL_MAIN_HANDLED"
   }
 
-  postbuildcommands 
-  {
-    '{COPY} "%{prj.location}/../bin/%{cfg.buildcfg}/ApplicationCore/**.dll" "%{cfg.targetdir}"',
-  }
-
   -- SYSTEM SPECIFICS
 
   filter "system:windows"
     systemversion "latest"
     defines { "WINDOWS" }
-    links { "opengl32" }
+    includedirs
+    {
+      "../ApplicationCore/vendor/SDL2/include",
+      "../ApplicationCore/vendor/SDL2_image/include",
+      "../ApplicationCore/vendor/SDL2_mixer/include",
+    }
+    libdirs
+    {
+      "../ApplicationCore/vendor/SDL2/lib",
+      "../ApplicationCore/vendor/SDL2_image/lib",
+      "../ApplicationCore/vendor/SDL2_mixer/lib",
+    }
+    links
+    {
+      "SDL2",
+      "SDL2_image",
+      "SDL2_mixer",
+    }
+    postbuildcommands
+    {
+      '{COPYDIR} "%{prj.location}/Ressources" "%{cfg.targetdir}/Ressources"',
+      '{COPYFILE} "%{prj.location}/../ApplicationCore/vendor/SDL2/lib/SDL2.dll" "%{cfg.targetdir}"',
+      '{COPYFILE} "%{prj.location}/../ApplicationCore/vendor/SDL2_image/lib/SDL2_image.dll" "%{cfg.targetdir}"',
+      '{COPYFILE} "%{prj.location}/../ApplicationCore/vendor/SDL2_mixer/lib/SDL2_mixer.dll" "%{cfg.targetdir}"',
+    }
 
   filter "system:linux"
     links { "GL", "pthread", "dl" }
 
   filter "system:macosx"
-    links { "OpenGL.framework" }
-
+    externalincludedirs
+    {
+      NeraChessMacOSDependencyPrefix .. "/include/SDL2",
+    }
+    libdirs
+    {
+      NeraChessMacOSDependencyPrefix .. "/lib",
+    }
+    links
+    {
+      "SDL2",
+      "SDL2_image",
+      "SDL2_mixer",
+    }
+    postbuildcommands
+    {
+      '{COPYDIR} "%{prj.location}/Ressources/." "%{cfg.targetdir}/Ressources"',
+    }
   filter {}
 
   -- COMPILER SPECIFICS
@@ -72,12 +105,6 @@ project "NeraChessApp"
   filter "toolset:msc" 
     defines { "USING_MSVC" }
 
-  filter {}
-    
-    -- PLATFORM SPECIFICS
-
-  filter "platforms:x64"
-    architecture "x86_64"
   filter {}
 
     -- CONFIG SPECIFICS
@@ -100,4 +127,3 @@ project "NeraChessApp"
     symbols "Off"
 
   filter {}
-    

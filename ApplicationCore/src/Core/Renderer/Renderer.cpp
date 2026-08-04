@@ -27,9 +27,14 @@ namespace ApplicationCore
 		m_SDLRenderer = SDL_CreateRenderer(m_SDLWindow, -1, rendererFlags);
 		if (m_SDLRenderer == nullptr)
 		{
-			std::println("Error: SDL_CreateRenderer(): {}", SDL_GetError());
-			assert(false);
-			return;
+			std::println("Warning: accelerated renderer unavailable: {}", SDL_GetError());
+			m_SDLRenderer = SDL_CreateRenderer(m_SDLWindow, -1, SDL_RENDERER_SOFTWARE);
+			if (m_SDLRenderer == nullptr)
+			{
+				std::println("Error: SDL_CreateRenderer(): {}", SDL_GetError());
+				assert(false);
+				return;
+			}
 		}
 		SDL_SetRenderDrawBlendMode(m_SDLRenderer, SDL_BLENDMODE_BLEND);
 

@@ -53,37 +53,87 @@ The goal of this structure is separation of concerns rather than extreme abstrac
 
 ### Included in Repository
 
-- SDL
-- myGUI
-- Premake (for generating build files)
+- Dear ImGui
+- SDL2 headers and Windows libraries
+- Premake for Windows and Linux project generation
 
----
+### macOS dependencies
 
-## Build (Windows)
+The macOS build uses native Homebrew libraries instead of the checked-in
+Windows binaries:
 
-Currently tested on Windows only.
-
-### Requirements
-
--  A C++ compiler supporting C++23 (tested with MSVC / Visual Studio 2022)
-
----
-
-### 1. Generate Project Files
-
-Run the script located at:
-
-```
-scripts/Setup-Windows.bat
+```sh
+brew install premake sdl2-compat sdl2_image sdl2_mixer
 ```
 
-to create Visual Studio 2026 files.
-
 ---
 
-### 2. Build
+## Build
 
-Open the generated solution in Visual Studio and build in Release mode.
+NeraChess requires a compiler and standard library with C++23 `std::format`
+and `std::print` support.
+
+### macOS
+
+Requirements:
+
+- Apple Silicon or Intel Mac
+- Xcode and the Xcode Command Line Tools
+- The Homebrew dependencies listed above
+
+Generate an Xcode workspace from the repository root:
+
+```sh
+./scripts/Setup-macOS.sh
+open NeraChess.xcworkspace
+```
+
+Select the `NeraChessApp` scheme and build or run the Debug or Release
+configuration.
+
+For a terminal build, generate GNU Makefiles instead:
+
+```sh
+./scripts/Setup-macOS.sh gmake
+make config=release
+./bin/Release/NeraChessApp/NeraChessApp
+```
+
+Set `NERACHESS_MACOS_DEPENDENCY_PREFIX` before project generation only when
+the SDL libraries are installed under a prefix other than `brew --prefix`.
+
+### Windows
+
+Requirements:
+
+- Visual Studio 2026 with the Desktop development with C++ workload, or a
+  recent Visual Studio 2022 installation with C++23 library support
+
+Generate the default Visual Studio 2026 solution from any working directory:
+
+```bat
+scripts\Setup-Windows.bat
+```
+
+To generate Visual Studio 2022 files instead:
+
+```bat
+scripts\Setup-Windows.bat vs2022
+```
+
+Open `NeraChess.slnx` for Visual Studio 2026 or `NeraChess.sln` for Visual
+Studio 2022, select Debug or Release, and build `NeraChessApp`.
+
+On both platforms, the build copies the `Ressources` directory beside the
+executable. The application resolves assets relative to its executable, so it
+can be launched from any working directory.
+
+To verify SDL initialization, resource loading, and clean game-thread shutdown
+without entering the application loop, run a built executable with:
+
+```sh
+./bin/Debug/NeraChessApp/NeraChessApp --smoke-test
+```
 
 ---
 

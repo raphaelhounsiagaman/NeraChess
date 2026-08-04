@@ -15,8 +15,6 @@ NeraChessEngine::Move MyBotOld::GetNextMove(const NeraChessEngine::ChessBoard& g
 
 	NeraChessEngine::BoardState boardState = board.GetBoardState();
 	bool whiteToPlay = boardState.HasFlag(NeraChessEngine::BoardStateFlags::WhiteToMove);
-	int8_t colorMultiplier = whiteToPlay ? 1 : -1;
-
 	NeraChessEngine::Move bestMove{};
 	double bestEval = whiteToPlay ? -999999 : 999999;
 

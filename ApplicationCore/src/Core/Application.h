@@ -3,8 +3,11 @@
 #include "Layer.h"
 #include "Window.h"
 
+#include <cassert>
 #include <string>
 #include <memory>
+#include <type_traits>
+#include <vector>
 
 namespace ApplicationCore
 {

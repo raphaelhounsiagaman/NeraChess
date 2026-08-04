@@ -4,8 +4,10 @@
 
 #include "BoardLayer.h"
 
+#include <algorithm>
 #include <thread>
 #include <print>
+#include <utility>
 
 template<typename TPlayer1, typename TPlayer2>
 void GameManagerLayer::SetPlayerTypes()
@@ -17,6 +19,8 @@ void GameManagerLayer::SetPlayerTypes()
 GameManagerLayer::~GameManagerLayer()
 {
 	StopGame();
+	if (m_GameThread.joinable())
+		m_GameThread.join();
 }
 
 void GameManagerLayer::OnUpdate(float deltaTime)
@@ -40,6 +44,14 @@ void GameManagerLayer::StartGame()
 	if (m_GameStarted)
 		return;
 
+	if (m_GameThread.joinable())
+		m_GameThread.join();
+
+	if (m_GameStarted.exchange(true))
+		return;
+
+	m_GameStopRequested = false;
+
 	m_ChessBoard = NeraChessEngine::ChessBoard();
 	
 
@@ -56,9 +68,10 @@ void GameManagerLayer::StartGame()
 
 	std::println("Game started, {} starts.", m_Player1Turn ? "Player 1" : "Player 2");
 
-	std::thread gameThread(&GameManagerLayer::RunGame, this, m_ChessBoard);
-	if (gameThread.joinable())
-		gameThread.detach();
+	m_GameThread = std::jthread([this, board = m_ChessBoard](std::stop_token stopToken) mutable
+	{
+		RunGame(stopToken, std::move(board));
+	});
 }
 
 
@@ -68,17 +81,17 @@ void GameManagerLayer::StopGame()
 		return;
 
 	m_GameStopRequested = true;
+	m_GameThread.request_stop();
 
 	ChessPlayer* currentPlayer = m_Player1Turn ? m_Player1.get() : m_Player2.get();
 	currentPlayer->StopSearching();
 }
 
-void GameManagerLayer::RunGame(NeraChessEngine::ChessBoard board)
+void GameManagerLayer::RunGame(std::stop_token stopToken, NeraChessEngine::ChessBoard board)
 {
 	m_Clock.Start();
-	m_GameStarted = true;
 
-	while (m_GameStarted)
+	while (!stopToken.stop_requested() && !m_GameStopRequested)
 	{
 
 		ChessPlayer* currentPlayer = m_Player1Turn ? m_Player1.get() : m_Player2.get();
@@ -87,7 +100,7 @@ void GameManagerLayer::RunGame(NeraChessEngine::ChessBoard board)
 
 		m_Clock.Pause();
 
-		if (m_GameStopRequested)
+		if (stopToken.stop_requested() || m_GameStopRequested)
 		{
 			std::println("Game Aborted!");
 			break;
@@ -158,4 +171,3 @@ void GameManagerLayer::Reset()
 
 	m_Player1IsWhite = !m_Player1IsWhite;
 }
-

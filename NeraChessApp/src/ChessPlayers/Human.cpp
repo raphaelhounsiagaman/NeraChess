@@ -12,19 +12,22 @@ NeraChessEngine::Move Human::GetNextMove(const NeraChessEngine::ChessBoard& boar
     ApplicationCore::Application& app = ApplicationCore::Application::Get();
 
     BoardLayer* boardLayer = app.GetLayer<BoardLayer>();
+    if (!boardLayer)
+        return 0;
 
     NeraChessEngine::Move move = 0;
 
-    boardLayer->SetMovePtr(&move);
+    boardLayer->BeginHumanMoveInput();
 
     while (!m_StopSearching)
     {
-        if (move)
+        if (boardLayer->TryGetHumanMove(&move))
             return move;
 
         std::this_thread::sleep_for(std::chrono::milliseconds(50));
     }
 
+    boardLayer->CancelHumanMoveInput();
     m_StopSearching = false;
 
     return 0;

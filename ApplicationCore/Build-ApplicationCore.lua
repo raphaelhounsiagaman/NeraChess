@@ -25,25 +25,6 @@ project "ApplicationCore"
     "src",
 
     "vendor/DearImGUI",
-
-    "vendor/SDL2/include",
-    "vendor/SDL2_image/include",
-    "vendor/SDL2_mixer/include",
-  }
-
-  libdirs
-  {
-    "vendor/SDL2/lib",
-    "vendor/SDL2_image/lib",
-    "vendor/SDL2_mixer/lib",
-  }
-
-  links
-  {
-    "SDL2",
-    "SDL2main",
-    "SDL2_image",
-    "SDL2_mixer",
   }
 
   defines
@@ -51,18 +32,22 @@ project "ApplicationCore"
     "SDL_MAIN_HANDLED"
   }
 
-  postbuildcommands 
-  {
-    '{COPY} "%{prj.location}/vendor/SDL2/lib/*.dll" "%{cfg.targetdir}"',
-    '{COPY} "%{prj.location}/vendor/SDL2_image/lib/*.dll" "%{cfg.targetdir}"',
-    '{COPY} "%{prj.location}/vendor/SDL2_mixer/lib/*.dll" "%{cfg.targetdir}"',
-  }
-
   -- Platform
 
   filter "system:windows"
     systemversion "latest"
-    defines { }
+    includedirs
+    {
+      "vendor/SDL2/include",
+      "vendor/SDL2_image/include",
+      "vendor/SDL2_mixer/include",
+    }
+
+  filter "system:macosx"
+    externalincludedirs
+    {
+      NeraChessMacOSDependencyPrefix .. "/include/SDL2",
+    }
   filter {}
 
   -- Configurations
