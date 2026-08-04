@@ -1,4 +1,6 @@
 #include "ChessBoard.h"
+#include "SearchEngine.h"
+#include "TranspositionTable.h"
 #include "Zobrist.h"
 
 #include <chrono>
@@ -225,6 +227,88 @@ namespace
         Require(board.GetZobristKey() == originalKey, "key differs after null move undo");
     }
 
+    void TestTranspositionTable()
+    {
+        using namespace NeraChessSearch;
+
+        TranspositionTable table(1);
+        Require(table.SizeBytes() <= 1024ULL * 1024ULL, "TT exceeded requested size");
+        Require(table.Probe(0) == nullptr, "empty TT reported a key-zero hit");
+
+        table.NewSearch();
+        table.Store(0, 42, 8, TTBound::Exact, NeraChessEngine::Move(123));
+        const TTEntry* zeroEntry = table.Probe(0);
+        Require(zeroEntry && zeroEntry->score == 42 && zeroEntry->depth == 8,
+            "TT failed to store key zero");
+
+        constexpr uint64_t key = 0x123456789ABCDEF0ULL;
+        table.Store(key, 300, 12, TTBound::Exact, NeraChessEngine::Move(456));
+        table.Store(key, -50, 2, TTBound::Upper, NeraChessEngine::Move(789));
+        const TTEntry* preserved = table.Probe(key);
+        Require(preserved && preserved->score == 300 && preserved->depth == 12 &&
+            preserved->GetBound() == TTBound::Exact,
+            "shallow TT bound replaced a deep exact entry");
+        Require(preserved->move == 789, "TT did not refresh the best move");
+
+        table.Clear();
+        Require(table.Probe(key) == nullptr, "TT clear left a valid entry");
+    }
+
+    bool ContainsMove(const NeraChessEngine::MoveList<218>& moves, NeraChessEngine::Move move)
+    {
+        for (const auto legalMove : moves)
+        {
+            if (legalMove == move)
+                return true;
+        }
+        return false;
+    }
+
+    void TestSearchFoundations()
+    {
+        using namespace NeraChessEngine;
+        using namespace NeraChessSearch;
+
+        SearchEngine search(16);
+
+        ChessBoard checkmate("7k/6Q1/6K1/8/8/8/8/8 b - - 100 1");
+        SearchLimits terminalLimits;
+        terminalLimits.maxDepth = 2;
+        const SearchResult terminal = search.Search(checkmate, terminalLimits);
+        Require(terminal.bestMove == 0, "terminal search returned a move");
+        Require(terminal.score == -SCORE_MATE, "checkmate score is incorrect");
+
+        ChessBoard mateInOne("7k/5Q2/6K1/8/8/8/8/8 w - - 0 1");
+        SearchLimits mateLimits;
+        mateLimits.maxDepth = 2;
+        const SearchResult mate = search.Search(mateInOne, mateLimits);
+        Require(ContainsMove(mateInOne.GetLegalMoves(), mate.bestMove), "mate search returned an illegal move");
+        mateInOne.MakeMove(mate.bestMove);
+        Require((mateInOne.GetGameOver() & IS_CHECKMATE) != 0, "depth-one search missed mate in one");
+        Require(mate.score >= SCORE_MATE - 1, "mate-in-one score has wrong distance");
+
+        ChessBoard checked("7k/8/8/8/8/8/8/K6R b - - 0 1");
+        SearchLimits checkedLimits;
+        checkedLimits.maxDepth = 1;
+        const SearchResult evasion = search.Search(checked, checkedLimits);
+        Require(ContainsMove(checked.GetLegalMoves(), evasion.bestMove),
+            "checked quiescence node failed to return a legal evasion");
+        Require(evasion.score > -SCORE_MATE + MAX_PLY,
+            "checked quiescence node was incorrectly scored as mate");
+
+        ChessBoard start;
+        const ChessBoard original = start;
+        SearchLimits abortLimits;
+        abortLimits.maxDepth = 12;
+        abortLimits.maxNodes = 10'000;
+        const SearchResult aborted = search.Search(start, abortLimits);
+        Require(aborted.aborted, "node-limited search did not report an abort");
+        Require(aborted.completedDepth > 0, "aborted search lost all completed iterations");
+        Require(ContainsMove(start.GetLegalMoves(), aborted.bestMove),
+            "aborted search did not retain a legal completed move");
+        Require(start == original, "search mutated its input board");
+    }
+
     void RunBenchmark()
     {
         ChessBoard board;
@@ -253,6 +337,8 @@ int main(int argc, char** argv)
         TestRepetition();
         TestIncrementalZobrist();
         TestNullMoveState();
+        TestTranspositionTable();
+        TestSearchFoundations();
         std::cout << "All NeraChess engine tests passed.\n";
         return 0;
     }

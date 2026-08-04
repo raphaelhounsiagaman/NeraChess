@@ -1,5 +1,5 @@
-project "NeraChessTests"
-  kind "ConsoleApp"
+project "NeraChessSearch"
+  kind "StaticLib"
   language "C++"
   cppdialect "C++23"
   targetdir ("../bin/%{cfg.buildcfg}/%{prj.name}")
@@ -14,14 +14,13 @@ project "NeraChessTests"
 
   includedirs
   {
+    "src",
     "../NeraChessEngine/src",
-    "../NeraChessSearch/src",
   }
 
   links
   {
     "NeraChessEngine",
-    "NeraChessSearch",
   }
 
   filter "system:windows"
