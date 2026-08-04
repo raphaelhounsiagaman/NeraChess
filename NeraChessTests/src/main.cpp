@@ -468,9 +468,20 @@ namespace
     {
         using namespace std::chrono;
         using NeraChessEngine::Clock;
+        using NeraChessEngine::MainTimeControls;
+        using NeraChessEngine::TimeControl;
         using NeraChessSearch::TimeManagement::CalculateLimits;
 
         ChessBoard board;
+        Require(MainTimeControls.size() == 5,
+            "main time-control preset count is incorrect");
+        Require(MainTimeControls[0].timeControl == TimeControl{ minutes{ 1 }, milliseconds{ 0 } } &&
+            MainTimeControls[1].timeControl == TimeControl{ minutes{ 3 }, seconds{ 2 } } &&
+            MainTimeControls[2].timeControl == TimeControl{ minutes{ 10 }, milliseconds{ 0 } } &&
+            MainTimeControls[3].timeControl == TimeControl{ minutes{ 15 }, seconds{ 10 } } &&
+            MainTimeControls[4].timeControl == TimeControl{ minutes{ 90 }, seconds{ 40 } },
+            "main time-control presets are incorrect");
+
         Clock defaultClock;
         const auto defaultLimits = CalculateLimits(board, defaultClock);
         Require(defaultLimits.softTime == seconds{ 10 },
@@ -491,12 +502,28 @@ namespace
         const auto paused = incrementClock.GetRemaining(true);
         Require(paused <= seconds{ 10 } && paused >= milliseconds{ 9'900 },
             "clock did not account for elapsed active time");
-        incrementClock.Press();
+        Require(incrementClock.Press(), "clock rejected a valid press");
         Require(!incrementClock.IsWhiteActive(), "clock press did not switch sides");
         Require(incrementClock.GetRemaining(true) >= paused + milliseconds{ 999 },
             "clock press did not add the increment");
         incrementClock.Resume();
         incrementClock.Stop();
+
+        Clock expiredClock(milliseconds{ 0 }, seconds{ 2 });
+        expiredClock.Start();
+        Require(expiredClock.HasExpired(true), "zero-time clock did not expire");
+        Require(!expiredClock.Press(), "increment rescued a player after flag fall");
+        const auto expiredSnapshot = expiredClock.GetSnapshot();
+        Require(expiredSnapshot.whiteRemaining == milliseconds{ 0 } &&
+            expiredSnapshot.whiteActive,
+            "expired clock switched sides or changed its remaining time");
+
+        Clock blackToMove(seconds{ 5 });
+        blackToMove.Start(false);
+        const auto blackSnapshot = blackToMove.GetSnapshot();
+        Require(!blackSnapshot.whiteActive && blackSnapshot.running && !blackSnapshot.paused,
+            "clock did not start for the requested side");
+        blackToMove.Stop();
     }
 
     void TestOpeningBook()
