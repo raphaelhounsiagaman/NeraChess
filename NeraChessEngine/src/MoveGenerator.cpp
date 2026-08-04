@@ -188,7 +188,7 @@ namespace NeraChessEngine
 
 	std::unique_ptr<Bitboard[]> MoveGenerator::InitBishopMoveMasks()
 	{
-		std::unique_ptr<Bitboard[]> array = std::make_unique<Bitboard[]>(MoveGenerator::s_RookMoveMaskSize);
+		std::unique_ptr<Bitboard[]> array = std::make_unique<Bitboard[]>(MoveGenerator::s_BishopMoveMaskSize);
 
 		for (uint8_t square = 0; square < 64; square++)
 		{

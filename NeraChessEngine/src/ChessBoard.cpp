@@ -1,11 +1,12 @@
 #include "ChessBoard.h"
 
 #include <array>
+#include <charconv>
 #include <cstdint>
 #include <iostream>
+#include <limits>
 #include <sstream>
 #include <string>
-#include <vector>
 #include <chrono>
 
 #include "MoveGenerator.h"
@@ -37,153 +38,157 @@ namespace NeraChessEngine
 		m_MovesPlayed.reserve(100);
 
 		std::istringstream fenStream(fen);
-		std::string part;
-		std::vector<std::string> fenParts;
-
-		while (fenStream >> part)
+		std::array<std::string, 6> fenParts;
+		for (std::string& part : fenParts)
 		{
-			fenParts.push_back(part);
+			if (!(fenStream >> part))
+			{
+				m_Error = 1;
+				return;
+			}
 		}
-
-		if (fenParts.size() != 6)
+		std::string extraPart;
+		if (fenStream >> extraPart)
 		{
-			std::printf("Invalid FEN string: %s\n", fen.c_str());
 			m_Error = 1;
 			return;
 		}
 
-		uint8_t file = 0;
-		uint8_t rank = 7;
+		int file = 0;
+		int rank = 7;
+		bool previousWasDigit = false;
 		for (char character : fenParts[0])
 		{
-			switch (character)
+			if (character == '/')
 			{
-			case 'p':
-				m_BoardState.pieceBitboards[(uint8_t)PieceType::BLACK_PAWN] |= 1ULL << (rank * 8 + file);
-				file++;
-				break;
-			case 'n':
-				m_BoardState.pieceBitboards[(uint8_t)PieceType::BLACK_KNIGHT] |= 1ULL << (rank * 8 + file);
-				file++;
-				break;
-			case 'b':
-				m_BoardState.pieceBitboards[(uint8_t)PieceType::BLACK_BISHOP] |= 1ULL << (rank * 8 + file);
-				file++;
-				break;
-			case 'r':
-				m_BoardState.pieceBitboards[(uint8_t)PieceType::BLACK_ROOK] |= 1ULL << (rank * 8 + file);
-				file++;
-				break;
-			case 'q':
-				m_BoardState.pieceBitboards[(uint8_t)PieceType::BLACK_QUEEN] |= 1ULL << (rank * 8 + file);
-				file++;
-				break;
-			case 'k':
-				m_BoardState.pieceBitboards[(uint8_t)PieceType::BLACK_KING] |= 1ULL << (rank * 8 + file);
-				file++;
-				break;
-			case 'P':
-				m_BoardState.pieceBitboards[(uint8_t)PieceType::WHITE_PAWN] |= 1ULL << (rank * 8 + file);
-				file++;
-				break;
-			case 'N':
-				m_BoardState.pieceBitboards[(uint8_t)PieceType::WHITE_KNIGHT] |= 1ULL << (rank * 8 + file);
-				file++;
-				break;
-			case 'B':
-				m_BoardState.pieceBitboards[(uint8_t)PieceType::WHITE_BISHOP] |= 1ULL << (rank * 8 + file);
-				file++;
-				break;
-			case 'R':
-				m_BoardState.pieceBitboards[(uint8_t)PieceType::WHITE_ROOK] |= 1ULL << (rank * 8 + file);
-				file++;
-				break;
-			case 'Q':
-				m_BoardState.pieceBitboards[(uint8_t)PieceType::WHITE_QUEEN] |= 1ULL << (rank * 8 + file);
-				file++;
-				break;
-			case 'K':
-				m_BoardState.pieceBitboards[(uint8_t)PieceType::WHITE_KING] |= 1ULL << (rank * 8 + file);
-				file++;
-				break;
-			case '-': case '1':
-				file++;
-				break;
-			case '2':
-				file += 2;
-				break;
-			case '3':
-				file += 3;
-				break;
-			case '4':
-				file += 4;
-				break;
-			case '5':
-				file += 5;
-				break;
-			case '6':
-				file += 6;
-				break;
-			case '7':
-				file += 7;
-				break;
-			case '8':
-				file += 8;
-				break;
-			case '/':
+				if (file != 8 || rank == 0)
+				{
+					m_Error = 1;
+					return;
+				}
+				--rank;
 				file = 0;
-				rank--;
-				break;
-			default:
-				break;
-			}
-		}
-
-		m_BoardState.boardStateFlags |= fenParts[1][0] == 'w' ? (uint8_t)BoardStateFlags::WhiteToMove : 0;
-
-		for (char character : fenParts[2])
-		{
-			switch (character)
-			{
-			case 'K':
-				m_BoardState.boardStateFlags |= (uint8_t)BoardStateFlags::CanWhiteCastleKing;
-				break;
-			case 'Q':
-				m_BoardState.boardStateFlags |= (uint8_t)BoardStateFlags::CanWhiteCastleQueen;
-				break;
-			case 'k':
-				m_BoardState.boardStateFlags |= (uint8_t)BoardStateFlags::CanBlackCastleKing;
-				break;
-			case 'q':
-				m_BoardState.boardStateFlags |= (uint8_t)BoardStateFlags::CanBlackCastleQueen;
-				break;
-			default:
-				break;
+				previousWasDigit = false;
+				continue;
 			}
 
-		}
-
-		if (fenParts[3][0] != '-')
-		{
-			uint8_t file = fenParts[3][0] - 'a';
-			uint8_t rank = fenParts[3][1] - '1';
-
-			if (file > 7 || rank > 7)
+			if (character >= '1' && character <= '8')
 			{
-				std::printf("Invalid en passant square in FEN string: %s\n", fenParts[3].c_str());
+				if (previousWasDigit || file + character - '0' > 8)
+				{
+					m_Error = 1;
+					return;
+				}
+				file += character - '0';
+				previousWasDigit = true;
+				continue;
+			}
+
+			if (file >= 8)
+			{
 				m_Error = 1;
 				return;
 			}
-			else
+
+			Piece piece = PieceType::NO_PIECE;
+			switch (character)
 			{
-				m_BoardState.boardStateFlags |= (uint8_t)BoardStateFlags::CanEnPassent;
-				m_BoardState.enPassantFile = file;
+			case 'p': piece = PieceType::BLACK_PAWN; break;
+			case 'n': piece = PieceType::BLACK_KNIGHT; break;
+			case 'b': piece = PieceType::BLACK_BISHOP; break;
+			case 'r': piece = PieceType::BLACK_ROOK; break;
+			case 'q': piece = PieceType::BLACK_QUEEN; break;
+			case 'k': piece = PieceType::BLACK_KING; break;
+			case 'P': piece = PieceType::WHITE_PAWN; break;
+			case 'N': piece = PieceType::WHITE_KNIGHT; break;
+			case 'B': piece = PieceType::WHITE_BISHOP; break;
+			case 'R': piece = PieceType::WHITE_ROOK; break;
+			case 'Q': piece = PieceType::WHITE_QUEEN; break;
+			case 'K': piece = PieceType::WHITE_KING; break;
+			default:
+				m_Error = 1;
+				return;
+			}
+			m_BoardState.pieceBitboards[piece] |= 1ULL << (rank * 8 + file);
+			++file;
+			previousWasDigit = false;
+		}
+		if (rank != 0 || file != 8 ||
+			BitUtil::PopCnt(m_BoardState.pieceBitboards[PieceType::WHITE_KING]) != 1 ||
+			BitUtil::PopCnt(m_BoardState.pieceBitboards[PieceType::BLACK_KING]) != 1 ||
+			((m_BoardState.pieceBitboards[PieceType::WHITE_PAWN] |
+				m_BoardState.pieceBitboards[PieceType::BLACK_PAWN]) &
+				(Square::Rank1 | Square::Rank8)))
+		{
+			m_Error = 1;
+			return;
+		}
+
+		if (fenParts[1] == "w")
+			m_BoardState.boardStateFlags |= BoardStateFlags::WhiteToMove;
+		else if (fenParts[1] != "b")
+		{
+			m_Error = 1;
+			return;
+		}
+
+		if (fenParts[2] != "-")
+		{
+			for (char character : fenParts[2])
+			{
+				uint8_t flag = 0;
+				switch (character)
+				{
+				case 'K': flag = BoardStateFlags::CanWhiteCastleKing; break;
+				case 'Q': flag = BoardStateFlags::CanWhiteCastleQueen; break;
+				case 'k': flag = BoardStateFlags::CanBlackCastleKing; break;
+				case 'q': flag = BoardStateFlags::CanBlackCastleQueen; break;
+				default:
+					m_Error = 1;
+					return;
+				}
+				if (m_BoardState.boardStateFlags & flag)
+				{
+					m_Error = 1;
+					return;
+				}
+				m_BoardState.boardStateFlags |= flag;
 			}
 		}
 
-		m_HalfMoveClock = std::stoi(fenParts[4]);
+		if (fenParts[3] != "-")
+		{
+			const char expectedRank = m_BoardState.HasFlag(BoardStateFlags::WhiteToMove)
+				? '6' : '3';
+			if (fenParts[3].size() != 2 || fenParts[3][0] < 'a' ||
+				fenParts[3][0] > 'h' || fenParts[3][1] != expectedRank)
+			{
+				m_Error = 1;
+				return;
+			}
+			m_BoardState.boardStateFlags |= BoardStateFlags::CanEnPassent;
+			m_BoardState.enPassantFile = fenParts[3][0] - 'a';
+		}
 
-		m_FullMoves = std::stoi(fenParts[5]);
+		auto parseClock = [](const std::string& value, uint16_t& result, bool allowZero)
+		{
+			uint32_t parsed = 0;
+			const auto [end, error] = std::from_chars(
+				value.data(), value.data() + value.size(), parsed);
+			if (error != std::errc{} || end != value.data() + value.size() ||
+				parsed > std::numeric_limits<uint16_t>::max() || (!allowZero && parsed == 0))
+			{
+				return false;
+			}
+			result = static_cast<uint16_t>(parsed);
+			return true;
+		};
+		if (!parseClock(fenParts[4], m_HalfMoveClock, true) ||
+			!parseClock(fenParts[5], m_FullMoves, false))
+		{
+			m_Error = 1;
+			return;
+		}
 
 		m_ZobristKey = Zobrist::CalculateZobristKey(*this);
 		m_ZobristKeySet = true;

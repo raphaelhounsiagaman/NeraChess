@@ -90,6 +90,35 @@ namespace
         }
     }
 
+    void TestFenValidation()
+    {
+        static constexpr std::string_view invalidFens[] = {
+            "8/8/8/8/8/8/8/4K2k w - - 0",
+            "9/8/8/8/8/8/8/4K2k w - - 0 1",
+            "44/8/8/8/8/8/8/4K2k w - - 0 1",
+            "8/8/8/8/8/8/8/4K2k/8 w - - 0 1",
+            "8/8/8/8/8/8/8/4K2k x - - 0 1",
+            "8/8/8/8/8/8/8/4K2k w Z - 0 1",
+            "8/8/8/8/8/8/8/4K2k w - e4 0 1",
+            "8/8/8/8/8/8/8/4K2k w - - -1 1",
+            "8/8/8/8/8/8/8/4K2k w - - 0 0",
+            "P7/8/8/8/8/8/8/4K2k w - - 0 1",
+            "7k/8/8/8/8/8/8/3KK3 w - - 0 1",
+        };
+
+        for (const auto fen : invalidFens)
+        {
+            ChessBoard board{ std::string(fen) };
+            Require(board.GetError() != 0, "malformed FEN was accepted");
+        }
+
+        static constexpr std::string_view validFen =
+            "r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq - 17 42";
+        ChessBoard board{ std::string(validFen) };
+        Require(board.GetError() == 0 && board.GetFENString() == validFen,
+            "valid FEN did not round-trip");
+    }
+
     void TestMakeUndoInvariants()
     {
         ChessBoard board;
@@ -510,6 +539,7 @@ int main(int argc, char** argv)
             return 0;
         }
 
+        TestFenValidation();
         TestPerft();
         TestMakeUndoInvariants();
         TestTerminalPositions();

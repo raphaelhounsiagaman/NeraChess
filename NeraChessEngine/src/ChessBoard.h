@@ -52,8 +52,8 @@ namespace NeraChessEngine
         void MakeMove(Move move, bool gameMove = false);
 	    void UndoMove(Move move);
 
-	    bool MakeNullMove(); // TODO: implement correctly
-	    void UndoNullMove(); // TODO: implement correctly
+	    bool MakeNullMove();
+	    void UndoNullMove();
 
 	    const BoardState& GetBoardState() const { return m_BoardState; }
 
