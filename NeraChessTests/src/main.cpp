@@ -346,6 +346,11 @@ namespace
         ChessBoard advancedPawn("4k3/P7/8/8/8/8/8/4K3 w - - 0 1");
         Require(SearchEngine::Evaluate(advancedPawn) > SearchEngine::Evaluate(backPawn) + 100,
             "endgame evaluation does not reward an advanced pawn");
+
+        ChessBoard structuredWhite("4k3/8/8/8/3P4/2P5/8/2B1KB1R w - - 0 1");
+        ChessBoard structuredBlack("2b1kb1r/8/2p5/3p4/8/8/8/4K3 b - - 0 1");
+        Require(SearchEngine::Evaluate(structuredWhite) == SearchEngine::Evaluate(structuredBlack),
+            "positional evaluation is not color-and-rank symmetric");
     }
 
     void TestStaticExchangeEvaluation()

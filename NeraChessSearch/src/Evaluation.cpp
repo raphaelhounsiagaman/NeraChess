@@ -1,6 +1,7 @@
 #include "Evaluation.h"
 
 #include "ChessUtil.h"
+#include "MoveGenerator.h"
 
 #include <algorithm>
 #include <array>
@@ -18,6 +19,28 @@ namespace NeraChessSearch::Evaluation
         constexpr std::array<int, 6> MiddleGameValues = { 82, 337, 365, 477, 1025, 0 };
         constexpr std::array<int, 6> EndGameValues = { 94, 281, 297, 512, 936, 0 };
         constexpr std::array<int, 6> PhaseWeights = { 0, 1, 1, 2, 4, 0 };
+        constexpr std::array<int, 8> MiddleGamePassedPawn = { 0, 0, 5, 12, 25, 45, 80, 0 };
+        constexpr std::array<int, 8> EndGamePassedPawn = { 0, 5, 12, 25, 45, 80, 140, 0 };
+
+        constexpr std::array<Bitboard, 8> BuildFileMasks()
+        {
+            std::array<Bitboard, 8> masks{};
+            for (uint8_t file = 0; file < 8; ++file)
+            {
+                for (uint8_t rank = 0; rank < 8; ++rank)
+                    masks[file] |= 1ULL << (rank * 8 + file);
+            }
+            return masks;
+        }
+
+        constexpr std::array<Bitboard, 8> FileMasks = BuildFileMasks();
+
+        struct SideEvaluation
+        {
+            int middleGame = 0;
+            int endGame = 0;
+            Bitboard attacks = 0;
+        };
 
         constexpr std::array<std::array<int16_t, 64>, 6> MiddleGameTables = {{
             {{
@@ -144,6 +167,185 @@ namespace NeraChessSearch::Evaluation
                 -53, -34, -21, -11, -28, -14, -24, -43,
             }},
         }};
+
+        Bitboard SliderAttacks(uint8_t square, Bitboard occupancy, bool diagonal)
+        {
+            if (diagonal)
+            {
+                const Bitboard blockers = occupancy & MoveGenerator::s_BishopMasks[square];
+                const uint64_t index = static_cast<uint64_t>(square) *
+                    MoveGenerator::s_MaxPossibleBishopMasks +
+                    ((blockers * MoveGenerator::s_BishopMagics[square]) >>
+                        MoveGenerator::s_BishopShifts[square]);
+                return MoveGenerator::s_BishopMoveMasksArray[index];
+            }
+
+            const Bitboard blockers = occupancy & MoveGenerator::s_RookMasks[square];
+            const uint64_t index = static_cast<uint64_t>(square) *
+                MoveGenerator::s_MaxPossibleRookMasks +
+                ((blockers * MoveGenerator::s_RookMagics[square]) >>
+                    MoveGenerator::s_RookShifts[square]);
+            return MoveGenerator::s_RookMoveMasksArray[index];
+        }
+
+        bool IsPassedPawn(uint8_t square, bool white, Bitboard enemyPawns)
+        {
+            const int file = square % 8;
+            const int direction = white ? 1 : -1;
+            for (int rank = square / 8 + direction; rank >= 0 && rank < 8; rank += direction)
+            {
+                for (int candidateFile = std::max(0, file - 1);
+                    candidateFile <= std::min(7, file + 1); ++candidateFile)
+                {
+                    if (enemyPawns & (1ULL << (rank * 8 + candidateFile)))
+                        return false;
+                }
+            }
+            return true;
+        }
+
+        SideEvaluation EvaluateSide(const BoardState& state, bool white, Bitboard occupancy)
+        {
+            const uint8_t offset = white ? 0 : 6;
+            const uint8_t enemyOffset = white ? 6 : 0;
+            const Bitboard pawns = state.pieceBitboards[offset + PieceType::WHITE_PAWN];
+            const Bitboard enemyPawns = state.pieceBitboards[enemyOffset + PieceType::WHITE_PAWN];
+            Bitboard friendlies = 0;
+            for (uint8_t type = 0; type < 6; ++type)
+                friendlies |= state.pieceBitboards[offset + type];
+
+            SideEvaluation result;
+            for (uint8_t file = 0; file < 8; ++file)
+            {
+                const int count = BitUtil::PopCnt(pawns & FileMasks[file]);
+                if (count > 1)
+                {
+                    result.middleGame -= (count - 1) * 10;
+                    result.endGame -= (count - 1) * 15;
+                }
+            }
+
+            Bitboard remainingPawns = pawns;
+            while (remainingPawns)
+            {
+                const uint8_t square = BitUtil::PopLSB(remainingPawns);
+                const uint8_t file = square % 8;
+                const int relativeRank = white ? square / 8 : 7 - square / 8;
+                const Bitboard adjacentFiles = (file > 0 ? FileMasks[file - 1] : 0) |
+                    (file < 7 ? FileMasks[file + 1] : 0);
+                if (!(pawns & adjacentFiles))
+                {
+                    result.middleGame -= 12;
+                    result.endGame -= 10;
+                }
+                if (IsPassedPawn(square, white, enemyPawns))
+                {
+                    result.middleGame += MiddleGamePassedPawn[relativeRank];
+                    result.endGame += EndGamePassedPawn[relativeRank];
+                }
+
+                const Bitboard pawnAttacks = white
+                    ? MoveGenerator::s_WhitePawnAttackMasks[square]
+                    : MoveGenerator::s_BlackPawnAttackMasks[square];
+                result.attacks |= pawnAttacks;
+                const Bitboard protectors = white
+                    ? MoveGenerator::s_BlackPawnAttackMasks[square]
+                    : MoveGenerator::s_WhitePawnAttackMasks[square];
+                if (protectors & pawns)
+                {
+                    result.middleGame += 5;
+                    result.endGame += 8;
+                }
+            }
+
+            Bitboard knights = state.pieceBitboards[offset + PieceType::WHITE_KNIGHT];
+            while (knights)
+            {
+                const uint8_t square = BitUtil::PopLSB(knights);
+                const Bitboard attacks = MoveGenerator::s_KnightMoveMask[square];
+                result.attacks |= attacks;
+                const int mobility = BitUtil::PopCnt(attacks & ~friendlies);
+                result.middleGame += mobility * 4;
+                result.endGame += mobility * 4;
+            }
+
+            Bitboard bishops = state.pieceBitboards[offset + PieceType::WHITE_BISHOP];
+            if (BitUtil::PopCnt(bishops) >= 2)
+            {
+                result.middleGame += 28;
+                result.endGame += 40;
+            }
+            while (bishops)
+            {
+                const uint8_t square = BitUtil::PopLSB(bishops);
+                const Bitboard attacks = SliderAttacks(square, occupancy, true);
+                result.attacks |= attacks;
+                const int mobility = BitUtil::PopCnt(attacks & ~friendlies);
+                result.middleGame += mobility * 4;
+                result.endGame += mobility * 5;
+            }
+
+            Bitboard rooks = state.pieceBitboards[offset + PieceType::WHITE_ROOK];
+            while (rooks)
+            {
+                const uint8_t square = BitUtil::PopLSB(rooks);
+                const Bitboard attacks = SliderAttacks(square, occupancy, false);
+                result.attacks |= attacks;
+                const int mobility = BitUtil::PopCnt(attacks & ~friendlies);
+                result.middleGame += mobility * 2;
+                result.endGame += mobility * 3;
+
+                const uint8_t file = square % 8;
+                if (!(pawns & FileMasks[file]))
+                {
+                    result.middleGame += 10;
+                    result.endGame += 6;
+                    if (!(enemyPawns & FileMasks[file]))
+                    {
+                        result.middleGame += 10;
+                        result.endGame += 6;
+                    }
+                }
+            }
+
+            Bitboard queens = state.pieceBitboards[offset + PieceType::WHITE_QUEEN];
+            while (queens)
+            {
+                const uint8_t square = BitUtil::PopLSB(queens);
+                const Bitboard attacks = SliderAttacks(square, occupancy, true) |
+                    SliderAttacks(square, occupancy, false);
+                result.attacks |= attacks;
+                const int mobility = BitUtil::PopCnt(attacks & ~friendlies);
+                result.middleGame += mobility;
+                result.endGame += mobility * 2;
+            }
+
+            const Bitboard king = state.pieceBitboards[offset + PieceType::WHITE_KING];
+            if (king)
+            {
+                const uint8_t kingSquare = BitUtil::GetLSBIndex(king);
+                result.attacks |= MoveGenerator::s_KingMoveMask[kingSquare];
+                const int kingRank = kingSquare / 8;
+                const int shieldRank = kingRank + (white ? 1 : -1);
+                if (shieldRank >= 0 && shieldRank < 8)
+                {
+                    for (int file = std::max(0, static_cast<int>(kingSquare % 8) - 1);
+                        file <= std::min(7, static_cast<int>(kingSquare % 8) + 1); ++file)
+                    {
+                        if (pawns & (1ULL << (shieldRank * 8 + file)))
+                            result.middleGame += 7;
+                    }
+                }
+
+                for (int file = std::max(0, static_cast<int>(kingSquare % 8) - 1);
+                    file <= std::min(7, static_cast<int>(kingSquare % 8) + 1); ++file)
+                {
+                    if (!(pawns & FileMasks[file]))
+                        result.middleGame -= 6;
+                }
+            }
+            return result;
+        }
     }
 
     int32_t Evaluate(const ChessBoard& board)
@@ -153,9 +355,11 @@ namespace NeraChessSearch::Evaluation
         int phase = 0;
 
         const BoardState& state = board.GetBoardState();
+        Bitboard occupancy = 0;
         for (uint8_t piece = 0; piece < 12; ++piece)
         {
             Bitboard pieces = state.pieceBitboards[piece];
+            occupancy |= pieces;
             const int type = piece % 6;
             const bool white = piece < 6;
             phase += PhaseWeights[type] * BitUtil::PopCnt(pieces);
@@ -169,6 +373,27 @@ namespace NeraChessSearch::Evaluation
                 endGameScore += sign * (EndGameValues[type] + EndGameTables[type][tableSquare]);
             }
         }
+
+        SideEvaluation white = EvaluateSide(state, true, occupancy);
+        SideEvaluation black = EvaluateSide(state, false, occupancy);
+        const Bitboard whiteKing = state.pieceBitboards[PieceType::WHITE_KING];
+        const Bitboard blackKing = state.pieceBitboards[PieceType::BLACK_KING];
+        if (whiteKing)
+        {
+            const uint8_t square = BitUtil::GetLSBIndex(whiteKing);
+            const int pressure = BitUtil::PopCnt(black.attacks & MoveGenerator::s_KingMoveMask[square]);
+            white.middleGame -= pressure * 6;
+            white.endGame -= pressure * 2;
+        }
+        if (blackKing)
+        {
+            const uint8_t square = BitUtil::GetLSBIndex(blackKing);
+            const int pressure = BitUtil::PopCnt(white.attacks & MoveGenerator::s_KingMoveMask[square]);
+            black.middleGame -= pressure * 6;
+            black.endGame -= pressure * 2;
+        }
+        middleGameScore += white.middleGame - black.middleGame;
+        endGameScore += white.endGame - black.endGame;
 
         phase = std::min(phase, MaxPhase);
         const int taperedScore = (middleGameScore * phase + endGameScore * (MaxPhase - phase)) / MaxPhase;
