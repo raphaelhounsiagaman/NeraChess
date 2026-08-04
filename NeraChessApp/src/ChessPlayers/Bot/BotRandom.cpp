@@ -4,13 +4,17 @@
 
 NeraChessEngine::Move BotRandom::GetNextMove(const NeraChessEngine::ChessBoard& board, const NeraChessEngine::Clock& timer)
 {
+    const NeraChessEngine::MoveList<218> legalMoves = board.GetLegalMoves();
+    if (legalMoves.size() == 0)
+        return 0;
+
     std::random_device rd;
 
     std::mt19937 gen(rd());
 
-    std::uniform_int_distribution<size_t> dist(0, (board.GetLegalMoves().size() - 1));
+	std::uniform_int_distribution<size_t> dist(0, legalMoves.size() - 1);
 
     uint8_t moveIndex = (uint8_t)dist(gen);
 
-    return board.GetLegalMoves()[moveIndex];
+	return legalMoves[moveIndex];
 }

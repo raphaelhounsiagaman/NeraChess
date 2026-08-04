@@ -8,7 +8,9 @@ NeraChessEngine::Move MyBotOld::GetNextMove(const NeraChessEngine::ChessBoard& g
 	NeraChessEngine::ChessBoard board = givenBoard;
 
 	NeraChessEngine::MoveList<218> legalMoves = board.GetLegalMoves();
-	if (legalMoves.size() < 2)
+	if (legalMoves.size() == 0)
+		return 0;
+	if (legalMoves.size() == 1)
 		return legalMoves[0];
 
 	SortMoves(board, legalMoves);
@@ -20,6 +22,8 @@ NeraChessEngine::Move MyBotOld::GetNextMove(const NeraChessEngine::ChessBoard& g
 
 	for (const NeraChessEngine::Move& move : legalMoves)
 	{
+		if (m_StopSearching)
+			break;
 		board.MakeMove(move);
 		double eval = Minimax(board, 4, !whiteToPlay, -99999, 99999);
 		board.UndoMove(move);
@@ -39,6 +43,9 @@ NeraChessEngine::Move MyBotOld::GetNextMove(const NeraChessEngine::ChessBoard& g
 
 double MyBotOld::Minimax(NeraChessEngine::ChessBoard& board, int depth, bool whiteMaximizingPlayer, double alpha, double beta)
 {
+	if (m_StopSearching)
+		return EvaluateBoard(board.GetBoardState(), whiteMaximizingPlayer);
+
 	uint16_t gameOverFlags = board.GetGameOver();
 
 	double originAlpha = alpha;
@@ -91,6 +98,8 @@ double MyBotOld::Minimax(NeraChessEngine::ChessBoard& board, int depth, bool whi
 
 	for (const NeraChessEngine::Move& move : legalMoves)
 	{
+		if (m_StopSearching)
+			break;
 		board.MakeMove(move);
 		double eval = Minimax(board, depth - 1, !whiteMaximizingPlayer, alpha, beta);
 		board.UndoMove(move);

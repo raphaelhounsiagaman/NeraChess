@@ -2,6 +2,7 @@
 
 #include "../ChessPlayer.h"
 
+#include <atomic>
 #include <unordered_map>
 
 enum class EntryFlagMyBotOld : uint8_t
@@ -47,8 +48,8 @@ class MyBotOld : public ChessPlayer
 public:
 	
 	virtual NeraChessEngine::Move GetNextMove(const NeraChessEngine::ChessBoard& givenBoard, const NeraChessEngine::Clock& timer) override;
-	virtual void ResetGame() override {};
-	virtual void StopSearching() override {};
+	virtual void ResetGame() override { m_StopSearching = false; };
+	virtual void StopSearching() override { m_StopSearching = true; };
 
 private:
 
@@ -61,6 +62,7 @@ private:
 private:
 
 	TranspositionTableOldMyBotOld m_TranspositionTable{};
+	std::atomic<bool> m_StopSearching = false;
 
 	static constexpr float m_PieceValues[12] = {
 		10.0f, // WHITE_PAWN
