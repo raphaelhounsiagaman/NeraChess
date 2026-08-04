@@ -309,6 +309,35 @@ namespace
         Require(start == original, "search mutated its input board");
     }
 
+    void TestTaperedEvaluation()
+    {
+        using NeraChessSearch::SearchEngine;
+
+        ChessBoard initialWhite;
+        ChessBoard initialBlack("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR b KQkq - 0 1");
+        Require(SearchEngine::Evaluate(initialWhite) == 10,
+            "symmetric initial position did not receive only the tempo bonus");
+        Require(SearchEngine::Evaluate(initialBlack) == 10,
+            "evaluation is not symmetric with black to move");
+
+        ChessBoard whiteQueen("4k3/8/8/8/3Q4/8/8/4K3 w - - 0 1");
+        ChessBoard whiteQueenBlackTurn("4k3/8/8/8/3Q4/8/8/4K3 b - - 0 1");
+        Require(SearchEngine::Evaluate(whiteQueen) > 800,
+            "material advantage is missing from tapered evaluation");
+        Require(SearchEngine::Evaluate(whiteQueen) + SearchEngine::Evaluate(whiteQueenBlackTurn) == 20,
+            "side-to-move evaluation is not antisymmetric apart from tempo");
+
+        ChessBoard rimKnight("4k3/8/8/8/8/8/8/N3K3 w - - 0 1");
+        ChessBoard centralKnight("4k3/8/8/8/3N4/8/8/4K3 w - - 0 1");
+        Require(SearchEngine::Evaluate(centralKnight) > SearchEngine::Evaluate(rimKnight) + 40,
+            "piece-square evaluation does not reward a centralized knight");
+
+        ChessBoard backPawn("4k3/8/8/8/8/8/P7/4K3 w - - 0 1");
+        ChessBoard advancedPawn("4k3/P7/8/8/8/8/8/4K3 w - - 0 1");
+        Require(SearchEngine::Evaluate(advancedPawn) > SearchEngine::Evaluate(backPawn) + 100,
+            "endgame evaluation does not reward an advanced pawn");
+    }
+
     void RunBenchmark()
     {
         ChessBoard board;
@@ -339,6 +368,7 @@ int main(int argc, char** argv)
         TestNullMoveState();
         TestTranspositionTable();
         TestSearchFoundations();
+        TestTaperedEvaluation();
         std::cout << "All NeraChess engine tests passed.\n";
         return 0;
     }

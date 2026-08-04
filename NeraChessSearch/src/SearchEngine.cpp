@@ -1,6 +1,7 @@
 #include "SearchEngine.h"
 
 #include "ChessUtil.h"
+#include "Evaluation.h"
 
 #include <algorithm>
 #include <array>
@@ -420,13 +421,6 @@ namespace NeraChessSearch
 
     Score SearchEngine::Evaluate(const ChessBoard& board)
     {
-        int score = 0;
-        const BoardState& state = board.GetBoardState();
-        for (uint8_t piece = 0; piece < 12; ++piece)
-        {
-            const int value = PieceValues[piece % 6] * BitUtil::PopCnt(state.pieceBitboards[piece]);
-            score += piece < 6 ? value : -value;
-        }
-        return state.HasFlag(BoardStateFlags::WhiteToMove) ? score : -score;
+        return Evaluation::Evaluate(board);
     }
 }
