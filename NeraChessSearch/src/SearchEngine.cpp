@@ -2,6 +2,7 @@
 
 #include "ChessUtil.h"
 #include "Evaluation.h"
+#include "MoveOrdering.h"
 
 #include <algorithm>
 #include <array>
@@ -336,7 +337,9 @@ namespace NeraChessSearch
                 const Piece victim = (move.GetMoveFlags() & MoveFlags::IS_EN_PASSANT)
                     ? Piece(move.GetMovePiece().IsWhite() ? PieceType::BLACK_PAWN : PieceType::WHITE_PAWN)
                     : board.GetPiece(move.GetTargetSquare());
-                score += 10'000'000 + PieceValue(victim) * 16 - PieceValue(move.GetMovePiece());
+                const int see = MoveOrdering::StaticExchangeEvaluation(board, move);
+                score += (see >= 0 ? 10'000'000 : 5'000'000) +
+                    PieceValue(victim) * 16 - PieceValue(move.GetMovePiece()) + see;
             }
             if (move.GetMoveFlags() & MoveFlags::IS_PROMOTION)
                 score += 9'000'000 + PieceValue(move.GetPromoPiece());

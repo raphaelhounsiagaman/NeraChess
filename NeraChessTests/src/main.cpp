@@ -1,8 +1,10 @@
 #include "ChessBoard.h"
+#include "MoveOrdering.h"
 #include "SearchEngine.h"
 #include "TranspositionTable.h"
 #include "Zobrist.h"
 
+#include <algorithm>
 #include <chrono>
 #include <cstdint>
 #include <exception>
@@ -346,6 +348,27 @@ namespace
             "endgame evaluation does not reward an advanced pawn");
     }
 
+    void TestStaticExchangeEvaluation()
+    {
+        using NeraChessSearch::MoveOrdering::StaticExchangeEvaluation;
+
+        ChessBoard winsQueen("7k/8/8/4q3/3P4/8/8/K7 w - - 0 1");
+        Require(StaticExchangeEvaluation(winsQueen, FindMove(winsQueen, "d4e5")) == 900,
+            "SEE did not value an undefended queen capture");
+
+        ChessBoard losesQueen("7k/8/5p2/4p3/3Q4/8/8/K7 w - - 0 1");
+        Require(StaticExchangeEvaluation(losesQueen, FindMove(losesQueen, "d4e5")) == -800,
+            "SEE did not account for a pawn recapture");
+
+        ChessBoard enPassant("7k/8/8/3pP3/8/8/8/K7 w - d6 0 1");
+        Require(StaticExchangeEvaluation(enPassant, FindMove(enPassant, "e5d6")) == 100,
+            "SEE did not value an en passant capture");
+
+        ChessBoard promotes("7k/P7/8/8/8/8/8/K7 w - - 0 1");
+        Require(StaticExchangeEvaluation(promotes, FindMove(promotes, "a7a8q")) == 800,
+            "SEE did not include promotion material");
+    }
+
     void RunBenchmark()
     {
         ChessBoard board;
@@ -355,6 +378,37 @@ namespace
         const double seconds = std::chrono::duration<double>(elapsed).count();
         const uint64_t nps = static_cast<uint64_t>(nodes / seconds);
         std::cout << "bench nodes " << nodes << " time " << seconds << " nps " << nps << '\n';
+    }
+
+    void RunSearchBenchmark()
+    {
+        using namespace NeraChessSearch;
+
+        static constexpr std::string_view positions[] = {
+            "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1",
+            "r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq - 0 1",
+            "r1bq1rk1/pp2bppp/2n1pn2/2pp4/3P4/2PBPN2/PP1N1PPP/R1BQ1RK1 w - - 4 9",
+        };
+
+        SearchEngine search(64);
+        SearchLimits limits;
+        limits.maxDepth = 6;
+        for (const auto fen : positions)
+        {
+            search.NewGame();
+            ChessBoard board{ std::string(fen) };
+            const SearchResult result = search.Search(board, limits);
+            const double seconds = std::max(0.001,
+                std::chrono::duration<double>(result.elapsed).count());
+            std::cout << "searchbench depth " << result.completedDepth
+                      << " seldepth " << result.selectiveDepth
+                      << " score " << result.score
+                      << " bestmove " << result.bestMove.ToUCI()
+                      << " nodes " << result.nodes
+                      << " time " << result.elapsed.count()
+                      << " nps " << static_cast<uint64_t>(result.nodes / seconds)
+                      << '\n';
+        }
     }
 }
 
@@ -367,6 +421,11 @@ int main(int argc, char** argv)
             RunBenchmark();
             return 0;
         }
+        if (argc == 2 && std::string_view(argv[1]) == "--search-bench")
+        {
+            RunSearchBenchmark();
+            return 0;
+        }
 
         TestPerft();
         TestMakeUndoInvariants();
@@ -377,6 +436,7 @@ int main(int argc, char** argv)
         TestTranspositionTable();
         TestSearchFoundations();
         TestTaperedEvaluation();
+        TestStaticExchangeEvaluation();
         std::cout << "All NeraChess engine tests passed.\n";
         return 0;
     }
