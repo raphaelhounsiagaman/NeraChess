@@ -54,10 +54,32 @@ namespace NeraChessSearch
 
         const MoveList<218> legalMoves = board.GetLegalMoves();
         result.bestMove = legalMoves[0];
+        Score previousScore = SCORE_DRAW;
 
         for (int depth = 1; depth <= m_Limits.maxDepth; ++depth)
         {
-            const RootResult iteration = SearchRoot(board, depth, -SCORE_INF, SCORE_INF);
+            Score window = depth >= 4 ? 25 : SCORE_INF;
+            Score alpha = window == SCORE_INF ? -SCORE_INF : previousScore - window;
+            Score beta = window == SCORE_INF ? SCORE_INF : previousScore + window;
+            RootResult iteration;
+
+            while (true)
+            {
+                iteration = SearchRoot(board, depth, alpha, beta);
+                if (m_Aborted)
+                    break;
+                if (iteration.score > alpha && iteration.score < beta)
+                    break;
+
+                window = std::min<Score>(SCORE_INF, window * 2);
+                alpha = window == SCORE_INF
+                    ? -SCORE_INF
+                    : std::max(-SCORE_INF, previousScore - window);
+                beta = window == SCORE_INF
+                    ? SCORE_INF
+                    : std::min(SCORE_INF, previousScore + window);
+            }
+
             if (m_Aborted)
                 break;
 
@@ -67,6 +89,7 @@ namespace NeraChessSearch
             result.completed = true;
             result.principalVariation.assign(m_PvTable[0].begin(),
                 m_PvTable[0].begin() + m_PvLength[0]);
+            previousScore = iteration.score;
 
             if (std::abs(result.score) >= SCORE_MATE - MAX_PLY)
                 break;

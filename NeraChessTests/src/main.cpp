@@ -307,6 +307,14 @@ namespace
         Require(ContainsMove(start.GetLegalMoves(), aborted.bestMove),
             "aborted search did not retain a legal completed move");
         Require(start == original, "search mutated its input board");
+
+        SearchLimits aspirationLimits;
+        aspirationLimits.maxDepth = 4;
+        const SearchResult aspiration = search.Search(start, aspirationLimits);
+        Require(aspiration.completedDepth == aspirationLimits.maxDepth && !aspiration.aborted,
+            "aspiration search did not complete its requested depth");
+        Require(ContainsMove(start.GetLegalMoves(), aspiration.bestMove),
+            "aspiration search returned an illegal move");
     }
 
     void TestTaperedEvaluation()
