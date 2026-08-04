@@ -11,7 +11,8 @@ namespace NeraChessEngine
         Piece capturedPiece;  // piece that was captured, 0 if none
         uint8_t castlingRights; // old castling rights
         uint8_t  enPassantFile;// old en passant square, -1 if none
-        uint8_t halfmoveClock; // for 50-move rule
+        uint16_t halfmoveClock; // for 50-move rule
+        uint64_t zobristKey;
     };
 
     struct UndoStack 

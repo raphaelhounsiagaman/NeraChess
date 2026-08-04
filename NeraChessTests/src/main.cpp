@@ -1,4 +1,5 @@
 #include "ChessBoard.h"
+#include "Zobrist.h"
 
 #include <chrono>
 #include <cstdint>
@@ -117,6 +118,111 @@ namespace
         ChessBoard insufficient("7k/8/8/8/8/8/8/K7 w - - 0 1");
         const uint16_t materialFlags = insufficient.GetGameOver();
         Require((materialFlags & IS_INSUFFICIENT_MATERIAL) != 0, "insufficient material was not detected");
+
+        ChessBoard sameColorBishops("7k/8/8/8/5b2/8/3B4/K7 w - - 0 1");
+        Require((sameColorBishops.GetGameOver() & IS_INSUFFICIENT_MATERIAL) != 0,
+            "same-color bishop dead position was not detected");
+
+        ChessBoard oppositeColorBishops("7k/8/8/8/4b3/8/3B4/K7 w - - 0 1");
+        Require((oppositeColorBishops.GetGameOver() & IS_INSUFFICIENT_MATERIAL) == 0,
+            "opposite-color bishops were incorrectly declared insufficient");
+
+        ChessBoard notYetFifty("7k/8/8/8/8/8/R7/K7 w - - 99 1");
+        Require((notYetFifty.GetGameOver() & IS_50MOVE_RULE) == 0, "50-move draw was declared one ply early");
+        const auto quietMove = notYetFifty.GetLegalMoves()[0];
+        notYetFifty.MakeMove(quietMove);
+        Require((notYetFifty.GetGameOver() & IS_50MOVE_RULE) != 0, "50-move draw was not declared at 100 halfmoves");
+    }
+
+    NeraChessEngine::Move FindMove(const ChessBoard& board, std::string_view uci)
+    {
+        for (const auto move : board.GetLegalMoves())
+        {
+            if (move.ToUCI() == uci)
+                return move;
+        }
+        throw std::runtime_error("legal move not found: " + std::string(uci));
+    }
+
+    void TestRepetition()
+    {
+        using namespace NeraChessEngine;
+
+        ChessBoard board;
+        static constexpr std::string_view cycle[] = { "g1f3", "g8f6", "f3g1", "f6g8" };
+        for (int repetition = 0; repetition < 2; ++repetition)
+        {
+            for (const auto uci : cycle)
+                board.MakeMove(FindMove(board, uci), true);
+        }
+        Require((board.GetGameOver(true) & IS_REPETITION) != 0, "threefold repetition was not detected");
+
+        ChessBoard rights("r3k2r/8/8/8/8/8/8/R3K2R w KQkq - 0 1");
+        static constexpr std::string_view rookCycle[] = { "h1h2", "h8h7", "h2h1", "h7h8" };
+        for (int repetition = 0; repetition < 2; ++repetition)
+        {
+            for (const auto uci : rookCycle)
+                rights.MakeMove(FindMove(rights, uci), true);
+        }
+        Require((rights.GetGameOver(true) & IS_REPETITION) == 0,
+            "positions with different castling rights were treated as repetitions");
+
+        ChessBoard irrelevantEp("4k3/8/8/8/4P3/8/8/4K3 b - e3 0 1");
+        ChessBoard noEp("4k3/8/8/8/4P3/8/8/4K3 b - - 0 1");
+        Require(irrelevantEp.GetZobristKey() == noEp.GetZobristKey(),
+            "non-capturable en passant changed position identity");
+
+        ChessBoard capturableEp("4k3/8/8/8/3pP3/8/8/4K3 b - e3 0 1");
+        ChessBoard capturableNoEp("4k3/8/8/8/3pP3/8/8/4K3 b - - 0 1");
+        Require(capturableEp.GetZobristKey() != capturableNoEp.GetZobristKey(),
+            "capturable en passant was omitted from position identity");
+    }
+
+    void TestIncrementalZobrist()
+    {
+        static constexpr std::string_view positions[] = {
+            "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1",
+            "r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq - 0 1",
+            "8/8/1k6/2b5/2pP4/8/5K2/8 b - d3 0 1",
+            "2K2r2/4P3/8/8/8/8/8/3k4 w - - 0 1",
+        };
+
+        for (const auto fen : positions)
+        {
+            ChessBoard board{ std::string(fen) };
+            const uint64_t originalKey = board.GetZobristKey();
+            Require(originalKey == NeraChessEngine::Zobrist::CalculateZobristKey(board),
+                "initial incremental Zobrist key is incorrect");
+            for (const auto move : board.GetLegalMoves())
+            {
+                board.MakeMove(move);
+                Require(board.GetZobristKey() == NeraChessEngine::Zobrist::CalculateZobristKey(board),
+                    "incremental Zobrist key differs after move");
+                board.UndoMove(move);
+                Require(board.GetZobristKey() == originalKey, "Zobrist key differs after undo");
+            }
+        }
+    }
+
+    void TestNullMoveState()
+    {
+        ChessBoard board("4k3/8/8/3pP3/8/8/8/4K3 w - d6 17 42");
+        const ChessBoard original = board;
+        const std::string originalFen = board.GetFENString();
+        const uint64_t originalKey = board.GetZobristKey();
+
+        Require(board.MakeNullMove(), "legal null move was rejected");
+        Require(!board.GetBoardState().HasFlag(NeraChessEngine::BoardStateFlags::WhiteToMove),
+            "null move did not toggle side to move");
+        Require(!board.GetBoardState().HasFlag(NeraChessEngine::BoardStateFlags::CanEnPassent),
+            "null move did not clear en passant");
+        Require(board.GetZobristKey() == NeraChessEngine::Zobrist::CalculateZobristKey(board),
+            "null move incremental key is incorrect");
+
+        board.UndoNullMove();
+        Require(board == original, "board differs after null move undo");
+        Require(board.GetFENString() == originalFen, "FEN differs after null move undo");
+        Require(board.GetZobristKey() == originalKey, "key differs after null move undo");
     }
 
     void RunBenchmark()
@@ -144,6 +250,9 @@ int main(int argc, char** argv)
         TestPerft();
         TestMakeUndoInvariants();
         TestTerminalPositions();
+        TestRepetition();
+        TestIncrementalZobrist();
+        TestNullMoveState();
         std::cout << "All NeraChess engine tests passed.\n";
         return 0;
     }

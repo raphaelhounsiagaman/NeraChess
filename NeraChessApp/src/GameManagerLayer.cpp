@@ -30,7 +30,7 @@ void GameManagerLayer::OnUpdate(float deltaTime)
 
 	while (m_MoveQueue.Pop(&move))
 	{
-		m_ChessBoard.MakeMove(move);
+		m_ChessBoard.MakeMove(move, true);
 
 		BoardLayer* boardLayer = ApplicationCore::Application::Get().GetLayer<BoardLayer>();
 		if (boardLayer)
