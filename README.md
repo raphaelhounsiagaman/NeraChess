@@ -25,6 +25,14 @@ The main goals of this project are:
 
 ## Current Features
 
+### Timed games
+
+- Selectable `1 min`, `3 min + 2 sec`, `10 min`, `15 min + 10 sec`, and
+  `90 min + 40 sec` time controls
+- Independent White and Black clocks with increment after each completed move
+- Live active-player highlighting, sub-ten-second tenths, and flag-fall results
+- Search budgets derived from the bot's actual remaining time and increment
+
 ### Search
 
 - Principal Variation Search (PVS)
@@ -120,6 +128,20 @@ UCI-compatible chess GUI:
 It supports standard position setup, `go` depth/node/time limits,
 `searchmoves`, asynchronous `stop`, hash sizing and clearing, and iterative
 `info` output.
+
+UCI clocks are supplied by the controlling chess GUI on each search rather
+than stored by the engine process. NeraChess supports the standard `wtime`,
+`btime`, `winc`, `binc`, and `movestogo` fields, for example:
+
+```text
+position startpos moves e2e4 e7e5
+go wtime 178400 btime 179100 winc 2000 binc 2000 movestogo 38
+```
+
+All UCI clock values are milliseconds. NeraChess selects the clock belonging
+to the side to move, preserves a flag-fall reserve, and returns before its hard
+time budget while still using iterative-deepening results from completed
+depths.
 
 Set `NERACHESS_MACOS_DEPENDENCY_PREFIX` before project generation only when
 the SDL libraries are installed under a prefix other than `brew --prefix`.
