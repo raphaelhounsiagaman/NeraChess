@@ -24,6 +24,7 @@ namespace NeraChessSearch
 
     void SearchEngine::NewGame()
     {
+        m_StopRequested = false;
         m_TranspositionTable.Clear();
         m_KillerMoves = {};
         m_History = {};
@@ -34,7 +35,6 @@ namespace NeraChessSearch
         m_Limits = limits;
         m_Limits.maxDepth = std::clamp(m_Limits.maxDepth, 1, MAX_PLY - 1);
         m_StartTime = std::chrono::steady_clock::now();
-        m_StopRequested = false;
         m_Aborted = false;
         m_Nodes = 0;
         m_SelectiveDepth = 0;
@@ -54,7 +54,21 @@ namespace NeraChessSearch
         }
 
         const MoveList<218> legalMoves = board.GetLegalMoves();
-        result.bestMove = legalMoves[0];
+        for (const Move move : legalMoves)
+        {
+            if (IsRootMoveAllowed(move))
+            {
+                result.bestMove = move;
+                break;
+            }
+        }
+        if (result.bestMove == 0)
+        {
+            result.completed = true;
+            result.elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
+                std::chrono::steady_clock::now() - m_StartTime);
+            return result;
+        }
         Score previousScore = SCORE_DRAW;
 
         for (int depth = 1; depth <= m_Limits.maxDepth; ++depth)
@@ -91,6 +105,13 @@ namespace NeraChessSearch
             result.principalVariation.assign(m_PvTable[0].begin(),
                 m_PvTable[0].begin() + m_PvLength[0]);
             previousScore = iteration.score;
+            result.nodes = m_Nodes;
+            result.selectiveDepth = m_SelectiveDepth;
+            result.hashFullPermill = m_TranspositionTable.HashFullPermill();
+            result.elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
+                std::chrono::steady_clock::now() - m_StartTime);
+            if (m_Limits.iterationCallback)
+                m_Limits.iterationCallback(result);
 
             if (std::abs(result.score) >= SCORE_MATE - MAX_PLY)
                 break;
@@ -101,6 +122,7 @@ namespace NeraChessSearch
 
         result.nodes = m_Nodes;
         result.selectiveDepth = m_SelectiveDepth;
+        result.hashFullPermill = m_TranspositionTable.HashFullPermill();
         result.aborted = m_Aborted;
         result.elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
             std::chrono::steady_clock::now() - m_StartTime);
@@ -112,7 +134,12 @@ namespace NeraChessSearch
     {
         RootResult result;
         const Score originalAlpha = alpha;
-        MoveList<218> moves = board.GetLegalMoves();
+        MoveList<218> moves;
+        for (const Move move : board.GetLegalMoves())
+        {
+            if (IsRootMoveAllowed(move))
+                moves.push(move);
+        }
         const TTEntry* ttEntry = m_TranspositionTable.Probe(board.GetZobristKey());
         const Move ttMove = ttEntry ? Move(ttEntry->move) : Move(0);
         SortMoves(board, moves, 0, ttMove);
@@ -158,8 +185,11 @@ namespace NeraChessSearch
             bound = TTBound::Upper;
         else if (result.score >= beta)
             bound = TTBound::Lower;
-        m_TranspositionTable.Store(board.GetZobristKey(), ScoreToTT(result.score, 0),
-            depth, bound, result.move);
+        if (m_Limits.rootMoves.empty())
+        {
+            m_TranspositionTable.Store(board.GetZobristKey(), ScoreToTT(result.score, 0),
+                depth, bound, result.move);
+        }
         return result;
     }
 
@@ -555,6 +585,13 @@ namespace NeraChessSearch
             state.pieceBitboards[offset + PieceType::WHITE_BISHOP] |
             state.pieceBitboards[offset + PieceType::WHITE_ROOK] |
             state.pieceBitboards[offset + PieceType::WHITE_QUEEN];
+    }
+
+    bool SearchEngine::IsRootMoveAllowed(Move move) const
+    {
+        return m_Limits.rootMoves.empty() ||
+            std::find(m_Limits.rootMoves.begin(), m_Limits.rootMoves.end(), move) !=
+                m_Limits.rootMoves.end();
     }
 
     Score SearchEngine::Evaluate(const ChessBoard& board)

@@ -17,6 +17,7 @@ NeraChessBot::NeraChessBot()
 NeraChessEngine::Move NeraChessBot::GetNextMove(const NeraChessEngine::ChessBoard& board,
     const NeraChessEngine::Clock& timer)
 {
+    m_SearchEngine.PrepareSearch();
     const NeraChessEngine::Move bookMove = m_OpeningBook.FindMove(board);
     if (bookMove != 0)
         return bookMove;

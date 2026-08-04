@@ -315,11 +315,32 @@ namespace
 
         SearchLimits aspirationLimits;
         aspirationLimits.maxDepth = 4;
+        int completedIterations = 0;
+        aspirationLimits.iterationCallback = [&completedIterations](const SearchResult&)
+        {
+            ++completedIterations;
+        };
         const SearchResult aspiration = search.Search(start, aspirationLimits);
         Require(aspiration.completedDepth == aspirationLimits.maxDepth && !aspiration.aborted,
             "aspiration search did not complete its requested depth");
+        Require(completedIterations == aspiration.completedDepth,
+            "search did not report every completed iteration");
         Require(ContainsMove(start.GetLegalMoves(), aspiration.bestMove),
             "aspiration search returned an illegal move");
+
+        SearchLimits restrictedLimits;
+        restrictedLimits.maxDepth = 3;
+        restrictedLimits.rootMoves.push_back(FindMove(start, "e2e4"));
+        const SearchResult restricted = search.Search(start, restrictedLimits);
+        Require(restricted.bestMove == restrictedLimits.rootMoves[0],
+            "root-move restriction was not honored");
+
+        search.PrepareSearch();
+        search.RequestStop();
+        const SearchResult externallyStopped = search.Search(start, aspirationLimits);
+        Require(externallyStopped.aborted,
+            "a stop requested immediately before search was lost");
+        search.NewGame();
     }
 
     void TestTaperedEvaluation()

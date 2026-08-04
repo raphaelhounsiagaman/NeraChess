@@ -29,13 +29,16 @@ The main goals of this project are:
 - Principal Variation Search (PVS)
 - Iterative Deepening
 - Alpha-Beta Pruning
-- Transposition Table (256 MB)
+- Clustered transposition table with configurable size
 - Late Move Reductions (LMR)
+- Null-move, futility, delta, and static-exchange pruning
 - Quiescence Search
 - Killer Moves
 - History Heuristic
-- Opening Book support
-- Basic time management
+- Tapered piece-square, pawn-structure, mobility, and king-safety evaluation
+- Indexed opening book with transposition-aware lookup
+- Clock-aware time management
+- UCI protocol support
 
 The search is functional and reasonably optimized, but not heavily micro-optimized compared to professional engines.
 
@@ -99,6 +102,17 @@ make config=release
 ./bin/Release/NeraChessApp/NeraChessApp
 ```
 
+The headless UCI engine can be launched directly or configured in any
+UCI-compatible chess GUI:
+
+```sh
+./bin/Release/NeraChessUCI/NeraChessUCI
+```
+
+It supports standard position setup, `go` depth/node/time limits,
+`searchmoves`, asynchronous `stop`, hash sizing and clearing, and iterative
+`info` output.
+
 Set `NERACHESS_MACOS_DEPENDENCY_PREFIX` before project generation only when
 the SDL libraries are installed under a prefix other than `brew --prefix`.
 
@@ -139,10 +153,8 @@ without entering the application loop, run a built executable with:
 
 ## Known Limitations
 
-- No UCI support yet.
 - No multi-threaded search.
-- Network switching requires recompilation.
-- Limited benchmarking infrastructure.
+- Evaluation parameters are hand-tuned rather than trained from games.
 
 ---
 

@@ -7,6 +7,7 @@
 #include <atomic>
 #include <chrono>
 #include <cstdint>
+#include <functional>
 #include <vector>
 
 namespace NeraChessSearch
@@ -18,14 +19,6 @@ namespace NeraChessSearch
     inline constexpr Score SCORE_DRAW = 0;
     inline constexpr int MAX_PLY = 128;
 
-    struct SearchLimits
-    {
-        int maxDepth = 64;
-        uint64_t maxNodes = 0;
-        std::chrono::milliseconds softTime{ 0 };
-        std::chrono::milliseconds hardTime{ 0 };
-    };
-
     struct SearchResult
     {
         NeraChessEngine::Move bestMove = 0;
@@ -33,10 +26,21 @@ namespace NeraChessSearch
         int completedDepth = 0;
         int selectiveDepth = 0;
         uint64_t nodes = 0;
+        int hashFullPermill = 0;
         std::chrono::milliseconds elapsed{ 0 };
         std::vector<NeraChessEngine::Move> principalVariation;
         bool completed = false;
         bool aborted = false;
+    };
+
+    struct SearchLimits
+    {
+        int maxDepth = 64;
+        uint64_t maxNodes = 0;
+        std::chrono::milliseconds softTime{ 0 };
+        std::chrono::milliseconds hardTime{ 0 };
+        std::vector<NeraChessEngine::Move> rootMoves;
+        std::function<void(const SearchResult&)> iterationCallback;
     };
 
     class SearchEngine
@@ -46,6 +50,7 @@ namespace NeraChessSearch
 
         SearchResult Search(const NeraChessEngine::ChessBoard& position, const SearchLimits& limits);
         void RequestStop() { m_StopRequested = true; }
+        void PrepareSearch() { m_StopRequested = false; }
         void NewGame();
         void ResizeHash(size_t megabytes) { m_TranspositionTable.Resize(megabytes); }
 
@@ -76,6 +81,7 @@ namespace NeraChessSearch
         static bool IsFutilityPrunable(NeraChessEngine::Move move);
         static int LateMoveReduction(int depth, int moveIndex, bool pvNode);
         static bool HasNonPawnMaterial(const NeraChessEngine::ChessBoard& board);
+        bool IsRootMoveAllowed(NeraChessEngine::Move move) const;
 
     private:
         TranspositionTable m_TranspositionTable;

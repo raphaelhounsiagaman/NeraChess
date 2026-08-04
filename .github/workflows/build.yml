@@ -36,6 +36,14 @@ jobs:
       - name: Run engine regression tests
         run: ./bin/Release/NeraChessTests/NeraChessTests
 
+      - name: Run UCI protocol smoke test
+        run: |
+          uci_output="$(printf 'uci\nisready\nposition startpos\ngo depth 1\n' | ./bin/Release/NeraChessUCI/NeraChessUCI)"
+          printf '%s\n' "$uci_output"
+          grep -q '^uciok$' <<< "$uci_output"
+          grep -q '^readyok$' <<< "$uci_output"
+          grep -q '^bestmove ' <<< "$uci_output"
+
   windows:
     name: Windows
     runs-on: windows-latest
@@ -67,3 +75,13 @@ jobs:
       - name: Run engine regression tests
         shell: cmd
         run: bin\Release\NeraChessTests\NeraChessTests.exe
+
+      - name: Run UCI protocol smoke test
+        shell: pwsh
+        run: |
+          $output = @("uci", "isready", "position startpos", "go depth 1") |
+            & bin\Release\NeraChessUCI\NeraChessUCI.exe
+          $output | Write-Output
+          if ($output -notcontains "uciok") { throw "UCI handshake failed" }
+          if ($output -notcontains "readyok") { throw "UCI readiness failed" }
+          if (-not ($output -match "^bestmove ")) { throw "UCI search failed" }
