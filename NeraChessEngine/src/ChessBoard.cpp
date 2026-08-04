@@ -635,7 +635,8 @@ namespace NeraChessEngine
 			return flags;
 		}
 
-		if (gameCheck && m_RepetitionTable.GetRepetitionCount(GetRepetitionKey()) >= 3)
+		if (gameCheck &&
+			m_RepetitionTable.GetRepetitionCount(GetRepetitionKey(), m_HalfMoveClock) >= 3)
 		{
 			flags |= GameOverFlags::IS_REPETITION | GameOverFlags::IS_DRAW;
 			m_GameOverFlags = flags;

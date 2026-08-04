@@ -19,11 +19,16 @@ namespace NeraChessEngine
 		m_Keys.pop_back();
 	}
 
-	uint16_t RepetitionTable::GetRepetitionCount(uint64_t positionKey) const
+	uint16_t RepetitionTable::GetRepetitionCount(uint64_t positionKey,
+		std::size_t reversiblePlies) const
 	{
 		uint16_t count = 0;
-		for (auto it = m_Keys.rbegin(); it != m_Keys.rend() && count < 3; ++it)
-			count += *it == positionKey;
+		for (std::size_t distance = 0;
+			distance < m_Keys.size() && distance <= reversiblePlies && count < 3;
+			distance += 2)
+		{
+			count += m_Keys[m_Keys.size() - 1 - distance] == positionKey;
+		}
 		return count;
 	}
 
