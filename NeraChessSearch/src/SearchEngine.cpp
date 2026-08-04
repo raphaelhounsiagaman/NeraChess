@@ -221,6 +221,11 @@ namespace NeraChessSearch
             return terminalScore;
         if (ply >= MAX_PLY - 1)
             return Evaluate(board);
+
+        alpha = std::max(alpha, -SCORE_MATE + ply);
+        beta = std::min(beta, SCORE_MATE - ply - 1);
+        if (alpha >= beta)
+            return alpha;
         if (depth <= 0)
             return QuiescenceSearch(board, alpha, beta, ply);
 
@@ -401,6 +406,11 @@ namespace NeraChessSearch
             return terminalScore;
         if (ply >= MAX_PLY - 1)
             return Evaluate(board);
+
+        alpha = std::max(alpha, -SCORE_MATE + ply);
+        beta = std::min(beta, SCORE_MATE - ply - 1);
+        if (alpha >= beta)
+            return alpha;
 
         const uint64_t key = board.GetZobristKey();
         const TTEntry* ttEntry = m_TranspositionTable.Probe(key);
