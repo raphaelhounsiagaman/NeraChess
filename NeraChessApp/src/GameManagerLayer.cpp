@@ -147,10 +147,9 @@ void GameManagerLayer::RunGame(std::stop_token stopToken, NeraChessEngine::Chess
 
 		NeraChessEngine::Move move = currentPlayer->GetNextMove(board, m_Clock);
 		moveFinished = true;
+		m_Clock.Pause();
 		flagWatcher.request_stop();
 		flagWatcher.join();
-
-		m_Clock.Pause();
 
 		if (stopToken.stop_requested() || m_GameStopRequested)
 		{
