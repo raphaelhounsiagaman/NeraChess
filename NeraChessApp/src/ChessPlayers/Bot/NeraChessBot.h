@@ -1,10 +1,10 @@
 #pragma once
 
 #include "../ChessPlayer.h"
+#include "OpeningBook.h"
 #include "SearchEngine.h"
 
 #include <filesystem>
-#include <fstream>
 
 class NeraChessBot : public ChessPlayer
 {
@@ -17,11 +17,7 @@ public:
     void StopSearching() override;
 
 private:
-    NeraChessEngine::Move GetOpeningBookMove(const NeraChessEngine::ChessBoard& board);
-
-private:
     const std::filesystem::path m_OpeningBookPath;
-    std::ifstream m_OpeningBook;
-    bool m_OpeningBookAvailable = true;
+    NeraChessSearch::OpeningBook m_OpeningBook;
     NeraChessSearch::SearchEngine m_SearchEngine{ 256 };
 };

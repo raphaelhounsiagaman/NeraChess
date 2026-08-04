@@ -1,6 +1,7 @@
 #include "ChessBoard.h"
 #include "Clock.h"
 #include "MoveOrdering.h"
+#include "OpeningBook.h"
 #include "SearchEngine.h"
 #include "TimeManagement.h"
 #include "TranspositionTable.h"
@@ -411,6 +412,25 @@ namespace
         incrementClock.Stop();
     }
 
+    void TestOpeningBook()
+    {
+        NeraChessSearch::OpeningBook book(
+            "NeraChessApp/Ressources/OpeningBook/OpeningBook.txt");
+        Require(book.IsAvailable() && book.EntryCount() == 758'448,
+            "opening-book index did not load every entry");
+
+        ChessBoard initial("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 37 99");
+        Require(book.FindMove(initial).ToUCI() == "e2e4",
+            "opening-book index missed a position with transposed move counters");
+
+        ChessBoard blackPromotion("6Q1/8/4K2P/8/1k6/p7/Bbp5/8 b - - 12 83");
+        Require(book.FindMove(blackPromotion).ToUCI() == "c2c1q",
+            "opening book did not match a black promotion");
+
+        ChessBoard absent("7k/8/8/8/8/8/8/K7 w - - 0 1");
+        Require(book.FindMove(absent) == 0, "opening book returned a move for an absent position");
+    }
+
     void RunBenchmark()
     {
         ChessBoard board;
@@ -480,6 +500,7 @@ int main(int argc, char** argv)
         TestTaperedEvaluation();
         TestStaticExchangeEvaluation();
         TestClockAndTimeManagement();
+        TestOpeningBook();
         std::cout << "All NeraChess engine tests passed.\n";
         return 0;
     }
