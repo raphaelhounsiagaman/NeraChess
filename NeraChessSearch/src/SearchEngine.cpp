@@ -368,15 +368,36 @@ namespace NeraChessSearch
         if (ply >= MAX_PLY - 1)
             return Evaluate(board);
 
+        const uint64_t key = board.GetZobristKey();
+        const TTEntry* ttEntry = m_TranspositionTable.Probe(key);
+        Move ttMove = 0;
+        if (ttEntry)
+        {
+            ttMove = Move(ttEntry->move);
+            const Score ttScore = ScoreFromTT(ttEntry->score, ply);
+            if (ttEntry->GetBound() == TTBound::Exact)
+                return ttScore;
+            if (ttEntry->GetBound() == TTBound::Lower && ttScore >= beta)
+                return ttScore;
+            if (ttEntry->GetBound() == TTBound::Upper && ttScore <= alpha)
+                return ttScore;
+        }
+
+        const Score originalAlpha = alpha;
         const bool inCheck = board.IsInCheck();
         Score bestScore = -SCORE_INF;
+        Move bestMove = 0;
         Score standPat = -SCORE_INF;
         if (!inCheck)
         {
             standPat = Evaluate(board);
             bestScore = standPat;
             if (bestScore >= beta)
+            {
+                m_TranspositionTable.Store(key, ScoreToTT(bestScore, ply), 0,
+                    TTBound::Lower, ttMove);
                 return bestScore;
+            }
             alpha = std::max(alpha, bestScore);
         }
 
@@ -386,7 +407,7 @@ namespace NeraChessSearch
             if (inCheck || !IsQuiet(move))
                 candidates.push(move);
         }
-        SortMoves(board, candidates, ply, 0);
+        SortMoves(board, candidates, ply, ttMove);
 
         for (const Move move : candidates)
         {
@@ -414,15 +435,25 @@ namespace NeraChessSearch
             if (m_Aborted)
                 return SCORE_DRAW;
             if (score > bestScore)
+            {
                 bestScore = score;
+                bestMove = move;
+            }
             if (score > alpha)
             {
                 alpha = score;
                 UpdatePrincipalVariation(ply, move);
             }
             if (alpha >= beta)
+            {
+                m_TranspositionTable.Store(key, ScoreToTT(bestScore, ply), 0,
+                    TTBound::Lower, bestMove);
                 return bestScore;
+            }
         }
+
+        const TTBound bound = bestScore <= originalAlpha ? TTBound::Upper : TTBound::Exact;
+        m_TranspositionTable.Store(key, ScoreToTT(bestScore, ply), 0, bound, bestMove);
         return bestScore;
     }
 
