@@ -33,6 +33,9 @@ jobs:
           SDL_VIDEODRIVER: dummy
         run: ./bin/Release/NeraChessApp/NeraChessApp --smoke-test
 
+      - name: Run engine regression tests
+        run: ./bin/Release/NeraChessTests/NeraChessTests
+
   windows:
     name: Windows
     runs-on: windows-latest
@@ -60,3 +63,7 @@ jobs:
           SDL_AUDIODRIVER: dummy
           SDL_VIDEODRIVER: dummy
         run: bin\Release\NeraChessApp\NeraChessApp.exe --smoke-test
+
+      - name: Run engine regression tests
+        shell: cmd
+        run: bin\Release\NeraChessTests\NeraChessTests.exe
