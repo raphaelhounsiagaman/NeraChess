@@ -106,6 +106,15 @@ void GameManagerLayer::RunGame(std::stop_token stopToken, NeraChessEngine::Chess
 			break;
 		}
 
+		const bool whiteToMove = board.GetBoardState().HasFlag(
+			NeraChessEngine::BoardStateFlags::WhiteToMove);
+		if (m_Clock.GetRemaining(whiteToMove).count() == 0)
+		{
+			std::println("Game over, {} loses on time.",
+				m_Player1Turn ? "Player 1" : "Player 2");
+			break;
+		}
+
 		NeraChessEngine::MoveList<218> legalMoves = board.GetLegalMoves();
 		if (std::find(legalMoves.begin(), legalMoves.end(), move) == legalMoves.end())
 		{
@@ -149,12 +158,13 @@ void GameManagerLayer::RunGame(std::stop_token stopToken, NeraChessEngine::Chess
 			break;
 		}
 
-		m_Clock.Resume();
 		m_Clock.Press();
+		m_Clock.Resume();
 
 		m_Player1Turn = !m_Player1Turn;
 	}
 
+	m_Clock.Stop();
 	Reset();
 }
 

@@ -1,6 +1,8 @@
 #include "ChessBoard.h"
+#include "Clock.h"
 #include "MoveOrdering.h"
 #include "SearchEngine.h"
+#include "TimeManagement.h"
 #include "TranspositionTable.h"
 #include "Zobrist.h"
 
@@ -374,6 +376,41 @@ namespace
             "SEE did not include promotion material");
     }
 
+    void TestClockAndTimeManagement()
+    {
+        using namespace std::chrono;
+        using NeraChessEngine::Clock;
+        using NeraChessSearch::TimeManagement::CalculateLimits;
+
+        ChessBoard board;
+        Clock defaultClock;
+        const auto defaultLimits = CalculateLimits(board, defaultClock);
+        Require(defaultLimits.softTime == seconds{ 10 },
+            "default time manager soft limit is incorrect");
+        Require(defaultLimits.hardTime == seconds{ 15 },
+            "default time manager hard limit is incorrect");
+
+        Clock lowClock(milliseconds{ 1'000 }, milliseconds{ 100 });
+        const auto lowLimits = CalculateLimits(board, lowClock);
+        Require(lowLimits.softTime >= milliseconds{ 20 } &&
+            lowLimits.hardTime >= lowLimits.softTime &&
+            lowLimits.hardTime < milliseconds{ 1'000 },
+            "low-time search limits do not preserve a clock safety reserve");
+
+        Clock incrementClock(seconds{ 10 }, seconds{ 1 });
+        incrementClock.Start();
+        incrementClock.Pause();
+        const auto paused = incrementClock.GetRemaining(true);
+        Require(paused <= seconds{ 10 } && paused >= milliseconds{ 9'900 },
+            "clock did not account for elapsed active time");
+        incrementClock.Press();
+        Require(!incrementClock.IsWhiteActive(), "clock press did not switch sides");
+        Require(incrementClock.GetRemaining(true) >= paused + milliseconds{ 999 },
+            "clock press did not add the increment");
+        incrementClock.Resume();
+        incrementClock.Stop();
+    }
+
     void RunBenchmark()
     {
         ChessBoard board;
@@ -442,6 +479,7 @@ int main(int argc, char** argv)
         TestSearchFoundations();
         TestTaperedEvaluation();
         TestStaticExchangeEvaluation();
+        TestClockAndTimeManagement();
         std::cout << "All NeraChess engine tests passed.\n";
         return 0;
     }

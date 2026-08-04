@@ -1,8 +1,8 @@
 #include "NeraChessBot.h"
 
 #include "Resources.h"
+#include "TimeManagement.h"
 
-#include <chrono>
 #include <iostream>
 #include <string>
 
@@ -20,7 +20,6 @@ NeraChessBot::NeraChessBot()
 NeraChessEngine::Move NeraChessBot::GetNextMove(const NeraChessEngine::ChessBoard& board,
     const NeraChessEngine::Clock& timer)
 {
-    (void)timer;
     if (m_OpeningBookAvailable)
     {
         const NeraChessEngine::Move bookMove = GetOpeningBookMove(board);
@@ -29,10 +28,8 @@ NeraChessEngine::Move NeraChessBot::GetNextMove(const NeraChessEngine::ChessBoar
         m_OpeningBookAvailable = false;
     }
 
-    NeraChessSearch::SearchLimits limits;
-    limits.maxDepth = NeraChessSearch::MAX_PLY - 1;
-    limits.softTime = std::chrono::milliseconds(14'500);
-    limits.hardTime = std::chrono::milliseconds(15'000);
+    const NeraChessSearch::SearchLimits limits =
+        NeraChessSearch::TimeManagement::CalculateLimits(board, timer);
     const NeraChessSearch::SearchResult result = m_SearchEngine.Search(board, limits);
 
     std::cout << "Search depth " << result.completedDepth << ", score " << result.score
