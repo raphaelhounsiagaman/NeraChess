@@ -200,11 +200,21 @@ namespace NeraChessSearch
         }
 
         const bool inCheck = board.IsInCheck();
-        if (allowNull && !pvNode && !inCheck && depth >= 3 &&
-            beta > -SCORE_MATE + MAX_PLY && beta < SCORE_MATE - MAX_PLY &&
-            HasNonPawnMaterial(board))
+        const bool mateBounds = beta <= -SCORE_MATE + MAX_PLY ||
+            beta >= SCORE_MATE - MAX_PLY;
+        const bool canReverseFutility = !pvNode && !inCheck && !mateBounds && depth <= 2;
+        const bool canFutilityPrune = !pvNode && !inCheck && !mateBounds && depth <= 2;
+        const bool canNullPrune = allowNull && !pvNode && !inCheck && !mateBounds &&
+            depth >= 3 && HasNonPawnMaterial(board);
+        Score staticEval = SCORE_DRAW;
+        if (canReverseFutility || canFutilityPrune || canNullPrune)
+            staticEval = Evaluate(board);
+
+        if (canReverseFutility && staticEval - 120 * depth >= beta)
+            return staticEval;
+
+        if (canNullPrune)
         {
-            const Score staticEval = Evaluate(board);
             if (staticEval >= beta && board.MakeNullMove())
             {
                 const int reduction = 2 + depth / 4;
@@ -238,6 +248,13 @@ namespace NeraChessSearch
                 (move == m_KillerMoves[ply][0] || move == m_KillerMoves[ply][1]);
             board.MakeMove(move);
             const bool givesCheck = board.IsInCheck();
+            if (canFutilityPrune && staticEval + 120 * depth <= alpha &&
+                bestMove != 0 && !killer && !givesCheck && IsFutilityPrunable(move))
+            {
+                board.UndoMove(move);
+                ++moveIndex;
+                continue;
+            }
             Score score;
             if (firstMove)
             {
@@ -323,9 +340,11 @@ namespace NeraChessSearch
 
         const bool inCheck = board.IsInCheck();
         Score bestScore = -SCORE_INF;
+        Score standPat = -SCORE_INF;
         if (!inCheck)
         {
-            bestScore = Evaluate(board);
+            standPat = Evaluate(board);
+            bestScore = standPat;
             if (bestScore >= beta)
                 return bestScore;
             alpha = std::max(alpha, bestScore);
@@ -341,7 +360,24 @@ namespace NeraChessSearch
 
         for (const Move move : candidates)
         {
+            bool deltaPrunable = false;
+            bool seePrunable = false;
+            if (!inCheck && !(move.GetMoveFlags() & MoveFlags::IS_PROMOTION))
+            {
+                const Piece victim = (move.GetMoveFlags() & MoveFlags::IS_EN_PASSANT)
+                    ? Piece(move.GetMovePiece().IsWhite()
+                        ? PieceType::BLACK_PAWN : PieceType::WHITE_PAWN)
+                    : board.GetPiece(move.GetTargetSquare());
+                deltaPrunable = standPat + PieceValue(victim) + 200 < alpha;
+                seePrunable = MoveOrdering::StaticExchangeEvaluation(board, move) < -50;
+            }
+
             board.MakeMove(move);
+            if (!inCheck && !board.IsInCheck() && (deltaPrunable || seePrunable))
+            {
+                board.UndoMove(move);
+                continue;
+            }
             const Score score = -QuiescenceSearch(board, -beta, -alpha, ply + 1);
             board.UndoMove(move);
 
@@ -485,6 +521,18 @@ namespace NeraChessSearch
     bool SearchEngine::IsQuiet(Move move)
     {
         return !(move.GetMoveFlags() & (MoveFlags::IS_CAPTURE | MoveFlags::IS_PROMOTION));
+    }
+
+    bool SearchEngine::IsFutilityPrunable(Move move)
+    {
+        if (!IsQuiet(move) || (move.GetMoveFlags() & MoveFlags::IS_CASTLES))
+            return false;
+        const Piece piece = move.GetMovePiece();
+        if (piece == PieceType::WHITE_PAWN && move.GetTargetSquare().GetRank() >= 6)
+            return false;
+        if (piece == PieceType::BLACK_PAWN && move.GetTargetSquare().GetRank() <= 1)
+            return false;
+        return true;
     }
 
     int SearchEngine::LateMoveReduction(int depth, int moveIndex, bool pvNode)
