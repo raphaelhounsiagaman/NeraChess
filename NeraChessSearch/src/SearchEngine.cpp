@@ -205,10 +205,16 @@ namespace NeraChessSearch
 
         Score bestScore = -SCORE_INF;
         Move bestMove = 0;
+        const bool inCheck = board.IsInCheck();
         bool firstMove = true;
+        int moveIndex = 0;
         for (const Move move : moves)
         {
+            const bool quiet = IsQuiet(move);
+            const bool killer = quiet &&
+                (move == m_KillerMoves[ply][0] || move == m_KillerMoves[ply][1]);
             board.MakeMove(move);
+            const bool givesCheck = board.IsInCheck();
             Score score;
             if (firstMove)
             {
@@ -217,8 +223,20 @@ namespace NeraChessSearch
             }
             else
             {
+                int reduction = 0;
+                if (depth >= 3 && moveIndex >= 3 && quiet && !killer &&
+                    !inCheck && !givesCheck)
+                {
+                    reduction = LateMoveReduction(depth, moveIndex, pvNode);
+                }
+
                 score = -PrincipalVariationSearch(board, -alpha - 1, -alpha,
-                    depth - 1, ply + 1, false);
+                    depth - 1 - reduction, ply + 1, false);
+                if (!m_Aborted && reduction > 0 && score > alpha)
+                {
+                    score = -PrincipalVariationSearch(board, -alpha - 1, -alpha,
+                        depth - 1, ply + 1, false);
+                }
                 if (!m_Aborted && pvNode && score > alpha && score < beta)
                     score = -PrincipalVariationSearch(board, -beta, -alpha,
                         depth - 1, ply + 1, true);
@@ -253,6 +271,7 @@ namespace NeraChessSearch
                 break;
             }
             firstMove = false;
+            ++moveIndex;
         }
 
         TTBound bound = TTBound::Exact;
@@ -443,6 +462,18 @@ namespace NeraChessSearch
     bool SearchEngine::IsQuiet(Move move)
     {
         return !(move.GetMoveFlags() & (MoveFlags::IS_CAPTURE | MoveFlags::IS_PROMOTION));
+    }
+
+    int SearchEngine::LateMoveReduction(int depth, int moveIndex, bool pvNode)
+    {
+        int reduction = 1;
+        if (depth >= 6)
+            ++reduction;
+        if (moveIndex >= 8)
+            ++reduction;
+        if (pvNode)
+            --reduction;
+        return std::clamp(reduction, 0, depth - 2);
     }
 
     Score SearchEngine::Evaluate(const ChessBoard& board)

@@ -73,6 +73,7 @@ namespace NeraChessSearch
         static Score ScoreFromTT(Score score, int ply);
         static int PieceValue(NeraChessEngine::Piece piece);
         static bool IsQuiet(NeraChessEngine::Move move);
+        static int LateMoveReduction(int depth, int moveIndex, bool pvNode);
 
     private:
         TranspositionTable m_TranspositionTable;
