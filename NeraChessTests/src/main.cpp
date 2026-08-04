@@ -406,6 +406,25 @@ namespace
             "positional evaluation is not color-and-rank symmetric");
     }
 
+    void TestSearchChoices()
+    {
+        using namespace NeraChessSearch;
+
+        SearchEngine search(32);
+        SearchLimits limits;
+        limits.maxDepth = 6;
+
+        ChessBoard strategic("r1bq1rk1/pp2bppp/2n1pn2/2pp4/3P4/2PBPN2/PP1N1PPP/R1BQ1RK1 w - - 4 9");
+        Require(search.Search(strategic, limits).bestMove == FindMove(strategic, "d4c5"),
+            "search missed the benchmark's strongest strategic break");
+
+        search.NewGame();
+        ChessBoard tactical("r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq - 0 1");
+        const auto bestMove = search.Search(tactical, limits).bestMove;
+        Require(bestMove == FindMove(tactical, "d5e6") || bestMove == FindMove(tactical, "e2a6"),
+            "search missed both top tactical continuations in the benchmark");
+    }
+
     void TestStaticExchangeEvaluation()
     {
         using NeraChessSearch::MoveOrdering::StaticExchangeEvaluation;
@@ -549,6 +568,7 @@ int main(int argc, char** argv)
         TestTranspositionTable();
         TestSearchFoundations();
         TestTaperedEvaluation();
+        TestSearchChoices();
         TestStaticExchangeEvaluation();
         TestClockAndTimeManagement();
         TestOpeningBook();

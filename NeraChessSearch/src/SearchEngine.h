@@ -65,11 +65,13 @@ namespace NeraChessSearch
 
         RootResult SearchRoot(NeraChessEngine::ChessBoard& board, int depth, Score alpha, Score beta);
         Score PrincipalVariationSearch(NeraChessEngine::ChessBoard& board,
-            Score alpha, Score beta, int depth, int ply, bool pvNode, bool allowNull);
+            Score alpha, Score beta, int depth, int ply, bool pvNode, bool allowNull,
+            NeraChessEngine::Move previousMove);
         Score QuiescenceSearch(NeraChessEngine::ChessBoard& board, Score alpha, Score beta, int ply);
 
         void SortMoves(const NeraChessEngine::ChessBoard& board,
-            NeraChessEngine::MoveList<218>& moves, int ply, NeraChessEngine::Move ttMove);
+            NeraChessEngine::MoveList<218>& moves, int ply, NeraChessEngine::Move ttMove,
+            NeraChessEngine::Move previousMove = 0);
         void UpdatePrincipalVariation(int ply, NeraChessEngine::Move move);
 
         bool ShouldStop();
@@ -82,6 +84,8 @@ namespace NeraChessSearch
         static int LateMoveReduction(int depth, int moveIndex, bool pvNode);
         static bool HasNonPawnMaterial(const NeraChessEngine::ChessBoard& board);
         bool IsRootMoveAllowed(NeraChessEngine::Move move) const;
+        NeraChessEngine::Move GetCounterMove(NeraChessEngine::Move previousMove) const;
+        static void UpdateHistoryScore(int32_t& score, int bonus);
 
     private:
         TranspositionTable m_TranspositionTable;
@@ -93,7 +97,8 @@ namespace NeraChessSearch
         int m_SelectiveDepth = 0;
 
         std::array<std::array<NeraChessEngine::Move, 2>, MAX_PLY> m_KillerMoves{};
-        std::array<std::array<int32_t, 64>, 64> m_History{};
+        std::array<std::array<std::array<int32_t, 64>, 64>, 2> m_History{};
+        std::array<std::array<NeraChessEngine::Move, 64>, 12> m_CounterMoves{};
         std::array<std::array<NeraChessEngine::Move, MAX_PLY>, MAX_PLY> m_PvTable{};
         std::array<int, MAX_PLY> m_PvLength{};
     };

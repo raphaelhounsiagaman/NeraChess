@@ -28,6 +28,7 @@ namespace NeraChessSearch
         m_TranspositionTable.Clear();
         m_KillerMoves = {};
         m_History = {};
+        m_CounterMoves = {};
     }
 
     SearchResult SearchEngine::Search(const ChessBoard& position, const SearchLimits& limits)
@@ -40,6 +41,14 @@ namespace NeraChessSearch
         m_SelectiveDepth = 0;
         m_PvLength.fill(0);
         m_TranspositionTable.NewSearch();
+        for (auto& side : m_History)
+        {
+            for (auto& from : side)
+            {
+                for (int32_t& score : from)
+                    score /= 2;
+            }
+        }
 
         ChessBoard board = position;
         SearchResult result;
@@ -152,13 +161,16 @@ namespace NeraChessSearch
             Score score;
             if (firstMove)
             {
-                score = -PrincipalVariationSearch(board, -beta, -alpha, depth - 1, 1, true, true);
+                score = -PrincipalVariationSearch(board, -beta, -alpha,
+                    depth - 1, 1, true, true, move);
             }
             else
             {
-                score = -PrincipalVariationSearch(board, -alpha - 1, -alpha, depth - 1, 1, false, true);
+                score = -PrincipalVariationSearch(board, -alpha - 1, -alpha,
+                    depth - 1, 1, false, true, move);
                 if (!m_Aborted && score > alpha && score < beta)
-                    score = -PrincipalVariationSearch(board, -beta, -alpha, depth - 1, 1, true, true);
+                    score = -PrincipalVariationSearch(board, -beta, -alpha,
+                        depth - 1, 1, true, true, move);
             }
             board.UndoMove(move);
 
@@ -194,7 +206,8 @@ namespace NeraChessSearch
     }
 
     Score SearchEngine::PrincipalVariationSearch(ChessBoard& board,
-        Score alpha, Score beta, int depth, int ply, bool pvNode, bool allowNull)
+        Score alpha, Score beta, int depth, int ply, bool pvNode, bool allowNull,
+        Move previousMove)
     {
         if (ShouldStop())
             return SCORE_DRAW;
@@ -249,7 +262,7 @@ namespace NeraChessSearch
             {
                 const int reduction = 2 + depth / 4;
                 const Score nullScore = -PrincipalVariationSearch(board, -beta, -beta + 1,
-                    depth - 1 - reduction, ply + 1, false, false);
+                    depth - 1 - reduction, ply + 1, false, false, 0);
                 board.UndoNullMove();
 
                 if (m_Aborted)
@@ -265,10 +278,14 @@ namespace NeraChessSearch
 
         const Score originalAlpha = alpha;
         MoveList<218> moves = board.GetLegalMoves();
-        SortMoves(board, moves, ply, ttMove);
+        SortMoves(board, moves, ply, ttMove, previousMove);
 
         Score bestScore = -SCORE_INF;
         Move bestMove = 0;
+        std::array<Move, 218> quietMovesSearched{};
+        size_t quietMoveCount = 0;
+        const Move counterMove = GetCounterMove(previousMove);
+        const uint8_t side = board.GetBoardState().HasFlag(BoardStateFlags::WhiteToMove) ? 0 : 1;
         bool firstMove = true;
         int moveIndex = 0;
         for (const Move move : moves)
@@ -276,10 +293,11 @@ namespace NeraChessSearch
             const bool quiet = IsQuiet(move);
             const bool killer = quiet &&
                 (move == m_KillerMoves[ply][0] || move == m_KillerMoves[ply][1]);
+            const bool counter = quiet && move == counterMove;
             board.MakeMove(move);
             const bool givesCheck = board.IsInCheck();
             if (canFutilityPrune && staticEval + 120 * depth <= alpha &&
-                bestMove != 0 && !killer && !givesCheck && IsFutilityPrunable(move))
+                bestMove != 0 && !killer && !counter && !givesCheck && IsFutilityPrunable(move))
             {
                 board.UndoMove(move);
                 ++moveIndex;
@@ -289,32 +307,35 @@ namespace NeraChessSearch
             if (firstMove)
             {
                 score = -PrincipalVariationSearch(board, -beta, -alpha,
-                    depth - 1, ply + 1, pvNode, true);
+                    depth - 1, ply + 1, pvNode, true, move);
             }
             else
             {
                 int reduction = 0;
-                if (depth >= 3 && moveIndex >= 3 && quiet && !killer &&
+                if (depth >= 3 && moveIndex >= 3 && quiet && !killer && !counter &&
                     !inCheck && !givesCheck)
                 {
                     reduction = LateMoveReduction(depth, moveIndex, pvNode);
                 }
 
                 score = -PrincipalVariationSearch(board, -alpha - 1, -alpha,
-                    depth - 1 - reduction, ply + 1, false, true);
+                    depth - 1 - reduction, ply + 1, false, true, move);
                 if (!m_Aborted && reduction > 0 && score > alpha)
                 {
                     score = -PrincipalVariationSearch(board, -alpha - 1, -alpha,
-                        depth - 1, ply + 1, false, true);
+                        depth - 1, ply + 1, false, true, move);
                 }
                 if (!m_Aborted && pvNode && score > alpha && score < beta)
                     score = -PrincipalVariationSearch(board, -beta, -alpha,
-                        depth - 1, ply + 1, true, true);
+                        depth - 1, ply + 1, true, true, move);
             }
             board.UndoMove(move);
 
             if (m_Aborted)
                 return SCORE_DRAW;
+
+            if (quiet)
+                quietMovesSearched[quietMoveCount++] = move;
 
             if (score > bestScore)
             {
@@ -335,8 +356,21 @@ namespace NeraChessSearch
                         m_KillerMoves[ply][1] = m_KillerMoves[ply][0];
                         m_KillerMoves[ply][0] = move;
                     }
-                    int32_t& history = m_History[move.GetStartSquare()][move.GetTargetSquare()];
-                    history = std::min<int32_t>(1'000'000, history + depth * depth);
+                    const int bonus = std::min(16'384, 32 * depth * depth);
+                    UpdateHistoryScore(
+                        m_History[side][move.GetStartSquare()][move.GetTargetSquare()], bonus);
+                    for (size_t index = 0; index + 1 < quietMoveCount; ++index)
+                    {
+                        const Move failed = quietMovesSearched[index];
+                        UpdateHistoryScore(
+                            m_History[side][failed.GetStartSquare()][failed.GetTargetSquare()],
+                            -bonus / 2);
+                    }
+                    if (previousMove != 0)
+                    {
+                        m_CounterMoves[previousMove.GetMovePiece()]
+                            [previousMove.GetTargetSquare()] = move;
+                    }
                 }
                 break;
             }
@@ -458,9 +492,11 @@ namespace NeraChessSearch
     }
 
     void SearchEngine::SortMoves(const ChessBoard& board, MoveList<218>& moves,
-        int ply, Move ttMove)
+        int ply, Move ttMove, Move previousMove)
     {
         std::array<int32_t, 218> scores{};
+        const Move counterMove = GetCounterMove(previousMove);
+        const uint8_t side = board.GetBoardState().HasFlag(BoardStateFlags::WhiteToMove) ? 0 : 1;
         for (size_t i = 0; i < moves.size(); ++i)
         {
             const Move move = moves[i];
@@ -489,7 +525,9 @@ namespace NeraChessSearch
                     score += 8'000'000;
                 else if (move == m_KillerMoves[ply][1])
                     score += 7'000'000;
-                score += m_History[move.GetStartSquare()][move.GetTargetSquare()];
+                else if (move == counterMove)
+                    score += 6'000'000;
+                score += m_History[side][move.GetStartSquare()][move.GetTargetSquare()];
             }
             scores[i] = score;
         }
@@ -623,6 +661,20 @@ namespace NeraChessSearch
         return m_Limits.rootMoves.empty() ||
             std::find(m_Limits.rootMoves.begin(), m_Limits.rootMoves.end(), move) !=
                 m_Limits.rootMoves.end();
+    }
+
+    Move SearchEngine::GetCounterMove(Move previousMove) const
+    {
+        if (previousMove == 0 || previousMove.GetMovePiece() >= 12)
+            return 0;
+        return m_CounterMoves[previousMove.GetMovePiece()][previousMove.GetTargetSquare()];
+    }
+
+    void SearchEngine::UpdateHistoryScore(int32_t& score, int bonus)
+    {
+        constexpr int MaxHistory = 16'384;
+        bonus = std::clamp(bonus, -MaxHistory, MaxHistory);
+        score += bonus - score * std::abs(bonus) / MaxHistory;
     }
 
     Score SearchEngine::Evaluate(const ChessBoard& board)
