@@ -104,6 +104,7 @@ namespace
             "8/8/8/8/8/8/8/4K2k w - - 0 0",
             "P7/8/8/8/8/8/8/4K2k w - - 0 1",
             "7k/8/8/8/8/8/8/3KK3 w - - 0 1",
+            "7k/8/8/8/3Q4/8/8/K7 w - - 0 1",
         };
 
         for (const auto fen : invalidFens)
@@ -372,6 +373,23 @@ namespace
         search.NewGame();
     }
 
+    void TestFiftyMoveTranspositions()
+    {
+        using namespace NeraChessSearch;
+
+        SearchEngine search(16);
+        SearchLimits limits;
+        limits.maxDepth = 3;
+        ChessBoard ordinary("7k/8/8/8/8/3Q4/8/K7 w - - 0 1");
+        Require(search.Search(ordinary, limits).score > 800,
+            "winning endgame was not evaluated as winning");
+
+        ChessBoard nearDraw("7k/8/8/8/8/3Q4/8/K7 w - - 98 1");
+        const SearchResult draw = search.Search(nearDraw, limits);
+        Require(draw.score == SCORE_DRAW,
+            "transposition score bypassed the approaching 50-move draw");
+    }
+
     void TestTaperedEvaluation()
     {
         using NeraChessSearch::SearchEngine;
@@ -567,6 +585,7 @@ int main(int argc, char** argv)
         TestNullMoveState();
         TestTranspositionTable();
         TestSearchFoundations();
+        TestFiftyMoveTranspositions();
         TestTaperedEvaluation();
         TestSearchChoices();
         TestStaticExchangeEvaluation();

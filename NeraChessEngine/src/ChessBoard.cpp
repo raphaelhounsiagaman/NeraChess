@@ -190,6 +190,16 @@ namespace NeraChessEngine
 			return;
 		}
 
+		BoardState nonMovingSide = m_BoardState;
+		nonMovingSide.boardStateFlags ^= BoardStateFlags::WhiteToMove;
+		MoveGenerator legalityValidator;
+		(void)legalityValidator.GenerateMoves(nonMovingSide);
+		if (legalityValidator.InCheck())
+		{
+			m_Error = 1;
+			return;
+		}
+
 		m_ZobristKey = Zobrist::CalculateZobristKey(*this);
 		m_ZobristKeySet = true;
 		m_RepetitionTable.AddEntry(GetRepetitionKey());
