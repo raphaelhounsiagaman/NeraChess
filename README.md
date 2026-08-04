@@ -7,7 +7,8 @@ It consists of classical search techniques.
 
 The project started as a personal learning project and gradually evolved into a fully working engine. It is not meant to compete with top engines like Stockfish or Leela, but to explore how far a self-written engine can go.
 
-Current estimated strength: roughly beginner to intermediate club level (~1200–1400 Elo, depending on time control).
+The current engine has not yet been recalibrated in a statistically meaningful
+engine tournament, so the repository does not claim an Elo rating.
 
 ---
 
@@ -28,13 +29,14 @@ The main goals of this project are:
 
 - Principal Variation Search (PVS)
 - Iterative Deepening
+- Aspiration windows and mate-distance pruning
 - Alpha-Beta Pruning
 - Clustered transposition table with configurable size
 - Late Move Reductions (LMR)
 - Null-move, futility, delta, and static-exchange pruning
 - Quiescence Search
 - Killer Moves
-- History Heuristic
+- Side-aware history, killer, and countermove heuristics
 - Tapered piece-square, pawn-structure, mobility, and king-safety evaluation
 - Indexed opening book with transposition-aware lookup
 - Clock-aware time management
@@ -49,6 +51,12 @@ The search is functional and reasonably optimized, but not heavily micro-optimiz
 NeraChess follows a layered architecture inspired by the application structure shown in The Cherno’s C++ Application Architecture series on YouTube.
 
 The goal of this structure is separation of concerns rather than extreme abstraction. The project is divided into logical layers with clear responsibilities:
+
+- `NeraChessEngine`: board state, legal move generation, hashing, clocks, and rules
+- `NeraChessSearch`: evaluation, search, transposition table, time management, and opening book
+- `NeraChessUCI`: headless asynchronous UCI protocol adapter
+- `NeraChessApp`: SDL/ImGui desktop application and chess-player adapters
+- `NeraChessTests`: headless perft, state, search, tactical, book, and benchmark coverage
 
 ---
 
@@ -162,6 +170,24 @@ without entering the application loop, run a built executable with:
 
 ```sh
 ./bin/Debug/NeraChessApp/NeraChessApp --smoke-test
+```
+
+## Verification and benchmarks
+
+The normal regression suite includes 17 reference perft positions, make/undo
+and hash invariants, draw rules, FEN validation, transposition-table behavior,
+evaluation symmetry, tactical search choices, time management, and the full
+opening-book index:
+
+```sh
+./bin/Release/NeraChessTests/NeraChessTests
+```
+
+Two deterministic benchmark modes are also available:
+
+```sh
+./bin/Release/NeraChessTests/NeraChessTests --bench
+./bin/Release/NeraChessTests/NeraChessTests --search-bench
 ```
 
 ---
