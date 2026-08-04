@@ -125,13 +125,13 @@ namespace NeraChessSearch
             Score score;
             if (firstMove)
             {
-                score = -PrincipalVariationSearch(board, -beta, -alpha, depth - 1, 1, true);
+                score = -PrincipalVariationSearch(board, -beta, -alpha, depth - 1, 1, true, true);
             }
             else
             {
-                score = -PrincipalVariationSearch(board, -alpha - 1, -alpha, depth - 1, 1, false);
+                score = -PrincipalVariationSearch(board, -alpha - 1, -alpha, depth - 1, 1, false, true);
                 if (!m_Aborted && score > alpha && score < beta)
-                    score = -PrincipalVariationSearch(board, -beta, -alpha, depth - 1, 1, true);
+                    score = -PrincipalVariationSearch(board, -beta, -alpha, depth - 1, 1, true, true);
             }
             board.UndoMove(move);
 
@@ -164,7 +164,7 @@ namespace NeraChessSearch
     }
 
     Score SearchEngine::PrincipalVariationSearch(ChessBoard& board,
-        Score alpha, Score beta, int depth, int ply, bool pvNode)
+        Score alpha, Score beta, int depth, int ply, bool pvNode, bool allowNull)
     {
         if (ShouldStop())
             return SCORE_DRAW;
@@ -199,13 +199,36 @@ namespace NeraChessSearch
             }
         }
 
+        const bool inCheck = board.IsInCheck();
+        if (allowNull && !pvNode && !inCheck && depth >= 3 &&
+            beta > -SCORE_MATE + MAX_PLY && beta < SCORE_MATE - MAX_PLY &&
+            HasNonPawnMaterial(board))
+        {
+            const Score staticEval = Evaluate(board);
+            if (staticEval >= beta && board.MakeNullMove())
+            {
+                const int reduction = 2 + depth / 4;
+                const Score nullScore = -PrincipalVariationSearch(board, -beta, -beta + 1,
+                    depth - 1 - reduction, ply + 1, false, false);
+                board.UndoNullMove();
+
+                if (m_Aborted)
+                    return SCORE_DRAW;
+                if (nullScore >= beta)
+                {
+                    m_TranspositionTable.Store(key, ScoreToTT(beta, ply), depth,
+                        TTBound::Lower, ttMove);
+                    return beta;
+                }
+            }
+        }
+
         const Score originalAlpha = alpha;
         MoveList<218> moves = board.GetLegalMoves();
         SortMoves(board, moves, ply, ttMove);
 
         Score bestScore = -SCORE_INF;
         Move bestMove = 0;
-        const bool inCheck = board.IsInCheck();
         bool firstMove = true;
         int moveIndex = 0;
         for (const Move move : moves)
@@ -219,7 +242,7 @@ namespace NeraChessSearch
             if (firstMove)
             {
                 score = -PrincipalVariationSearch(board, -beta, -alpha,
-                    depth - 1, ply + 1, pvNode);
+                    depth - 1, ply + 1, pvNode, true);
             }
             else
             {
@@ -231,15 +254,15 @@ namespace NeraChessSearch
                 }
 
                 score = -PrincipalVariationSearch(board, -alpha - 1, -alpha,
-                    depth - 1 - reduction, ply + 1, false);
+                    depth - 1 - reduction, ply + 1, false, true);
                 if (!m_Aborted && reduction > 0 && score > alpha)
                 {
                     score = -PrincipalVariationSearch(board, -alpha - 1, -alpha,
-                        depth - 1, ply + 1, false);
+                        depth - 1, ply + 1, false, true);
                 }
                 if (!m_Aborted && pvNode && score > alpha && score < beta)
                     score = -PrincipalVariationSearch(board, -beta, -alpha,
-                        depth - 1, ply + 1, true);
+                        depth - 1, ply + 1, true, true);
             }
             board.UndoMove(move);
 
@@ -474,6 +497,16 @@ namespace NeraChessSearch
         if (pvNode)
             --reduction;
         return std::clamp(reduction, 0, depth - 2);
+    }
+
+    bool SearchEngine::HasNonPawnMaterial(const ChessBoard& board)
+    {
+        const BoardState& state = board.GetBoardState();
+        const uint8_t offset = state.HasFlag(BoardStateFlags::WhiteToMove) ? 0 : 6;
+        return state.pieceBitboards[offset + PieceType::WHITE_KNIGHT] |
+            state.pieceBitboards[offset + PieceType::WHITE_BISHOP] |
+            state.pieceBitboards[offset + PieceType::WHITE_ROOK] |
+            state.pieceBitboards[offset + PieceType::WHITE_QUEEN];
     }
 
     Score SearchEngine::Evaluate(const ChessBoard& board)

@@ -60,7 +60,7 @@ namespace NeraChessSearch
 
         RootResult SearchRoot(NeraChessEngine::ChessBoard& board, int depth, Score alpha, Score beta);
         Score PrincipalVariationSearch(NeraChessEngine::ChessBoard& board,
-            Score alpha, Score beta, int depth, int ply, bool pvNode);
+            Score alpha, Score beta, int depth, int ply, bool pvNode, bool allowNull);
         Score QuiescenceSearch(NeraChessEngine::ChessBoard& board, Score alpha, Score beta, int ply);
 
         void SortMoves(const NeraChessEngine::ChessBoard& board,
@@ -74,6 +74,7 @@ namespace NeraChessSearch
         static int PieceValue(NeraChessEngine::Piece piece);
         static bool IsQuiet(NeraChessEngine::Move move);
         static int LateMoveReduction(int depth, int moveIndex, bool pvNode);
+        static bool HasNonPawnMaterial(const NeraChessEngine::ChessBoard& board);
 
     private:
         TranspositionTable m_TranspositionTable;
