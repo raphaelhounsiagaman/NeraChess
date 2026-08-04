@@ -63,7 +63,7 @@ namespace NeraChessEngine
 		{
 			Bitboard newBlocker = 0ULL;
 
-			for (int bitIndex = 0; bitIndex < moveSquareIndices.size(); bitIndex++)
+			for (std::size_t bitIndex = 0; bitIndex < moveSquareIndices.size(); bitIndex++)
 			{
 				Bitboard bit = (patternIndex >> bitIndex) & 1U;
 
@@ -248,7 +248,7 @@ namespace NeraChessEngine
 				{-1, -2}
 			} };
 
-			for (int i = 0; i < knightJumps.size(); i++)
+			for (std::size_t i = 0; i < knightJumps.size(); i++)
 			{
 				int knightX = file + knightJumps[i][0];
 				int knightY = rank + knightJumps[i][1];
