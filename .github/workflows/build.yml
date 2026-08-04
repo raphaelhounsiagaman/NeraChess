@@ -34,7 +34,7 @@ jobs:
       - name: Run release regressions and UCI smoke test
         run: |
           ./bin/Release/NeraChessTests/NeraChessTests
-          uci_output="$(printf 'uci\nisready\nposition startpos\ngo depth 1\n' | ./bin/Release/NeraChessUCI/NeraChessUCI)"
+          uci_output="$(printf 'uci\nisready\nposition startpos\ngo depth 3 wtime 60000 btime 60000 winc 1000 binc 1000 movestogo 30\n' | ./bin/Release/NeraChessUCI/NeraChessUCI)"
           printf '%s\n' "$uci_output"
           grep -q '^uciok$' <<< "$uci_output"
           grep -q '^readyok$' <<< "$uci_output"
@@ -72,14 +72,16 @@ jobs:
         env:
           SDL_AUDIODRIVER: dummy
           SDL_VIDEODRIVER: dummy
-        run: ./bin/Release/NeraChessApp/NeraChessApp --smoke-test
+        run: |
+          ./bin/Release/NeraChessApp/NeraChessApp --smoke-test
+          ./bin/Release/NeraChessApp/NeraChessApp --clock-smoke-test
 
       - name: Run engine regression tests
         run: ./bin/Release/NeraChessTests/NeraChessTests
 
       - name: Run UCI protocol smoke test
         run: |
-          uci_output="$(printf 'uci\nisready\nposition startpos\ngo depth 1\n' | ./bin/Release/NeraChessUCI/NeraChessUCI)"
+          uci_output="$(printf 'uci\nisready\nposition startpos\ngo depth 3 wtime 60000 btime 60000 winc 1000 binc 1000 movestogo 30\n' | ./bin/Release/NeraChessUCI/NeraChessUCI)"
           printf '%s\n' "$uci_output"
           grep -q '^uciok$' <<< "$uci_output"
           grep -q '^readyok$' <<< "$uci_output"
@@ -111,7 +113,9 @@ jobs:
         env:
           SDL_AUDIODRIVER: dummy
           SDL_VIDEODRIVER: dummy
-        run: bin\Release\NeraChessApp\NeraChessApp.exe --smoke-test
+        run: |
+          bin\Release\NeraChessApp\NeraChessApp.exe --smoke-test
+          bin\Release\NeraChessApp\NeraChessApp.exe --clock-smoke-test
 
       - name: Run engine regression tests
         shell: cmd
@@ -120,7 +124,7 @@ jobs:
       - name: Run UCI protocol smoke test
         shell: pwsh
         run: |
-          $output = @("uci", "isready", "position startpos", "go depth 1") |
+          $output = @("uci", "isready", "position startpos", "go depth 3 wtime 60000 btime 60000 winc 1000 binc 1000 movestogo 30") |
             & bin\Release\NeraChessUCI\NeraChessUCI.exe
           $output | Write-Output
           if ($output -notcontains "uciok") { throw "UCI handshake failed" }
