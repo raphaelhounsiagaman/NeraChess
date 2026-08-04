@@ -8,6 +8,47 @@ permissions:
   contents: read
 
 jobs:
+  linux-headless:
+    name: Linux Headless + Sanitizers
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+
+      - name: Generate Makefiles
+        run: bash ./scripts/Setup-Linux.sh gmake
+
+      - name: Build headless Debug and Release
+        run: |
+          jobs="$(nproc)"
+          make -C NeraChessEngine config=debug -j"$jobs"
+          make -C NeraChessSearch config=debug -j"$jobs"
+          make -C NeraChessUCI config=debug -j"$jobs"
+          make -C NeraChessTests config=debug -j"$jobs"
+          make -C NeraChessEngine config=release -j"$jobs"
+          make -C NeraChessSearch config=release -j"$jobs"
+          make -C NeraChessUCI config=release -j"$jobs"
+          make -C NeraChessTests config=release -j"$jobs"
+
+      - name: Run release regressions and UCI smoke test
+        run: |
+          ./bin/Release/NeraChessTests/NeraChessTests
+          uci_output="$(printf 'uci\nisready\nposition startpos\ngo depth 1\n' | ./bin/Release/NeraChessUCI/NeraChessUCI)"
+          printf '%s\n' "$uci_output"
+          grep -q '^uciok$' <<< "$uci_output"
+          grep -q '^readyok$' <<< "$uci_output"
+          grep -q '^bestmove ' <<< "$uci_output"
+
+      - name: Build and run sanitized regressions
+        run: |
+          jobs="$(nproc)"
+          sanitizer_flags='-fsanitize=address,undefined -fno-omit-frame-pointer'
+          make -C NeraChessEngine config=debug -B -j"$jobs" CXXFLAGS="$sanitizer_flags"
+          make -C NeraChessSearch config=debug -B -j"$jobs" CXXFLAGS="$sanitizer_flags"
+          make -C NeraChessTests config=debug -B -j"$jobs" CXXFLAGS="$sanitizer_flags" LDFLAGS='-fsanitize=address,undefined'
+          ./bin/Debug/NeraChessTests/NeraChessTests
+
   macos:
     name: macOS
     runs-on: macos-latest

@@ -138,7 +138,22 @@ scripts\Setup-Windows.bat vs2022
 Open `NeraChess.slnx` for Visual Studio 2026 or `NeraChess.sln` for Visual
 Studio 2022, select Debug or Release, and build `NeraChessApp`.
 
-On both platforms, the build copies the `Ressources` directory beside the
+### Linux headless engine
+
+The bundled Linux Premake executable can generate Makefiles for the engine,
+UCI target, and regression suite without SDL:
+
+```sh
+bash ./scripts/Setup-Linux.sh gmake
+make -C NeraChessEngine config=release
+make -C NeraChessSearch config=release
+make -C NeraChessUCI config=release
+make -C NeraChessTests config=release
+./bin/Release/NeraChessTests/NeraChessTests
+./bin/Release/NeraChessUCI/NeraChessUCI
+```
+
+The macOS and Windows GUI builds copy the `Ressources` directory beside the
 executable. The application resolves assets relative to its executable, so it
 can be launched from any working directory.
 
