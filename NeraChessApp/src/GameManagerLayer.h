@@ -73,7 +73,7 @@ private:
 
 private:
 
-	NeraChessEngine::Clock m_Clock{};
+	NeraChessEngine::Clock m_Clock{ NeraChessEngine::MainTimeControls[2].timeControl };
 	NeraChessEngine::ChessBoard m_ChessBoard{};
 
 	NeraChessEngine::MoveQueue m_MoveQueue;
