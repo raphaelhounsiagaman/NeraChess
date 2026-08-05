@@ -38,7 +38,7 @@ jobs:
           printf '%s\n' "$uci_output"
           grep -q '^uciok$' <<< "$uci_output"
           grep -q '^readyok$' <<< "$uci_output"
-          grep -q '^bestmove ' <<< "$uci_output"
+          grep -q '^bestmove e2e4$' <<< "$uci_output"
 
       - name: Build and run sanitized regressions
         run: |
@@ -85,7 +85,7 @@ jobs:
           printf '%s\n' "$uci_output"
           grep -q '^uciok$' <<< "$uci_output"
           grep -q '^readyok$' <<< "$uci_output"
-          grep -q '^bestmove ' <<< "$uci_output"
+          grep -q '^bestmove e2e4$' <<< "$uci_output"
 
   windows:
     name: Windows
@@ -129,4 +129,4 @@ jobs:
           $output | Write-Output
           if ($output -notcontains "uciok") { throw "UCI handshake failed" }
           if ($output -notcontains "readyok") { throw "UCI readiness failed" }
-          if (-not ($output -match "^bestmove ")) { throw "UCI search failed" }
+          if ($output -notcontains "bestmove e2e4") { throw "UCI opening-book lookup failed" }

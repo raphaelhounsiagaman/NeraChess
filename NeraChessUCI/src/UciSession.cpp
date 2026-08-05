@@ -35,6 +35,18 @@ namespace
         return tokens;
     }
 
+    std::string Join(const std::vector<std::string>& tokens, size_t begin, size_t end)
+    {
+        std::string joined;
+        for (size_t index = begin; index < end; ++index)
+        {
+            if (!joined.empty())
+                joined += ' ';
+            joined += tokens[index];
+        }
+        return joined;
+    }
+
     NeraChessEngine::Move FindLegalMove(const NeraChessEngine::ChessBoard& board,
         std::string_view uci)
     {
@@ -47,8 +59,11 @@ namespace
     }
 }
 
-UciSession::UciSession(std::istream& input, std::ostream& output)
-    : m_Input(input), m_Output(output)
+UciSession::UciSession(std::istream& input, std::ostream& output,
+    std::filesystem::path openingBookPath)
+    : m_Input(input), m_Output(output),
+      m_OpeningBookPath(std::move(openingBookPath)),
+      m_OpeningBook(m_OpeningBookPath)
 {
 }
 
@@ -77,6 +92,17 @@ bool UciSession::HandleCommand(const std::string& line)
         Print("id author Raphael Hounsiagaman");
         Print("option name Hash type spin default 64 min 1 max 1024");
         Print("option name Clear Hash type button");
+        Print("option name OwnBook type check default true");
+        Print("option name BookFile type string default " + m_OpeningBookPath.string());
+        if (m_OpeningBook.IsAvailable())
+        {
+            Print("info string opening book loaded with " +
+                std::to_string(m_OpeningBook.EntryCount()) + " entries");
+        }
+        else
+        {
+            Print("info string opening book unavailable; searches will use the engine");
+        }
         Print("uciok");
     }
     else if (line == "isready")
@@ -124,23 +150,36 @@ bool UciSession::HandleCommand(const std::string& line)
 void UciSession::SetOption(std::string_view command)
 {
     const std::vector<std::string> tokens = Tokenize(command);
-    auto name = std::find(tokens.begin(), tokens.end(), "name");
-    if (name == tokens.end() || ++name == tokens.end())
+    const auto nameToken = std::find(tokens.begin(), tokens.end(), "name");
+    if (nameToken == tokens.end() || nameToken + 1 == tokens.end())
         return;
 
+    const auto valueToken = std::find(nameToken + 1, tokens.end(), "value");
+    const size_t nameBegin = static_cast<size_t>(nameToken - tokens.begin()) + 1;
+    const size_t nameEnd = static_cast<size_t>(valueToken - tokens.begin());
+    const std::string name = Join(tokens, nameBegin, nameEnd);
+    const std::string value = valueToken == tokens.end()
+        ? std::string{}
+        : Join(tokens, nameEnd + 1, tokens.size());
+
     StopSearch();
-    if (*name == "Hash")
+    if (name == "Hash")
     {
-        const auto value = std::find(name, tokens.end(), "value");
-        if (value != tokens.end() && value + 1 != tokens.end())
-        {
-            if (const auto megabytes = ParseNumber<int>(*(value + 1)))
-                m_SearchEngine.ResizeHash(static_cast<size_t>(std::clamp(*megabytes, 1, 1024)));
-        }
+        if (const auto megabytes = ParseNumber<int>(value))
+            m_SearchEngine.ResizeHash(static_cast<size_t>(std::clamp(*megabytes, 1, 1024)));
     }
-    else if (*name == "Clear" && name + 1 != tokens.end() && *(name + 1) == "Hash")
+    else if (name == "Clear Hash")
     {
         m_SearchEngine.NewGame();
+    }
+    else if (name == "OwnBook")
+    {
+        m_OwnBook = value == "true" || value == "1";
+    }
+    else if (name == "BookFile" && !value.empty())
+    {
+        m_OpeningBookPath = value;
+        m_OpeningBook.Load(m_OpeningBookPath);
     }
 }
 
@@ -293,6 +332,20 @@ void UciSession::StartSearch(std::string_view command)
     {
         Print("bestmove 0000");
         return;
+    }
+
+    if (m_OwnBook && !infinite)
+    {
+        const NeraChessEngine::Move bookMove = m_OpeningBook.FindMove(m_Board);
+        const bool permitted = !rootMovesSpecified ||
+            std::find(limits.rootMoves.begin(), limits.rootMoves.end(), bookMove) !=
+                limits.rootMoves.end();
+        if (bookMove != 0 && permitted)
+        {
+            Print("info string opening book move");
+            Print("bestmove " + bookMove.ToUCI());
+            return;
+        }
     }
 
     if (!infinite && moveTime)

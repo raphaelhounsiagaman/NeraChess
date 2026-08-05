@@ -1,8 +1,10 @@
 #pragma once
 
 #include "ChessBoard.h"
+#include "OpeningBook.h"
 #include "SearchEngine.h"
 
+#include <filesystem>
 #include <istream>
 #include <mutex>
 #include <ostream>
@@ -13,7 +15,8 @@
 class UciSession
 {
 public:
-    UciSession(std::istream& input, std::ostream& output);
+    UciSession(std::istream& input, std::ostream& output,
+        std::filesystem::path openingBookPath = {});
     ~UciSession();
 
     int Run();
@@ -33,5 +36,8 @@ private:
     std::mutex m_OutputMutex;
     NeraChessEngine::ChessBoard m_Board;
     NeraChessSearch::SearchEngine m_SearchEngine{ 64 };
+    std::filesystem::path m_OpeningBookPath;
+    NeraChessSearch::OpeningBook m_OpeningBook;
+    bool m_OwnBook = true;
     std::jthread m_SearchThread;
 };

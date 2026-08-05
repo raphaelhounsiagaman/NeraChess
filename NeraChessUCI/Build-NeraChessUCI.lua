@@ -25,6 +25,12 @@ project "NeraChessUCI"
     "NeraChessSearch",
   }
 
+  postbuildcommands
+  {
+    '{MKDIR} "%{cfg.targetdir}/Ressources/OpeningBook"',
+    '{COPYFILE} "%{prj.location}/../NeraChessApp/Ressources/OpeningBook/OpeningBook.txt" "%{cfg.targetdir}/Ressources/OpeningBook/OpeningBook.txt"',
+  }
+
   filter "system:windows"
     systemversion "latest"
   filter "system:linux"

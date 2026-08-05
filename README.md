@@ -130,8 +130,8 @@ UCI-compatible chess GUI:
 ```
 
 It supports standard position setup, `go` depth/node/time limits,
-`searchmoves`, asynchronous `stop`, hash sizing and clearing, and iterative
-`info` output.
+`searchmoves`, asynchronous `stop`, hash sizing and clearing, `OwnBook` and
+`BookFile` options, bundled opening-book play, and iterative `info` output.
 
 UCI clocks are supplied by the controlling chess GUI on each search rather
 than stored by the engine process. NeraChess supports the standard `wtime`,
@@ -188,8 +188,9 @@ make -C NeraChessTests config=release
 ```
 
 The macOS and Windows GUI builds copy the `Ressources` directory beside the
-executable. The application resolves assets relative to its executable, so it
-can be launched from any working directory.
+executable. The UCI build copies the opening book beside its executable on all
+platforms. Both targets resolve their bundled resources from the executable,
+so they can be launched from any working directory.
 
 To verify SDL initialization, resource loading, and clean game-thread shutdown
 without entering the application loop, run a built executable with:
