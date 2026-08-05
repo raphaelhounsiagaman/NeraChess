@@ -7,8 +7,12 @@ It consists of classical search techniques.
 
 The project started as a personal learning project and gradually evolved into a fully working engine. It is not meant to compete with top engines like Stockfish or Leela, but to explore how far a self-written engine can go.
 
-The current engine has not yet been recalibrated in a statistically meaningful
-engine tournament, so the repository does not claim an Elo rating.
+At engine commit `212e012`, a 300-game paired-opening tournament estimated
+NeraChess at **2627 Stockfish 18 UCI-Elo-equivalent** at `10+0.1`, with a
+paired-bootstrap 95% confidence interval of 2587--2664. This is a
+hardware- and test-pool-specific engine benchmark, not a FIDE, online-platform,
+or universal Elo rating. See the [strength calibration report](docs/ENGINE_STRENGTH.md)
+for the results, method, and limitations.
 
 ---
 
