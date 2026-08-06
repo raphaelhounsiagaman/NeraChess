@@ -39,6 +39,7 @@ jobs:
           grep -q '^uciok$' <<< "$uci_output"
           grep -q '^readyok$' <<< "$uci_output"
           grep -q '^bestmove e2e4$' <<< "$uci_output"
+          python3 scripts/Test-UciPonder.py ./bin/Release/NeraChessUCI/NeraChessUCI
 
       - name: Build and run sanitized regressions
         run: |
@@ -86,6 +87,7 @@ jobs:
           grep -q '^uciok$' <<< "$uci_output"
           grep -q '^readyok$' <<< "$uci_output"
           grep -q '^bestmove e2e4$' <<< "$uci_output"
+          python3 scripts/Test-UciPonder.py ./bin/Release/NeraChessUCI/NeraChessUCI
 
   windows:
     name: Windows
@@ -130,3 +132,4 @@ jobs:
           if ($output -notcontains "uciok") { throw "UCI handshake failed" }
           if ($output -notcontains "readyok") { throw "UCI readiness failed" }
           if ($output -notcontains "bestmove e2e4") { throw "UCI opening-book lookup failed" }
+          python scripts/Test-UciPonder.py bin\Release\NeraChessUCI\NeraChessUCI.exe

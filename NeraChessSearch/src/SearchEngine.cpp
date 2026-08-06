@@ -22,9 +22,25 @@ namespace NeraChessSearch
     {
     }
 
+    void SearchEngine::PrepareSearch(bool pondering)
+    {
+        m_StopRequested = false;
+        m_TimeControlStartMilliseconds = pondering ? -1 : SteadyMilliseconds();
+        m_TimeControlPrepared = true;
+    }
+
+    void SearchEngine::PonderHit()
+    {
+        int64_t pondering = -1;
+        m_TimeControlStartMilliseconds.compare_exchange_strong(
+            pondering, SteadyMilliseconds());
+    }
+
     void SearchEngine::NewGame()
     {
         m_StopRequested = false;
+        m_TimeControlPrepared = false;
+        m_TimeControlStartMilliseconds = 0;
         m_TranspositionTable.Clear();
         m_KillerMoves = {};
         m_History = {};
@@ -33,6 +49,8 @@ namespace NeraChessSearch
 
     SearchResult SearchEngine::Search(const ChessBoard& position, const SearchLimits& limits)
     {
+        if (!m_TimeControlPrepared.exchange(false))
+            m_TimeControlStartMilliseconds = SteadyMilliseconds();
         m_Limits = limits;
         m_Limits.maxDepth = std::clamp(m_Limits.maxDepth, 1, MAX_PLY - 1);
         m_StartTime = std::chrono::steady_clock::now();
@@ -125,7 +143,7 @@ namespace NeraChessSearch
             if (std::abs(result.score) >= SCORE_MATE - MAX_PLY)
                 break;
             if (m_Limits.softTime.count() > 0 &&
-                std::chrono::steady_clock::now() - m_StartTime >= m_Limits.softTime)
+                TimeControlElapsed() >= m_Limits.softTime)
                 break;
         }
 
@@ -598,12 +616,26 @@ namespace NeraChessSearch
             return true;
         }
         if (m_Limits.hardTime.count() > 0 && (m_Nodes & 1023) == 0 &&
-            std::chrono::steady_clock::now() - m_StartTime >= m_Limits.hardTime)
+            TimeControlElapsed() >= m_Limits.hardTime)
         {
             m_Aborted = true;
             return true;
         }
         return false;
+    }
+
+    std::chrono::milliseconds SearchEngine::TimeControlElapsed() const
+    {
+        const int64_t start = m_TimeControlStartMilliseconds.load();
+        if (start < 0)
+            return std::chrono::milliseconds{ 0 };
+        return std::chrono::milliseconds{ std::max<int64_t>(0, SteadyMilliseconds() - start) };
+    }
+
+    int64_t SearchEngine::SteadyMilliseconds()
+    {
+        return std::chrono::duration_cast<std::chrono::milliseconds>(
+            std::chrono::steady_clock::now().time_since_epoch()).count();
     }
 
     bool SearchEngine::IsDrawOrTerminal(const ChessBoard& board,

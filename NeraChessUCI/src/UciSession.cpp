@@ -69,7 +69,7 @@ UciSession::UciSession(std::istream& input, std::ostream& output,
 
 UciSession::~UciSession()
 {
-    StopSearch();
+    StopSearch(false);
 }
 
 int UciSession::Run()
@@ -80,7 +80,7 @@ int UciSession::Run()
         if (!HandleCommand(line))
             break;
     }
-    StopSearch();
+    StopSearch(false);
     return 0;
 }
 
@@ -94,6 +94,7 @@ bool UciSession::HandleCommand(const std::string& line)
         Print("option name Clear Hash type button");
         Print("option name OwnBook type check default true");
         Print("option name BookFile type string default " + m_OpeningBookPath.string());
+        Print("option name Ponder type check default false");
         if (m_OpeningBook.IsAvailable())
         {
             Print("info string opening book loaded with " +
@@ -131,6 +132,10 @@ bool UciSession::HandleCommand(const std::string& line)
     {
         StopSearch();
     }
+    else if (line == "ponderhit")
+    {
+        PonderHit();
+    }
     else if (line == "d")
     {
         Print("Fen: " + m_Board.GetFENString());
@@ -142,6 +147,7 @@ bool UciSession::HandleCommand(const std::string& line)
     }
     else if (line == "quit")
     {
+        StopSearch(false);
         return false;
     }
     return true;
@@ -180,6 +186,10 @@ void UciSession::SetOption(std::string_view command)
     {
         m_OpeningBookPath = value;
         m_OpeningBook.Load(m_OpeningBookPath);
+    }
+    else if (name == "Ponder")
+    {
+        m_PonderEnabled = value == "true" || value == "1";
     }
 }
 
@@ -257,14 +267,20 @@ void UciSession::StartSearch(std::string_view command)
     std::chrono::milliseconds blackIncrement{ 0 };
     int movesToGo = 0;
     bool infinite = false;
+    bool pondering = false;
     bool rootMovesSpecified = false;
 
     for (size_t index = 1; index < tokens.size(); ++index)
     {
         const std::string& token = tokens[index];
-        if (token == "infinite" || token == "ponder")
+        if (token == "infinite")
         {
             infinite = true;
+            continue;
+        }
+        if (token == "ponder")
+        {
+            pondering = true;
             continue;
         }
         if (token == "searchmoves")
@@ -329,12 +345,9 @@ void UciSession::StartSearch(std::string_view command)
     }
 
     if (rootMovesSpecified && limits.rootMoves.empty())
-    {
-        Print("bestmove 0000");
-        return;
-    }
+        limits.rootMoves.push_back(NeraChessEngine::Move(0));
 
-    if (m_OwnBook && !infinite)
+    if (m_OwnBook && !infinite && !pondering)
     {
         const NeraChessEngine::Move bookMove = m_OpeningBook.FindMove(m_Board);
         const bool permitted = !rootMovesSpecified ||
@@ -343,7 +356,16 @@ void UciSession::StartSearch(std::string_view command)
         if (bookMove != 0 && permitted)
         {
             Print("info string opening book move");
-            Print("bestmove " + bookMove.ToUCI());
+            std::string bestMove = "bestmove " + bookMove.ToUCI();
+            if (m_PonderEnabled)
+            {
+                NeraChessEngine::ChessBoard replyPosition = m_Board;
+                replyPosition.MakeMove(bookMove, true);
+                const NeraChessEngine::Move ponderMove = m_OpeningBook.FindMove(replyPosition);
+                if (ponderMove != 0)
+                    bestMove += " ponder " + ponderMove.ToUCI();
+            }
+            Print(bestMove);
             return;
         }
     }
@@ -372,25 +394,68 @@ void UciSession::StartSearch(std::string_view command)
         PrintSearchInfo(result);
     };
 
-    m_SearchEngine.PrepareSearch();
+    {
+        std::scoped_lock lock(m_PonderMutex);
+        m_Pondering = pondering;
+        m_PonderHit = false;
+        m_SuppressBestMove = false;
+    }
+    m_SearchEngine.PrepareSearch(pondering);
     NeraChessEngine::ChessBoard position = m_Board;
-    m_SearchThread = std::jthread([this, position = std::move(position), limits = std::move(limits)]() mutable
+    m_SearchThread = std::jthread([this, position = std::move(position),
+        limits = std::move(limits), pondering]() mutable
     {
         const NeraChessSearch::SearchResult result = m_SearchEngine.Search(position, limits);
-        std::ostringstream output;
-        output << "bestmove " << (result.bestMove == 0 ? "0000" : result.bestMove.ToUCI());
-        if (result.principalVariation.size() > 1)
-            output << " ponder " << result.principalVariation[1].ToUCI();
-        Print(output.str());
+        std::unique_lock lock(m_PonderMutex);
+        if (pondering)
+        {
+            m_PonderCondition.wait(lock, [this]
+            {
+                return m_PonderHit || !m_Pondering;
+            });
+        }
+        if (!m_SuppressBestMove)
+            PrintBestMove(result);
+        m_Pondering = false;
+        m_PonderHit = false;
+        m_SuppressBestMove = false;
     });
 }
 
-void UciSession::StopSearch()
+void UciSession::StopSearch(bool emitBestMove)
 {
     if (!m_SearchThread.joinable())
         return;
+    {
+        std::scoped_lock lock(m_PonderMutex);
+        m_Pondering = false;
+        m_PonderHit = false;
+        m_SuppressBestMove = !emitBestMove;
+    }
+    m_PonderCondition.notify_all();
     m_SearchEngine.RequestStop();
     m_SearchThread.join();
+}
+
+void UciSession::PonderHit()
+{
+    {
+        std::scoped_lock lock(m_PonderMutex);
+        if (!m_Pondering || m_PonderHit)
+            return;
+        m_SearchEngine.PonderHit();
+        m_PonderHit = true;
+    }
+    m_PonderCondition.notify_all();
+}
+
+void UciSession::PrintBestMove(const NeraChessSearch::SearchResult& result)
+{
+    std::ostringstream output;
+    output << "bestmove " << (result.bestMove == 0 ? "0000" : result.bestMove.ToUCI());
+    if (m_PonderEnabled && result.principalVariation.size() > 1)
+        output << " ponder " << result.principalVariation[1].ToUCI();
+    Print(output.str());
 }
 
 void UciSession::PrintSearchInfo(const NeraChessSearch::SearchResult& result)

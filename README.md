@@ -52,7 +52,7 @@ The main goals of this project are:
 - Tapered piece-square, pawn-structure, mobility, and king-safety evaluation
 - Indexed opening book with transposition-aware lookup
 - Clock-aware time management
-- UCI protocol support
+- UCI protocol support, including opponent-time pondering
 
 The search is functional and reasonably optimized, but not heavily micro-optimized compared to professional engines.
 
@@ -130,8 +130,21 @@ UCI-compatible chess GUI:
 ```
 
 It supports standard position setup, `go` depth/node/time limits,
-`searchmoves`, asynchronous `stop`, hash sizing and clearing, `OwnBook` and
-`BookFile` options, bundled opening-book play, and iterative `info` output.
+`searchmoves`, asynchronous `stop`, `ponder`/`ponderhit`, hash sizing and
+clearing, `OwnBook`, `BookFile`, and `Ponder` options, bundled opening-book
+play, and iterative `info` output.
+
+When `Ponder` is enabled, normal searches include the predicted opponent reply
+in `bestmove ... ponder ...` when one is available. A `go ponder` search remains
+silent until the GUI sends `ponderhit` for a correct prediction or `stop` for a
+different move. The saved clock budget starts at `ponderhit`, so the opponent's
+thinking time is not charged to NeraChess. For `lichess-bot`, enable this
+behavior with:
+
+```yaml
+engine:
+  ponder: true
+```
 
 UCI clocks are supplied by the controlling chess GUI on each search rather
 than stored by the engine process. NeraChess supports the standard `wtime`,

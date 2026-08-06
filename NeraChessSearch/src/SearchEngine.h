@@ -50,7 +50,8 @@ namespace NeraChessSearch
 
         SearchResult Search(const NeraChessEngine::ChessBoard& position, const SearchLimits& limits);
         void RequestStop() { m_StopRequested = true; }
-        void PrepareSearch() { m_StopRequested = false; }
+        void PrepareSearch(bool pondering = false);
+        void PonderHit();
         void NewGame();
         void ResizeHash(size_t megabytes) { m_TranspositionTable.Resize(megabytes); }
 
@@ -86,12 +87,16 @@ namespace NeraChessSearch
         bool IsRootMoveAllowed(NeraChessEngine::Move move) const;
         NeraChessEngine::Move GetCounterMove(NeraChessEngine::Move previousMove) const;
         static void UpdateHistoryScore(int32_t& score, int bonus);
+        std::chrono::milliseconds TimeControlElapsed() const;
+        static int64_t SteadyMilliseconds();
 
     private:
         TranspositionTable m_TranspositionTable;
         SearchLimits m_Limits;
         std::chrono::steady_clock::time_point m_StartTime;
         std::atomic<bool> m_StopRequested{ false };
+        std::atomic<bool> m_TimeControlPrepared{ false };
+        std::atomic<int64_t> m_TimeControlStartMilliseconds{ 0 };
         bool m_Aborted = false;
         uint64_t m_Nodes = 0;
         int m_SelectiveDepth = 0;
