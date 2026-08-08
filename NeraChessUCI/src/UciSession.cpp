@@ -7,6 +7,7 @@
 #include <chrono>
 #include <cmath>
 #include <cstdint>
+#include <exception>
 #include <optional>
 #include <sstream>
 #include <string>
@@ -91,6 +92,7 @@ bool UciSession::HandleCommand(const std::string& line)
         Print("id name NeraChess");
         Print("id author Raphael Hounsiagaman");
         Print("option name Hash type spin default 64 min 1 max 1024");
+        Print("option name Threads type spin default 1 min 1 max 256");
         Print("option name Clear Hash type button");
         Print("option name OwnBook type check default true");
         Print("option name BookFile type string default " + m_OpeningBookPath.string());
@@ -173,6 +175,22 @@ void UciSession::SetOption(std::string_view command)
     {
         if (const auto megabytes = ParseNumber<int>(value))
             m_SearchEngine.ResizeHash(static_cast<size_t>(std::clamp(*megabytes, 1, 1024)));
+    }
+    else if (name == "Threads")
+    {
+        if (const auto threadCount = ParseNumber<int>(value))
+        {
+            try
+            {
+                m_SearchEngine.SetThreadCount(
+                    static_cast<size_t>(std::clamp(*threadCount, 1, 256)));
+            }
+            catch (const std::exception& exception)
+            {
+                Print("info string unable to configure Threads: " +
+                    std::string(exception.what()));
+            }
+        }
     }
     else if (name == "Clear Hash")
     {
@@ -405,7 +423,31 @@ void UciSession::StartSearch(std::string_view command)
     m_SearchThread = std::jthread([this, position = std::move(position),
         limits = std::move(limits), pondering]() mutable
     {
-        const NeraChessSearch::SearchResult result = m_SearchEngine.Search(position, limits);
+        NeraChessSearch::SearchResult result;
+        try
+        {
+            result = m_SearchEngine.Search(position, limits);
+        }
+        catch (const std::exception& exception)
+        {
+            Print("info string search failed: " + std::string(exception.what()));
+            for (const NeraChessEngine::Move move : position.GetLegalMoves())
+            {
+                result.bestMove = move;
+                break;
+            }
+            result.aborted = true;
+        }
+        catch (...)
+        {
+            Print("info string search failed with an unknown error");
+            for (const NeraChessEngine::Move move : position.GetLegalMoves())
+            {
+                result.bestMove = move;
+                break;
+            }
+            result.aborted = true;
+        }
         std::unique_lock lock(m_PonderMutex);
         if (pondering)
         {
