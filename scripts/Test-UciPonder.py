@@ -96,7 +96,10 @@ def run_test(executable: Path) -> None:
             option_lines.append(line)
         if "option name Ponder type check default false" not in option_lines:
             raise AssertionError("engine did not advertise the standard Ponder option")
+        if "option name Threads type spin default 1 min 1 max 256" not in option_lines:
+            raise AssertionError("engine did not advertise the standard Threads option")
 
+        engine.send("setoption name Threads value 4")
         engine.send("setoption name Ponder value true")
         engine.send("isready")
         engine.wait_for(lambda line: line == "readyok", "readyok")
@@ -155,6 +158,30 @@ def run_test(executable: Path) -> None:
         engine.send("go depth 3")
         engine.wait_for(lambda line: line.startswith("bestmove "), "bestmove after stopped ponder")
         engine.assert_no_bestmove(0.1)
+
+        engine.send("position startpos")
+        engine.send("go infinite")
+        engine.wait_for(
+            lambda line: line.startswith("info depth 2 "),
+            "multithreaded infinite search progress",
+        )
+        engine.send("stop")
+        engine.wait_for(
+            lambda line: line.startswith("bestmove "),
+            "multithreaded infinite-search bestmove",
+        )
+        engine.assert_no_bestmove(0.1)
+
+        engine.send("position startpos")
+        engine.send("go infinite")
+        engine.send("setoption name Threads value 2")
+        engine.wait_for(
+            lambda line: line.startswith("bestmove "),
+            "bestmove while changing thread count",
+        )
+        engine.send("setoption name Threads value 4")
+        engine.send("isready")
+        engine.wait_for(lambda line: line == "readyok", "readyok after thread-count change")
 
         engine.send("position startpos")
         engine.send("go ponder searchmoves a1a1")

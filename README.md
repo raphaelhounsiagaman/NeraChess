@@ -41,6 +41,7 @@ The main goals of this project are:
 
 - Principal Variation Search (PVS)
 - Iterative Deepening
+- Lazy SMP search with a configurable shared transposition table
 - Aspiration windows and mate-distance pruning
 - Alpha-Beta Pruning
 - Clustered transposition table with configurable size
@@ -131,8 +132,19 @@ UCI-compatible chess GUI:
 
 It supports standard position setup, `go` depth/node/time limits,
 `searchmoves`, asynchronous `stop`, `ponder`/`ponderhit`, hash sizing and
-clearing, `OwnBook`, `BookFile`, and `Ponder` options, bundled opening-book
-play, and iterative `info` output.
+clearing, configurable `Threads`, `OwnBook`, `BookFile`, and `Ponder` options,
+bundled opening-book play, and iterative `info` output.
+
+NeraChess defaults to one UCI search thread for reproducible engine matches.
+Configure additional workers with the standard option, for example:
+
+```text
+setoption name Threads value 4
+```
+
+Workers keep private boards and move-ordering heuristics while sharing a
+concurrency-safe transposition table and one aggregate time/node budget. The
+desktop bot automatically uses up to four hardware threads.
 
 When `Ponder` is enabled, normal searches include the predicted opponent reply
 in `bestmove ... ponder ...` when one is available. A `go ponder` search remains
@@ -223,18 +235,22 @@ opening-book index:
 ./bin/Release/NeraChessTests/NeraChessTests
 ```
 
-Two deterministic benchmark modes are also available:
+Deterministic perft/search benchmarks and a fixed-time thread-scaling benchmark
+are also available:
 
 ```sh
 ./bin/Release/NeraChessTests/NeraChessTests --bench
 ./bin/Release/NeraChessTests/NeraChessTests --search-bench
+./bin/Release/NeraChessTests/NeraChessTests --thread-bench
 ```
+
+`--thread-bench` is a quick, scheduling-sensitive scaling diagnostic rather
+than a reproducible Elo measurement.
 
 ---
 
 ## Known Limitations
 
-- No multi-threaded search.
 - Evaluation parameters are hand-tuned rather than trained from games.
 
 ---

@@ -26,6 +26,8 @@ project "NeraChessTests"
 
   filter "system:windows"
     systemversion "latest"
+  filter "system:linux"
+    links { "pthread" }
   filter {}
 
   filter "configurations:Debug"

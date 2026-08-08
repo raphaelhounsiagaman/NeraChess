@@ -7,6 +7,10 @@
 #include <algorithm>
 #include <array>
 #include <cmath>
+#include <exception>
+#include <system_error>
+#include <thread>
+#include <utility>
 
 namespace NeraChessSearch
 {
@@ -18,47 +22,165 @@ namespace NeraChessSearch
     }
 
     SearchEngine::SearchEngine(size_t hashMegabytes)
-        : m_TranspositionTable(hashMegabytes)
+        : m_TranspositionTable(std::make_shared<TranspositionTable>(hashMegabytes)),
+          m_SharedState(std::make_shared<SharedSearchState>())
+    {
+    }
+
+    SearchEngine::SearchEngine(size_t workerIndex,
+        std::shared_ptr<TranspositionTable> transpositionTable,
+        std::shared_ptr<SharedSearchState> sharedState)
+        : m_TranspositionTable(std::move(transpositionTable)),
+          m_SharedState(std::move(sharedState)),
+          m_WorkerIndex(workerIndex)
     {
     }
 
     void SearchEngine::PrepareSearch(bool pondering)
     {
-        m_StopRequested = false;
-        m_TimeControlStartMilliseconds = pondering ? -1 : SteadyMilliseconds();
+        m_SharedState->stopRequested = false;
+        m_SharedState->searchStopped = false;
+        m_SharedState->timeControlStartMilliseconds = pondering ? -1 : SteadyMilliseconds();
         m_TimeControlPrepared = true;
     }
 
     void SearchEngine::PonderHit()
     {
         int64_t pondering = -1;
-        m_TimeControlStartMilliseconds.compare_exchange_strong(
+        m_SharedState->timeControlStartMilliseconds.compare_exchange_strong(
             pondering, SteadyMilliseconds());
     }
 
     void SearchEngine::NewGame()
     {
-        m_StopRequested = false;
+        m_SharedState->stopRequested = false;
+        m_SharedState->searchStopped = false;
+        m_SharedState->nodes = 0;
         m_TimeControlPrepared = false;
-        m_TimeControlStartMilliseconds = 0;
-        m_TranspositionTable.Clear();
+        m_SharedState->timeControlStartMilliseconds = 0;
+        m_TranspositionTable->Clear();
+        ResetHeuristics();
+        for (const std::unique_ptr<SearchEngine>& helper : m_HelperEngines)
+            helper->ResetHeuristics();
+    }
+
+    void SearchEngine::ResizeHash(size_t megabytes)
+    {
+        m_TranspositionTable->Resize(megabytes);
+    }
+
+    void SearchEngine::SetThreadCount(size_t threadCount)
+    {
+        const size_t requestedThreadCount = std::clamp<size_t>(threadCount, 1, 256);
+        std::vector<std::unique_ptr<SearchEngine>> helpers;
+        helpers.reserve(requestedThreadCount - 1);
+        for (size_t workerIndex = 1; workerIndex < requestedThreadCount; ++workerIndex)
+        {
+            helpers.push_back(std::unique_ptr<SearchEngine>(
+                new SearchEngine(workerIndex, m_TranspositionTable, m_SharedState)));
+        }
+        m_HelperEngines = std::move(helpers);
+        m_ThreadCount = requestedThreadCount;
+    }
+
+    void SearchEngine::ResetHeuristics()
+    {
         m_KillerMoves = {};
         m_History = {};
         m_CounterMoves = {};
+        m_PvTable = {};
+        m_PvLength = {};
     }
 
     SearchResult SearchEngine::Search(const ChessBoard& position, const SearchLimits& limits)
     {
+        m_StartTime = std::chrono::steady_clock::now();
         if (!m_TimeControlPrepared.exchange(false))
-            m_TimeControlStartMilliseconds = SteadyMilliseconds();
+            m_SharedState->timeControlStartMilliseconds = SteadyMilliseconds();
+        m_SharedState->searchStopped = false;
+        m_SharedState->nodes = 0;
+        m_TranspositionTable->NewSearch();
+
+        std::vector<std::jthread> helperThreads;
+        helperThreads.reserve(m_HelperEngines.size());
+        std::vector<std::exception_ptr> helperErrors(m_HelperEngines.size());
+        SearchResult result;
+        try
+        {
+            for (size_t helperIndex = 0; helperIndex < m_HelperEngines.size(); ++helperIndex)
+            {
+                const std::unique_ptr<SearchEngine>& helper = m_HelperEngines[helperIndex];
+                SearchLimits helperLimits = limits;
+                helperLimits.iterationCallback = {};
+                try
+                {
+                    helperThreads.emplace_back([worker = helper.get(), &position,
+                        helperLimits = std::move(helperLimits), &helperErrors, helperIndex]() mutable
+                    {
+                        try
+                        {
+                            worker->SearchWorker(position, helperLimits);
+                        }
+                        catch (...)
+                        {
+                            helperErrors[helperIndex] = std::current_exception();
+                            worker->m_SharedState->searchStopped = true;
+                        }
+                    });
+                }
+                catch (const std::system_error&)
+                {
+                    // Continue with the workers the operating system could create.
+                    break;
+                }
+            }
+            result = SearchWorker(position, limits);
+        }
+        catch (...)
+        {
+            m_SharedState->searchStopped = true;
+            for (std::jthread& helperThread : helperThreads)
+            {
+                if (helperThread.joinable())
+                    helperThread.join();
+            }
+            throw;
+        }
+
+        m_SharedState->searchStopped = true;
+        for (std::jthread& helperThread : helperThreads)
+            helperThread.join();
+        for (const std::exception_ptr& helperError : helperErrors)
+        {
+            if (helperError)
+                std::rethrow_exception(helperError);
+        }
+
+        result.nodes = m_SharedState->nodes.load(std::memory_order_relaxed);
+        result.selectiveDepth = m_SelectiveDepth;
+        for (size_t helperIndex = 0; helperIndex < helperThreads.size(); ++helperIndex)
+        {
+            result.selectiveDepth = std::max(result.selectiveDepth,
+                m_HelperEngines[helperIndex]->m_SelectiveDepth);
+        }
+        result.hashFullPermill = m_TranspositionTable->HashFullPermill();
+        result.elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
+            std::chrono::steady_clock::now() - m_StartTime);
+        return result;
+    }
+
+    SearchResult SearchEngine::SearchWorker(const ChessBoard& position,
+        const SearchLimits& limits)
+    {
         m_Limits = limits;
         m_Limits.maxDepth = std::clamp(m_Limits.maxDepth, 1, MAX_PLY - 1);
-        m_StartTime = std::chrono::steady_clock::now();
+        if (m_WorkerIndex != 0)
+            m_StartTime = std::chrono::steady_clock::now();
         m_Aborted = false;
         m_Nodes = 0;
+        m_UnflushedNodes = 0;
         m_SelectiveDepth = 0;
         m_PvLength.fill(0);
-        m_TranspositionTable.NewSearch();
         for (auto& side : m_History)
         {
             for (auto& from : side)
@@ -77,6 +199,8 @@ namespace NeraChessSearch
             result.completed = true;
             result.elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
                 std::chrono::steady_clock::now() - m_StartTime);
+            FlushNodeCount();
+            result.nodes = AggregateNodeCount();
             return result;
         }
 
@@ -94,6 +218,8 @@ namespace NeraChessSearch
             result.completed = true;
             result.elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
                 std::chrono::steady_clock::now() - m_StartTime);
+            FlushNodeCount();
+            result.nodes = AggregateNodeCount();
             return result;
         }
         Score previousScore = SCORE_DRAW;
@@ -132,9 +258,9 @@ namespace NeraChessSearch
             result.principalVariation.assign(m_PvTable[0].begin(),
                 m_PvTable[0].begin() + m_PvLength[0]);
             previousScore = iteration.score;
-            result.nodes = m_Nodes;
+            result.nodes = AggregateNodeCount();
             result.selectiveDepth = m_SelectiveDepth;
-            result.hashFullPermill = m_TranspositionTable.HashFullPermill();
+            result.hashFullPermill = m_TranspositionTable->HashFullPermill();
             result.elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
                 std::chrono::steady_clock::now() - m_StartTime);
             if (m_Limits.iterationCallback)
@@ -147,9 +273,10 @@ namespace NeraChessSearch
                 break;
         }
 
-        result.nodes = m_Nodes;
+        FlushNodeCount();
+        result.nodes = AggregateNodeCount();
         result.selectiveDepth = m_SelectiveDepth;
-        result.hashFullPermill = m_TranspositionTable.HashFullPermill();
+        result.hashFullPermill = m_TranspositionTable->HashFullPermill();
         result.aborted = m_Aborted;
         result.elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
             std::chrono::steady_clock::now() - m_StartTime);
@@ -167,9 +294,19 @@ namespace NeraChessSearch
             if (IsRootMoveAllowed(move))
                 moves.push(move);
         }
-        const TTEntry* ttEntry = m_TranspositionTable.Probe(board.GetZobristKey());
+        const std::optional<TTEntry> ttEntry =
+            m_TranspositionTable->Probe(board.GetZobristKey());
         const Move ttMove = ttEntry ? Move(ttEntry->move) : Move(0);
         SortMoves(board, moves, 0, ttMove);
+        if (m_WorkerIndex > 0 && moves.size() > 2)
+        {
+            // Preserve the strongest candidate while making helpers explore the rest
+            // of the root in different orders and feed those results into the shared TT.
+            const size_t rotation = 1 +
+                (m_WorkerIndex + static_cast<size_t>(depth)) % (moves.size() - 1);
+            if (rotation > 1)
+                std::rotate(moves.begin() + 1, moves.begin() + rotation, moves.end());
+        }
 
         m_PvLength[0] = 0;
         bool firstMove = true;
@@ -217,7 +354,7 @@ namespace NeraChessSearch
             bound = TTBound::Lower;
         if (m_Limits.rootMoves.empty() && board.GetHalfMoveClock() < 90)
         {
-            m_TranspositionTable.Store(board.GetZobristKey(), ScoreToTT(result.score, 0),
+            m_TranspositionTable->Store(board.GetZobristKey(), ScoreToTT(result.score, 0),
                 depth, bound, result.move);
         }
         return result;
@@ -230,7 +367,7 @@ namespace NeraChessSearch
         if (ShouldStop())
             return SCORE_DRAW;
 
-        ++m_Nodes;
+        CountNode();
         m_SelectiveDepth = std::max(m_SelectiveDepth, ply);
         m_PvLength[ply] = ply;
 
@@ -249,7 +386,7 @@ namespace NeraChessSearch
 
         const uint64_t key = board.GetZobristKey();
         const bool ttScoreUsable = board.GetHalfMoveClock() < 90;
-        const TTEntry* ttEntry = m_TranspositionTable.Probe(key);
+        const std::optional<TTEntry> ttEntry = m_TranspositionTable->Probe(key);
         Move ttMove = 0;
         if (ttEntry)
         {
@@ -295,7 +432,7 @@ namespace NeraChessSearch
                 {
                     if (ttScoreUsable)
                     {
-                        m_TranspositionTable.Store(key, ScoreToTT(beta, ply), depth,
+                        m_TranspositionTable->Store(key, ScoreToTT(beta, ply), depth,
                             TTBound::Lower, ttMove);
                     }
                     return beta;
@@ -411,7 +548,7 @@ namespace NeraChessSearch
         else if (bestScore >= beta)
             bound = TTBound::Lower;
         if (ttScoreUsable)
-            m_TranspositionTable.Store(key, ScoreToTT(bestScore, ply), depth, bound, bestMove);
+            m_TranspositionTable->Store(key, ScoreToTT(bestScore, ply), depth, bound, bestMove);
         return bestScore;
     }
 
@@ -420,7 +557,7 @@ namespace NeraChessSearch
         if (ShouldStop())
             return SCORE_DRAW;
 
-        ++m_Nodes;
+        CountNode();
         m_SelectiveDepth = std::max(m_SelectiveDepth, ply);
         m_PvLength[ply] = ply;
 
@@ -437,7 +574,7 @@ namespace NeraChessSearch
 
         const uint64_t key = board.GetZobristKey();
         const bool ttScoreUsable = board.GetHalfMoveClock() < 90;
-        const TTEntry* ttEntry = m_TranspositionTable.Probe(key);
+        const std::optional<TTEntry> ttEntry = m_TranspositionTable->Probe(key);
         Move ttMove = 0;
         if (ttEntry)
         {
@@ -467,7 +604,7 @@ namespace NeraChessSearch
             {
                 if (ttScoreUsable)
                 {
-                    m_TranspositionTable.Store(key, ScoreToTT(bestScore, ply), 0,
+                    m_TranspositionTable->Store(key, ScoreToTT(bestScore, ply), 0,
                         TTBound::Lower, ttMove);
                 }
                 return bestScore;
@@ -522,7 +659,7 @@ namespace NeraChessSearch
             {
                 if (ttScoreUsable)
                 {
-                    m_TranspositionTable.Store(key, ScoreToTT(bestScore, ply), 0,
+                    m_TranspositionTable->Store(key, ScoreToTT(bestScore, ply), 0,
                         TTBound::Lower, bestMove);
                 }
                 return bestScore;
@@ -531,7 +668,7 @@ namespace NeraChessSearch
 
         const TTBound bound = bestScore <= originalAlpha ? TTBound::Upper : TTBound::Exact;
         if (ttScoreUsable)
-            m_TranspositionTable.Store(key, ScoreToTT(bestScore, ply), 0, bound, bestMove);
+            m_TranspositionTable->Store(key, ScoreToTT(bestScore, ply), 0, bound, bestMove);
         return bestScore;
     }
 
@@ -601,23 +738,50 @@ namespace NeraChessSearch
         m_PvLength[ply] = childLength;
     }
 
+    void SearchEngine::CountNode()
+    {
+        // Batching avoids an atomic increment at every node. The global node limit
+        // can overshoot by at most one partial batch per worker.
+        constexpr uint64_t NodeFlushInterval = 256;
+        ++m_Nodes;
+        ++m_UnflushedNodes;
+        if (m_UnflushedNodes >= NodeFlushInterval)
+            FlushNodeCount();
+    }
+
+    void SearchEngine::FlushNodeCount()
+    {
+        if (m_UnflushedNodes == 0)
+            return;
+        m_SharedState->nodes.fetch_add(m_UnflushedNodes, std::memory_order_relaxed);
+        m_UnflushedNodes = 0;
+    }
+
+    uint64_t SearchEngine::AggregateNodeCount() const
+    {
+        return m_SharedState->nodes.load(std::memory_order_relaxed) + m_UnflushedNodes;
+    }
+
     bool SearchEngine::ShouldStop()
     {
         if (m_Aborted)
             return true;
-        if (m_StopRequested)
+        if (m_SharedState->stopRequested.load(std::memory_order_relaxed) ||
+            m_SharedState->searchStopped.load(std::memory_order_relaxed))
         {
             m_Aborted = true;
             return true;
         }
-        if (m_Limits.maxNodes > 0 && m_Nodes >= m_Limits.maxNodes)
+        if (m_Limits.maxNodes > 0 && AggregateNodeCount() >= m_Limits.maxNodes)
         {
+            m_SharedState->searchStopped = true;
             m_Aborted = true;
             return true;
         }
         if (m_Limits.hardTime.count() > 0 && (m_Nodes & 1023) == 0 &&
             TimeControlElapsed() >= m_Limits.hardTime)
         {
+            m_SharedState->searchStopped = true;
             m_Aborted = true;
             return true;
         }
@@ -626,7 +790,8 @@ namespace NeraChessSearch
 
     std::chrono::milliseconds SearchEngine::TimeControlElapsed() const
     {
-        const int64_t start = m_TimeControlStartMilliseconds.load();
+        const int64_t start =
+            m_SharedState->timeControlStartMilliseconds.load(std::memory_order_relaxed);
         if (start < 0)
             return std::chrono::milliseconds{ 0 };
         return std::chrono::milliseconds{ std::max<int64_t>(0, SteadyMilliseconds() - start) };
