@@ -8,13 +8,18 @@
 #include "Zobrist.h"
 
 #include <algorithm>
+#include <atomic>
 #include <chrono>
+#include <condition_variable>
 #include <cstdint>
 #include <exception>
 #include <iostream>
+#include <mutex>
+#include <optional>
 #include <stdexcept>
 #include <string>
 #include <string_view>
+#include <thread>
 #include <vector>
 
 namespace
@@ -268,25 +273,113 @@ namespace
 
         TranspositionTable table(1);
         Require(table.SizeBytes() <= 1024ULL * 1024ULL, "TT exceeded requested size");
-        Require(table.Probe(0) == nullptr, "empty TT reported a key-zero hit");
+        Require(!table.Probe(0), "empty TT reported a key-zero hit");
 
         table.NewSearch();
         table.Store(0, 42, 8, TTBound::Exact, NeraChessEngine::Move(123));
-        const TTEntry* zeroEntry = table.Probe(0);
+        const std::optional<TTEntry> zeroEntry = table.Probe(0);
         Require(zeroEntry && zeroEntry->score == 42 && zeroEntry->depth == 8,
             "TT failed to store key zero");
 
         constexpr uint64_t key = 0x123456789ABCDEF0ULL;
         table.Store(key, 300, 12, TTBound::Exact, NeraChessEngine::Move(456));
         table.Store(key, -50, 2, TTBound::Upper, NeraChessEngine::Move(789));
-        const TTEntry* preserved = table.Probe(key);
+        const std::optional<TTEntry> preserved = table.Probe(key);
         Require(preserved && preserved->score == 300 && preserved->depth == 12 &&
             preserved->GetBound() == TTBound::Exact,
             "shallow TT bound replaced a deep exact entry");
         Require(preserved->move == 789, "TT did not refresh the best move");
 
         table.Clear();
-        Require(table.Probe(key) == nullptr, "TT clear left a valid entry");
+        Require(!table.Probe(key), "TT clear left a valid entry");
+    }
+
+    void TestConcurrentTranspositionTable()
+    {
+        using namespace NeraChessSearch;
+
+        TranspositionTable table(1);
+        table.NewSearch();
+        const uint64_t clusterCount = table.SizeBytes() / 64;
+        constexpr size_t WorkerCount = 8;
+        constexpr int Iterations = 20'000;
+        std::atomic<bool> failed{ false };
+        std::atomic<uint64_t> successfulProbes{ 0 };
+        std::vector<std::jthread> workers;
+        workers.reserve(WorkerCount);
+
+        for (size_t worker = 0; worker < WorkerCount; ++worker)
+        {
+            workers.emplace_back([&, worker]
+            {
+                const uint64_t key = 0x1234ULL + worker * clusterCount;
+                const int score = static_cast<int>(worker * 37) - 100;
+                const int depth = static_cast<int>(worker) + 1;
+                const NeraChessEngine::Move move(static_cast<uint32_t>(worker + 1));
+                for (int iteration = 0; iteration < Iterations; ++iteration)
+                {
+                    table.Store(key, score, depth, TTBound::Exact, move);
+                    const std::optional<TTEntry> entry = table.Probe(key);
+                    if (entry)
+                    {
+                        ++successfulProbes;
+                        if (entry->key != key || entry->move != move ||
+                            entry->score != score || entry->depth != depth ||
+                            entry->GetBound() != TTBound::Exact)
+                        {
+                            failed = true;
+                            return;
+                        }
+                    }
+                    if ((iteration & 255) == 0)
+                        static_cast<void>(table.HashFullPermill());
+                }
+            });
+        }
+        for (std::jthread& worker : workers)
+            worker.join();
+        Require(!failed, "concurrent TT probe accepted a torn or mismatched entry");
+        Require(successfulProbes.load() > 100,
+            "concurrent TT stress produced no meaningful successful probes");
+
+        TranspositionTable sameKeyTable(1);
+        sameKeyTable.NewSearch();
+        constexpr uint64_t SharedKey = 0xFEDCBA9876543210ULL;
+        const NeraChessEngine::Move FirstMove(101);
+        const NeraChessEngine::Move SecondMove(202);
+        std::atomic<uint64_t> sameKeyHits{ 0 };
+        failed = false;
+        workers.clear();
+        for (size_t worker = 0; worker < WorkerCount; ++worker)
+        {
+            workers.emplace_back([&, worker]
+            {
+                const bool firstTuple = (worker & 1) == 0;
+                const NeraChessEngine::Move move = firstTuple ? FirstMove : SecondMove;
+                const int score = firstTuple ? 111 : -222;
+                for (int iteration = 0; iteration < Iterations; ++iteration)
+                {
+                    sameKeyTable.Store(SharedKey, score, 9, TTBound::Exact, move);
+                    const std::optional<TTEntry> entry = sameKeyTable.Probe(SharedKey);
+                    if (!entry)
+                        continue;
+                    ++sameKeyHits;
+                    const bool firstValid = entry->move == FirstMove && entry->score == 111;
+                    const bool secondValid = entry->move == SecondMove && entry->score == -222;
+                    if ((!firstValid && !secondValid) || entry->depth != 9 ||
+                        entry->GetBound() != TTBound::Exact)
+                    {
+                        failed = true;
+                        return;
+                    }
+                }
+            });
+        }
+        for (std::jthread& worker : workers)
+            worker.join();
+        Require(!failed, "same-key TT stress accepted a cross-published payload");
+        Require(sameKeyHits.load() > 100,
+            "same-key TT stress produced no meaningful successful probes");
     }
 
     bool ContainsMove(const NeraChessEngine::MoveList<218>& moves, NeraChessEngine::Move move)
@@ -388,6 +481,115 @@ namespace
         const SearchResult draw = search.Search(nearDraw, limits);
         Require(draw.score == SCORE_DRAW,
             "transposition score bypassed the approaching 50-move draw");
+    }
+
+    void TestMultithreadedSearch()
+    {
+        using namespace NeraChessEngine;
+        using namespace NeraChessSearch;
+
+        SearchEngine search(32);
+        search.SetThreadCount(4);
+        Require(search.GetThreadCount() == 4, "search did not retain its thread count");
+
+        ChessBoard board("r1bq1rk1/pp2bppp/2n1pn2/2pp4/3P4/2PBPN2/PP1N1PPP/R1BQ1RK1 w - - 4 9");
+        const ChessBoard original = board;
+        SearchLimits limits;
+        limits.maxDepth = 5;
+        const std::thread::id caller = std::this_thread::get_id();
+        std::vector<int> callbackDepths;
+        limits.iterationCallback = [&](const SearchResult& iteration)
+        {
+            Require(std::this_thread::get_id() == caller,
+                "helper worker invoked the iteration callback");
+            callbackDepths.push_back(iteration.completedDepth);
+        };
+
+        const SearchResult result = search.Search(board, limits);
+        Require(result.completedDepth == limits.maxDepth && !result.aborted,
+            "multithreaded search did not complete its requested depth");
+        Require(ContainsMove(board.GetLegalMoves(), result.bestMove),
+            "multithreaded search returned an illegal move");
+        Require(!result.principalVariation.empty() &&
+            result.principalVariation.front() == result.bestMove,
+            "multithreaded search returned an inconsistent principal variation");
+        Require(board == original, "multithreaded search mutated its input board");
+        Require(callbackDepths.size() == static_cast<size_t>(result.completedDepth),
+            "helper workers emitted callbacks or an iteration callback was lost");
+        for (size_t index = 0; index < callbackDepths.size(); ++index)
+        {
+            Require(callbackDepths[index] == static_cast<int>(index + 1),
+                "multithreaded iteration callbacks were out of order");
+        }
+
+        search.NewGame();
+        ChessBoard mateInOne("7k/5Q2/6K1/8/8/8/8/8 w - - 0 1");
+        SearchLimits mateLimits;
+        mateLimits.maxDepth = 2;
+        const SearchResult mate = search.Search(mateInOne, mateLimits);
+        mateInOne.MakeMove(mate.bestMove);
+        Require((mateInOne.GetGameOver() & IS_CHECKMATE) != 0,
+            "multithreaded search missed mate in one");
+
+        search.NewGame();
+        ChessBoard start;
+        SearchLimits restricted;
+        restricted.maxDepth = 4;
+        restricted.rootMoves.push_back(FindMove(start, "e2e4"));
+        Require(search.Search(start, restricted).bestMove == restricted.rootMoves.front(),
+            "multithreaded search ignored its root-move restriction");
+
+        search.NewGame();
+        SearchLimits nodeLimited;
+        nodeLimited.maxDepth = 30;
+        nodeLimited.maxNodes = 20'000;
+        const SearchResult limited = search.Search(start, nodeLimited);
+        Require(limited.aborted, "aggregate multithreaded node limit did not stop search");
+        Require(limited.nodes >= nodeLimited.maxNodes &&
+            limited.nodes <= nodeLimited.maxNodes + search.GetThreadCount() * 256,
+            "multithreaded node accounting did not enforce one aggregate budget");
+
+        search.NewGame();
+        SearchLimits stoppedLimits;
+        stoppedLimits.maxDepth = 30;
+        std::mutex depthMutex;
+        std::condition_variable depthCondition;
+        int reachedDepth = 0;
+        stoppedLimits.iterationCallback = [&](const SearchResult& iteration)
+        {
+            {
+                std::scoped_lock lock(depthMutex);
+                reachedDepth = iteration.completedDepth;
+            }
+            depthCondition.notify_one();
+        };
+        SearchResult stoppedResult;
+        std::jthread searching([&]
+        {
+            stoppedResult = search.Search(start, stoppedLimits);
+        });
+        std::unique_lock depthLock(depthMutex);
+        const bool startedPromptly = depthCondition.wait_for(depthLock,
+            std::chrono::seconds{ 2 }, [&] { return reachedDepth >= 2; });
+        depthLock.unlock();
+        search.RequestStop();
+        searching.join();
+        Require(startedPromptly, "multithreaded search did not start promptly");
+        Require(stoppedResult.aborted &&
+            ContainsMove(start.GetLegalMoves(), stoppedResult.bestMove),
+            "external stop did not preserve a legal completed multithreaded result");
+
+        search.NewGame();
+        search.SetThreadCount(2);
+        search.ResizeHash(8);
+        search.SetThreadCount(1);
+        Require(search.GetThreadCount() == 1,
+            "search thread-count lifecycle did not return to one worker");
+        SearchLimits lifecycleLimits;
+        lifecycleLimits.maxDepth = 2;
+        Require(ContainsMove(start.GetLegalMoves(),
+            search.Search(start, lifecycleLimits).bestMove),
+            "search failed after thread-count and hash reconfiguration");
     }
 
     void TestTaperedEvaluation()
@@ -586,6 +788,45 @@ namespace
                       << '\n';
         }
     }
+
+    void RunThreadBenchmark()
+    {
+        using namespace NeraChessSearch;
+
+        static constexpr std::string_view positions[] = {
+            "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1",
+            "r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq - 0 1",
+            "r1bq1rk1/pp2bppp/2n1pn2/2pp4/3P4/2PBPN2/PP1N1PPP/R1BQ1RK1 w - - 4 9",
+        };
+
+        for (const size_t threadCount : { 1ULL, 2ULL, 4ULL })
+        {
+            SearchEngine search(256);
+            search.SetThreadCount(threadCount);
+            for (size_t positionIndex = 0; positionIndex < std::size(positions); ++positionIndex)
+            {
+                search.NewGame();
+                ChessBoard board{ std::string(positions[positionIndex]) };
+                SearchLimits limits;
+                limits.maxDepth = MAX_PLY - 1;
+                limits.softTime = std::chrono::milliseconds{ 750 };
+                limits.hardTime = std::chrono::milliseconds{ 800 };
+                const SearchResult result = search.Search(board, limits);
+                const double seconds = std::max(0.001,
+                    std::chrono::duration<double>(result.elapsed).count());
+                std::cout << "threadbench threads " << threadCount
+                          << " position " << positionIndex
+                          << " depth " << result.completedDepth
+                          << " seldepth " << result.selectiveDepth
+                          << " score " << result.score
+                          << " bestmove " << result.bestMove.ToUCI()
+                          << " nodes " << result.nodes
+                          << " time " << result.elapsed.count()
+                          << " nps " << static_cast<uint64_t>(result.nodes / seconds)
+                          << '\n';
+            }
+        }
+    }
 }
 
 int main(int argc, char** argv)
@@ -602,6 +843,11 @@ int main(int argc, char** argv)
             RunSearchBenchmark();
             return 0;
         }
+        if (argc == 2 && std::string_view(argv[1]) == "--thread-bench")
+        {
+            RunThreadBenchmark();
+            return 0;
+        }
 
         TestFenValidation();
         TestPerft();
@@ -611,8 +857,10 @@ int main(int argc, char** argv)
         TestIncrementalZobrist();
         TestNullMoveState();
         TestTranspositionTable();
+        TestConcurrentTranspositionTable();
         TestSearchFoundations();
         TestFiftyMoveTranspositions();
+        TestMultithreadedSearch();
         TestTaperedEvaluation();
         TestSearchChoices();
         TestStaticExchangeEvaluation();
