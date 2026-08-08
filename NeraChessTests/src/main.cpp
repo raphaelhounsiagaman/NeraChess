@@ -256,7 +256,7 @@ namespace
         Require(board.MakeNullMove(), "legal null move was rejected");
         Require(!board.GetBoardState().HasFlag(NeraChessEngine::BoardStateFlags::WhiteToMove),
             "null move did not toggle side to move");
-        Require(!board.GetBoardState().HasFlag(NeraChessEngine::BoardStateFlags::CanEnPassent),
+        Require(!board.GetBoardState().HasFlag(NeraChessEngine::BoardStateFlags::CanEnPassant),
             "null move did not clear en passant");
         Require(board.GetZobristKey() == NeraChessEngine::Zobrist::CalculateZobristKey(board),
             "null move incremental key is incorrect");
@@ -731,7 +731,7 @@ namespace
     void TestOpeningBook()
     {
         NeraChessSearch::OpeningBook book(
-            "NeraChessApp/Ressources/OpeningBook/OpeningBook.txt");
+            "NeraChessApp/Resources/OpeningBook/OpeningBook.txt");
         Require(book.IsAvailable() && book.EntryCount() == 758'448,
             "opening-book index did not load every entry");
 

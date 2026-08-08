@@ -3,16 +3,14 @@
 #include "Core/Layer.h"
 #include "GameManagerLayer.h"
 
-
 class UILayer : public ApplicationCore::Layer
 {
-public:
+  public:
 	UILayer() = default;
 	virtual ~UILayer() = default;
-	virtual void OnEvent(ApplicationCore::Event& event) override {};
-	virtual void OnUpdate(float ts) override {};
-	virtual void OnRender() override;
+	void OnEvent(ApplicationCore::Event&) override {}
+	void OnUpdate(float) override {}
+	void OnRender() override;
 
-private:
-
+  private:
 };

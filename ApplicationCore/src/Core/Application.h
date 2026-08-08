@@ -3,70 +3,64 @@
 #include "Layer.h"
 #include "Window.h"
 
-#include <cassert>
-#include <string>
 #include <memory>
+#include <string>
 #include <type_traits>
 #include <vector>
 
 namespace ApplicationCore
 {
-	struct ApplicationSpecification
+struct ApplicationSpecification
+{
+	std::string Name = "Application";
+	WindowSpecification WindowSpec;
+};
+
+class Application
+{
+  public:
+	explicit Application(const ApplicationSpecification& appSpec = ApplicationSpecification());
+	~Application();
+
+	void Run();
+	void Stop();
+
+	void EmitEvent(Event& event);
+
+	template <typename TLayer>
+		requires(std::is_base_of_v<Layer, TLayer>)
+	void PushLayer()
 	{
-		std::string Name = "Application";
-		WindowSpecification WindowSpec;
-	};
+		m_LayerStack.push_back(std::make_unique<TLayer>());
+	}
 
-	class Application
+	template <typename TLayer>
+		requires(std::is_base_of_v<Layer, TLayer>)
+	TLayer* GetLayer()
 	{
-	public:
-		Application(const ApplicationSpecification& appSpec = ApplicationSpecification());
-		~Application();
-
-		void Run();
-		void Stop();
-
-		void EmitEvent(Event& event);
-
-		template<typename TLayer>
-			requires(std::is_base_of_v<Layer, TLayer>)
-		void PushLayer()
+		for (const auto& layer : m_LayerStack)
 		{
-			m_LayerStack.push_back(std::make_unique<TLayer>());
+			if (auto casted = dynamic_cast<TLayer*>(layer.get()))
+				return casted;
 		}
-		
-		template<typename TLayer>
-			requires(std::is_base_of_v<Layer, TLayer>)
-		TLayer* GetLayer()
-		{
-			for (const auto& layer : m_LayerStack)
-			{
-				if (auto casted = dynamic_cast<TLayer*>(layer.get()))
-					return casted;
-			}
-			return nullptr;
-		}
+		return nullptr;
+	}
 
-		std::shared_ptr<Window> GetWindow() const { return m_Window; }
+	Window* GetWindow() const
+	{
+		return m_Window.get();
+	}
 
-		static Application& Get();
-		//static float GetTime();
+	static Application& Get();
 
-	private:
+  private:
+	ApplicationSpecification m_Specification;
+	std::unique_ptr<Window> m_Window;
+	bool m_Running = false;
 
-		ApplicationSpecification m_Specification;
-		std::shared_ptr<Window> m_Window;
-		bool m_Running = false;
+	std::vector<std::unique_ptr<Layer>> m_LayerStack;
 
-		std::vector<std::unique_ptr<Layer>> m_LayerStack;
+	friend class Layer;
+};
 
-		friend class Layer;
-	};
-
-
-
-
-
-
-
-}
+} // namespace ApplicationCore

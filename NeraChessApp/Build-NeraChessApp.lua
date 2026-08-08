@@ -6,6 +6,13 @@ project "NeraChessApp"
   objdir ("../bin/Intermediates/%{cfg.buildcfg}/%{prj.name}")
   debugdir ("%{cfg.targetdir}")
   staticruntime "off"
+  warnings "Extra"
+
+  filter "toolset:gcc"
+    fatalwarnings "All"
+  filter "toolset:clang"
+    fatalwarnings "All"
+  filter {}
   
   files 
   {
@@ -66,7 +73,7 @@ project "NeraChessApp"
     }
     postbuildcommands
     {
-      '{COPYDIR} "%{prj.location}/Ressources" "%{cfg.targetdir}/Ressources"',
+      '{COPYDIR} "%{prj.location}/Resources" "%{cfg.targetdir}/Resources"',
       '{COPYFILE} "%{prj.location}/../ApplicationCore/vendor/SDL2/lib/SDL2.dll" "%{cfg.targetdir}"',
       '{COPYFILE} "%{prj.location}/../ApplicationCore/vendor/SDL2_image/lib/SDL2_image.dll" "%{cfg.targetdir}"',
       '{COPYFILE} "%{prj.location}/../ApplicationCore/vendor/SDL2_mixer/lib/SDL2_mixer.dll" "%{cfg.targetdir}"',
@@ -92,7 +99,7 @@ project "NeraChessApp"
     }
     postbuildcommands
     {
-      '{COPYDIR} "%{prj.location}/Ressources/." "%{cfg.targetdir}/Ressources"',
+      '{COPYDIR} "%{prj.location}/Resources/." "%{cfg.targetdir}/Resources"',
     }
   filter {}
 
