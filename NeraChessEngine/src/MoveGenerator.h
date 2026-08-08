@@ -77,7 +77,7 @@ namespace NeraChessEngine
 		Bitboard m_OpponentSlidingAttackMap{};
 
 		Bitboard m_FriendlyPawns{}; // check
-		Bitboard m_FriendlyKinghts{}; // check
+		Bitboard m_FriendlyKnights{};
 		Bitboard m_FriendlyKing{};// check
 
 		Bitboard m_OpponentPawns{};// check

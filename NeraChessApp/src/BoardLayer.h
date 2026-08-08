@@ -1,28 +1,26 @@
 #pragma once
 
-#include "Core/Layer.h"
+#include "ChessBoard.h"
 #include "Core/InputEvents.h"
-#include "Core/WindowEvents.h"
-
+#include "Core/Layer.h"
+#include "Core/Math/Vec2.h"
 #include "Core/Renderer/Renderer.h"
 #include "Core/Sound/SoundPlayer.h"
-#include "Core/Math/Vec2.h"
-
-#include "ChessBoard.h"
+#include "Core/WindowEvents.h"
 #include "MoveQueue.h"
 
-#include <atomic>
 #include <array>
-#include <vector>
-#include <functional>
+#include <atomic>
 #include <filesystem>
-
+#include <functional>
+#include <random>
+#include <vector>
 
 class BoardLayer : public ApplicationCore::Layer
-{ 
-public:
+{
+  public:
 	BoardLayer();
-	virtual ~BoardLayer();
+	~BoardLayer() override = default;
 
 	virtual void OnEvent(ApplicationCore::Event& event) override;
 
@@ -31,14 +29,20 @@ public:
 
 	void PlayMove(NeraChessEngine::Move move);
 
-	void SetWhiteBottom(bool whiteBottom) { m_WhiteBottom = whiteBottom;  }
-	void SetChessBoard(const NeraChessEngine::ChessBoard& board = NeraChessEngine::ChessBoard()) { m_ChessBoard = board; };
+	void SetWhiteBottom(bool whiteBottom)
+	{
+		m_WhiteBottom = whiteBottom;
+	}
+	void SetChessBoard(const NeraChessEngine::ChessBoard& board = NeraChessEngine::ChessBoard())
+	{
+		m_ChessBoard = board;
+	};
 
 	void BeginHumanMoveInput();
-	bool TryGetHumanMove(NeraChessEngine::Move* move);
+	bool TryGetHumanMove(NeraChessEngine::Move& move);
 	void CancelHumanMoveInput();
 
-private:
+  private:
 	bool OnMouseButtonPressed(ApplicationCore::MouseButtonPressedEvent& event);
 	bool OnMouseButtonReleased(ApplicationCore::MouseButtonReleasedEvent& event);
 	bool OnMouseMoved(ApplicationCore::MouseMovedEvent& event);
@@ -51,13 +55,12 @@ private:
 	void DrawFlyingPiece();
 
 	void TryMakeMove(NeraChessEngine::Move move);
-	static void AddSoundsToList(std::filesystem::path path, std::vector<ApplicationCore::Sound>& list);
+	static void AddSoundsToList(const std::filesystem::path& path, std::vector<ApplicationCore::Sound>& list);
 	void PlayRandomSoundFromList(const std::vector<ApplicationCore::Sound>& sounds);
 
 	void UpdateSize(ApplicationCore::Vec2<uint32_t> windowSize);
 
-private:
-
+  private:
 	ApplicationCore::Renderer& m_Renderer;
 	ApplicationCore::SoundPlayer& m_SoundPlayer;
 
@@ -65,7 +68,6 @@ private:
 
 	ApplicationCore::Texture m_Texture;
 	std::array<ApplicationCore::Sprite, 12> m_PieceSprites;
-
 
 	// Board Drawing
 
@@ -75,22 +77,20 @@ private:
 	ApplicationCore::Color m_DarkSquareColor = ApplicationCore::Color(145, 88, 32);
 
 	float m_MarginProportion = 0.05f;
-	ApplicationCore::Vec2<uint32_t> m_Margin{ 0, 0 };
-	ApplicationCore::Vec2<uint32_t> m_SquareSize{ 1, 1 };
+	ApplicationCore::Vec2<uint32_t> m_Margin{0, 0};
+	ApplicationCore::Vec2<uint32_t> m_SquareSize{1, 1};
 
 	// Highlight Drawing
 
 	NeraChessEngine::Move m_LastMovePlayed = 0;
-	ApplicationCore::Color m_LastMoveColor{ 181, 79, 45, 128 };
+	ApplicationCore::Color m_LastMoveColor{181, 79, 45, 128};
 
 	NeraChessEngine::Bitboard m_MarkedSquares = 0;
-	ApplicationCore::Color m_MarkedSquareColor{ 184, 91, 70, 128 };
+	ApplicationCore::Color m_MarkedSquareColor{184, 91, 70, 128};
 
 	NeraChessEngine::Piece m_SelectedPiece = NeraChessEngine::PieceType::NO_PIECE;
 	NeraChessEngine::Square m_SelectedPieceSquare = 64;
-	ApplicationCore::Color m_SelectedPieceColor{ 191, 92, 59, 128 };
-
-	NeraChessEngine::MoveList<218> m_LegalMoves;
+	ApplicationCore::Color m_SelectedPieceColor{191, 92, 59, 128};
 
 	// Animated Piece Drawing
 
@@ -110,13 +110,12 @@ private:
 
 	std::vector<ApplicationCore::Sound> m_MoveSounds;
 	std::vector<ApplicationCore::Sound> m_CaptureSounds;
+	std::mt19937 m_RandomGenerator{std::random_device{}()};
 
-	// Misc 
+	// Misc
 
-	ApplicationCore::Vec2<uint32_t> m_MousePosition{ 0, 0 };
+	ApplicationCore::Vec2<uint32_t> m_MousePosition{0, 0};
 	NeraChessEngine::MoveQueue m_HumanMoveQueue;
-	std::atomic<bool> m_AcceptingHumanMove{ false };
+	std::atomic<bool> m_AcceptingHumanMove{false};
 	bool m_WhiteBottom = true;
-
-	
 };

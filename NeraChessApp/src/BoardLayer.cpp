@@ -2,45 +2,33 @@
 
 #include "Core/Application.h"
 #include "Core/Event.h"
-
 #include "Resources.h"
 #include "UILayout.h"
 
+#include <algorithm>
+#include <stdexcept>
 #include <string>
 #include <vector>
-#include <print>
-#include <random>
-#include <assert.h>
 
 BoardLayer::BoardLayer()
 	: m_Renderer(ApplicationCore::Application::Get().GetWindow()->GetRenderer()),
-	m_SoundPlayer(ApplicationCore::Application::Get().GetWindow()->GetSoundPlayer()),
-	m_Texture(NeraChessApp::GetResourcePath("Sprites/ChessPieces.png").string()),
-	m_PieceSprites(
-	{
-		ApplicationCore::Sprite{ m_Texture },
-		ApplicationCore::Sprite{ m_Texture },
-		ApplicationCore::Sprite{ m_Texture },
-		ApplicationCore::Sprite{ m_Texture },
-		ApplicationCore::Sprite{ m_Texture },
-		ApplicationCore::Sprite{ m_Texture },
-		ApplicationCore::Sprite{ m_Texture },
-		ApplicationCore::Sprite{ m_Texture },
-		ApplicationCore::Sprite{ m_Texture },
-		ApplicationCore::Sprite{ m_Texture },
-		ApplicationCore::Sprite{ m_Texture },
-		ApplicationCore::Sprite{ m_Texture } 
-	})
+	  m_SoundPlayer(ApplicationCore::Application::Get().GetWindow()->GetSoundPlayer()),
+	  m_Texture(NeraChessApp::GetResourcePath("Sprites/ChessPieces.png").string()),
+	  m_PieceSprites(
+		  {ApplicationCore::Sprite{m_Texture}, ApplicationCore::Sprite{m_Texture}, ApplicationCore::Sprite{m_Texture},
+		   ApplicationCore::Sprite{m_Texture}, ApplicationCore::Sprite{m_Texture}, ApplicationCore::Sprite{m_Texture},
+		   ApplicationCore::Sprite{m_Texture}, ApplicationCore::Sprite{m_Texture}, ApplicationCore::Sprite{m_Texture},
+		   ApplicationCore::Sprite{m_Texture}, ApplicationCore::Sprite{m_Texture}, ApplicationCore::Sprite{m_Texture}})
 {
 	UpdateSize(ApplicationCore::Application::Get().GetWindow()->GetSize());
-	
+
 	uint32_t pieceWidth = m_Texture.GetSize().X / 6;
 	uint32_t pieceHeight = m_Texture.GetSize().Y / 2;
 
 	for (NeraChessEngine::Piece piece = 0; piece < 12; piece++)
 	{
 		m_PieceSprites[piece].Position.Y = piece < 6 ? 0 : pieceHeight;
-		m_PieceSprites[piece].Size = { pieceWidth,  pieceHeight };
+		m_PieceSprites[piece].Size = {pieceWidth, pieceHeight};
 	}
 
 	m_PieceSprites[NeraChessEngine::WHITE_KING].Position.X = pieceWidth * 0;
@@ -60,20 +48,18 @@ BoardLayer::BoardLayer()
 	AddSoundsToList(NeraChessApp::GetResourcePath("Sounds/Captures"), m_CaptureSounds);
 }
 
-BoardLayer::~BoardLayer()
-{
-	
-}
-
 void BoardLayer::OnEvent(ApplicationCore::Event& event)
 {
 	ApplicationCore::EventDispatcher dispatcher(event);
 
-	dispatcher.Dispatch<ApplicationCore::WindowResizeEvent>([this](ApplicationCore::WindowResizeEvent& e) { return OnWindowResize(e); });
-	dispatcher.Dispatch<ApplicationCore::MouseMovedEvent>([this](ApplicationCore::MouseMovedEvent& e) {return OnMouseMoved(e); });
-	dispatcher.Dispatch<ApplicationCore::MouseButtonPressedEvent>([this](ApplicationCore::MouseButtonPressedEvent& e) {return OnMouseButtonPressed(e); });
-	dispatcher.Dispatch<ApplicationCore::MouseButtonReleasedEvent>([this](ApplicationCore::MouseButtonReleasedEvent& e) {return OnMouseButtonReleased(e); });
-
+	dispatcher.Dispatch<ApplicationCore::WindowResizeEvent>([this](ApplicationCore::WindowResizeEvent& e)
+															{ return OnWindowResize(e); });
+	dispatcher.Dispatch<ApplicationCore::MouseMovedEvent>([this](ApplicationCore::MouseMovedEvent& e)
+														  { return OnMouseMoved(e); });
+	dispatcher.Dispatch<ApplicationCore::MouseButtonPressedEvent>([this](ApplicationCore::MouseButtonPressedEvent& e)
+																  { return OnMouseButtonPressed(e); });
+	dispatcher.Dispatch<ApplicationCore::MouseButtonReleasedEvent>([this](ApplicationCore::MouseButtonReleasedEvent& e)
+																   { return OnMouseButtonReleased(e); });
 }
 
 void BoardLayer::OnUpdate(float deltaTime)
@@ -98,7 +84,6 @@ void BoardLayer::OnUpdate(float deltaTime)
 		m_AnimationMove = 0;
 		m_AnimationPiece = NeraChessEngine::PieceType::NO_PIECE;
 		m_AnimationFromSquare = 64;
-		
 	}
 }
 
@@ -129,11 +114,9 @@ void BoardLayer::DrawBoard()
 		{
 			bool isLightSquare = (file + rank) % 2 == 0;
 			ApplicationCore::Color squareColor = isLightSquare ? m_LightSquareColor : m_DarkSquareColor;
-			
-			ApplicationCore::Vec2<uint32_t> squarePos = {
-				m_Margin.X + file * m_SquareSize.X,
-				m_Margin.Y + rank * m_SquareSize.Y
-			};
+
+			ApplicationCore::Vec2<uint32_t> squarePos = {m_Margin.X + file * m_SquareSize.X,
+														 m_Margin.Y + rank * m_SquareSize.Y};
 
 			m_Renderer.DrawSquare(squarePos, m_SquareSize, squareColor);
 		}
@@ -145,48 +128,34 @@ void BoardLayer::DrawHighlights()
 	// Draw Last move if available
 	if (m_LastMovePlayed)
 	{
-		// TODO: make this prettier and more efficient / more readable / more custom
 		NeraChessEngine::Square fromSquare = m_LastMovePlayed.GetStartSquare();
 		NeraChessEngine::Square targetSquare = m_LastMovePlayed.GetTargetSquare();
 
-		uint8_t fromFile = m_WhiteBottom ? fromSquare.GetFile() :
-			7 - fromSquare.GetFile();
-		uint8_t fromRank = m_WhiteBottom ? 7 - fromSquare.GetRank() :
-			fromSquare.GetRank();
+		uint8_t fromFile = m_WhiteBottom ? fromSquare.GetFile() : 7 - fromSquare.GetFile();
+		uint8_t fromRank = m_WhiteBottom ? 7 - fromSquare.GetRank() : fromSquare.GetRank();
 
-		uint8_t targetFile = m_WhiteBottom ? targetSquare.GetFile() :
-			7 - targetSquare.GetFile();
-		uint8_t targetRank = m_WhiteBottom ? 7 - targetSquare.GetRank() :
-			targetSquare.GetRank();
+		uint8_t targetFile = m_WhiteBottom ? targetSquare.GetFile() : 7 - targetSquare.GetFile();
+		uint8_t targetRank = m_WhiteBottom ? 7 - targetSquare.GetRank() : targetSquare.GetRank();
 
-		ApplicationCore::Vec2<uint32_t> squarePos = {
-			m_Margin.X + fromFile * m_SquareSize.X,
-			m_Margin.Y + fromRank * m_SquareSize.Y
-		};
+		ApplicationCore::Vec2<uint32_t> squarePos = {m_Margin.X + fromFile * m_SquareSize.X,
+													 m_Margin.Y + fromRank * m_SquareSize.Y};
 
 		m_Renderer.DrawSquare(squarePos, m_SquareSize, m_LastMoveColor);
 
-		squarePos = {
-			m_Margin.X + targetFile * m_SquareSize.X,
-			m_Margin.Y + targetRank * m_SquareSize.Y
-		};
+		squarePos = {m_Margin.X + targetFile * m_SquareSize.X, m_Margin.Y + targetRank * m_SquareSize.Y};
 
 		m_Renderer.DrawSquare(squarePos, m_SquareSize, m_LastMoveColor);
 	}
 
 	// Draw Selected Piece Squares
-	
+
 	if (m_SelectedPieceSquare != 64)
 	{
-		uint8_t file = m_WhiteBottom ? m_SelectedPieceSquare.GetFile() :
-			7 - m_SelectedPieceSquare.GetFile();
-		uint8_t rank = m_WhiteBottom ? 7 - m_SelectedPieceSquare.GetRank() :
-			m_SelectedPieceSquare.GetRank();
+		uint8_t file = m_WhiteBottom ? m_SelectedPieceSquare.GetFile() : 7 - m_SelectedPieceSquare.GetFile();
+		uint8_t rank = m_WhiteBottom ? 7 - m_SelectedPieceSquare.GetRank() : m_SelectedPieceSquare.GetRank();
 
-		ApplicationCore::Vec2<uint32_t> squarePos = {
-			m_Margin.X + file * m_SquareSize.X,
-			m_Margin.Y + rank * m_SquareSize.Y
-		};
+		ApplicationCore::Vec2<uint32_t> squarePos = {m_Margin.X + file * m_SquareSize.X,
+													 m_Margin.Y + rank * m_SquareSize.Y};
 
 		m_Renderer.DrawSquare(squarePos, m_SquareSize, m_SelectedPieceColor);
 	}
@@ -199,15 +168,11 @@ void BoardLayer::DrawHighlights()
 	{
 		NeraChessEngine::Square square = NeraChessEngine::BitUtil::PopLSB(squares);
 
-		uint8_t file = m_WhiteBottom ? square.GetFile() :
-			7 - square.GetFile();
-		uint8_t rank = m_WhiteBottom ? 7 - square.GetRank() :
-			square.GetRank();
+		uint8_t file = m_WhiteBottom ? square.GetFile() : 7 - square.GetFile();
+		uint8_t rank = m_WhiteBottom ? 7 - square.GetRank() : square.GetRank();
 
-		ApplicationCore::Vec2<uint32_t> squarePos = {
-			m_Margin.X + file * m_SquareSize.X,
-			m_Margin.Y + rank * m_SquareSize.Y
-		};
+		ApplicationCore::Vec2<uint32_t> squarePos = {m_Margin.X + file * m_SquareSize.X,
+													 m_Margin.Y + rank * m_SquareSize.Y};
 
 		m_Renderer.DrawSquare(squarePos, m_SquareSize, m_MarkedSquareColor);
 	}
@@ -218,40 +183,25 @@ void BoardLayer::DrawAnimatedPiece()
 	if (m_AnimationPiece == NeraChessEngine::PieceType::NO_PIECE)
 		return;
 
-	uint8_t fromFile = m_WhiteBottom ? m_AnimationFromSquare.GetFile() :
-		7 - m_AnimationFromSquare.GetFile();
-	uint8_t fromRank = m_WhiteBottom ? 7 - m_AnimationFromSquare.GetRank() :
-		m_AnimationFromSquare.GetRank();
+	uint8_t fromFile = m_WhiteBottom ? m_AnimationFromSquare.GetFile() : 7 - m_AnimationFromSquare.GetFile();
+	uint8_t fromRank = m_WhiteBottom ? 7 - m_AnimationFromSquare.GetRank() : m_AnimationFromSquare.GetRank();
 
-	ApplicationCore::Vec2<uint32_t> fromPos = {
-		m_Margin.X + fromFile * m_SquareSize.X,
-		m_Margin.Y + fromRank * m_SquareSize.Y
-	};
+	ApplicationCore::Vec2<uint32_t> fromPos = {m_Margin.X + fromFile * m_SquareSize.X,
+											   m_Margin.Y + fromRank * m_SquareSize.Y};
 
 	NeraChessEngine::Square targetSquare = m_AnimationMove.GetTargetSquare();
 
-	uint8_t targetFile = m_WhiteBottom ? targetSquare.GetFile() :
-		7 - targetSquare.GetFile();
-	uint8_t targetRank = m_WhiteBottom ? 7 - targetSquare.GetRank() :
-		targetSquare.GetRank();
+	uint8_t targetFile = m_WhiteBottom ? targetSquare.GetFile() : 7 - targetSquare.GetFile();
+	uint8_t targetRank = m_WhiteBottom ? 7 - targetSquare.GetRank() : targetSquare.GetRank();
 
-	ApplicationCore::Vec2<uint32_t> targetPos = {
-		m_Margin.X + targetFile * m_SquareSize.X,
-		m_Margin.Y + targetRank * m_SquareSize.Y
-	};
+	ApplicationCore::Vec2<uint32_t> targetPos = {m_Margin.X + targetFile * m_SquareSize.X,
+												 m_Margin.Y + targetRank * m_SquareSize.Y};
 
-	ApplicationCore::Vec2<uint32_t> piecePos
-	{ 
+	ApplicationCore::Vec2<uint32_t> piecePos{
 		uint32_t(fromPos.X + long((long(targetPos.X) - long(fromPos.X)) * m_AnimationDone)),
-		uint32_t(fromPos.Y + long((long(targetPos.Y) - long(fromPos.Y)) * m_AnimationDone))
-	};
+		uint32_t(fromPos.Y + long((long(targetPos.Y) - long(fromPos.Y)) * m_AnimationDone))};
 
-	m_Renderer.DrawSprite(
-		m_PieceSprites[m_AnimationPiece],
-		piecePos,
-		m_SquareSize
-	);
-
+	m_Renderer.DrawSprite(m_PieceSprites[m_AnimationPiece], piecePos, m_SquareSize);
 }
 
 void BoardLayer::DrawPieces()
@@ -264,26 +214,18 @@ void BoardLayer::DrawPieces()
 
 		uint8_t file = square.GetFile();
 		uint8_t rank = square.GetRank();
-		
-		if (file + 8 * rank == m_FlyingPieceSquare ||
-			file + 8 * rank == m_AnimationFromSquare)
+
+		if (file + 8 * rank == m_FlyingPieceSquare || file + 8 * rank == m_AnimationFromSquare)
 			continue;
 
 		file = m_WhiteBottom ? file : 7 - file;
 		rank = m_WhiteBottom ? rank : 7 - rank;
 
-		ApplicationCore::Vec2<uint32_t> squarePos = {
-			m_Margin.X + file * m_SquareSize.X,
-			m_Margin.Y + (7 - rank) * m_SquareSize.Y
-		};
+		ApplicationCore::Vec2<uint32_t> squarePos = {m_Margin.X + file * m_SquareSize.X,
+													 m_Margin.Y + (7 - rank) * m_SquareSize.Y};
 
-		m_Renderer.DrawSprite(
-			m_PieceSprites[piece],
-			squarePos,
-			m_SquareSize
-		);
+		m_Renderer.DrawSprite(m_PieceSprites[piece], squarePos, m_SquareSize);
 	}
-
 }
 
 void BoardLayer::DrawFlyingPiece()
@@ -291,11 +233,10 @@ void BoardLayer::DrawFlyingPiece()
 	if (m_FlyingPiece == NeraChessEngine::PieceType::NO_PIECE)
 		return;
 
-	m_Renderer.DrawSprite(
-		m_PieceSprites[m_FlyingPiece],
-		m_MousePosition - ApplicationCore::Vec2<uint32_t>(uint32_t(m_SquareSize.X * 0.5), uint32_t(m_SquareSize.Y * 0.5)),
-		m_SquareSize
-	);
+	m_Renderer.DrawSprite(m_PieceSprites[m_FlyingPiece],
+						  m_MousePosition - ApplicationCore::Vec2<uint32_t>(uint32_t(m_SquareSize.X * 0.5),
+																			uint32_t(m_SquareSize.Y * 0.5)),
+						  m_SquareSize);
 }
 
 void BoardLayer::TryMakeMove(NeraChessEngine::Move move)
@@ -304,42 +245,30 @@ void BoardLayer::TryMakeMove(NeraChessEngine::Move move)
 		m_HumanMoveQueue.Push(move);
 }
 
-void BoardLayer::AddSoundsToList(std::filesystem::path path, std::vector<ApplicationCore::Sound>& list)
+void BoardLayer::AddSoundsToList(const std::filesystem::path& path, std::vector<ApplicationCore::Sound>& list)
 {
+	if (!std::filesystem::is_directory(path))
+		throw std::runtime_error("Sound directory is missing: " + path.string());
 
-	if (std::filesystem::exists(path) && std::filesystem::is_directory(path))
+	std::vector<std::filesystem::path> soundPaths;
+	for (const std::filesystem::directory_entry& entry : std::filesystem::directory_iterator(path))
 	{
-		for (const std::filesystem::directory_entry& entry : std::filesystem::directory_iterator(path))
-		{
-			if (entry.is_regular_file())
-			{
-				list.emplace_back(path.string() + "/" + entry.path().filename().string());
-			}
-		}
-	}
-	else
-	{
-		std::println("Error: Folder doesn't exist: {}", path.string());
-		//assert(false);
+		if (entry.is_regular_file())
+			soundPaths.push_back(entry.path());
 	}
 
+	std::ranges::sort(soundPaths);
+	for (const std::filesystem::path& soundPath : soundPaths)
+		list.emplace_back(soundPath.string());
 }
-
 
 void BoardLayer::PlayRandomSoundFromList(const std::vector<ApplicationCore::Sound>& sounds)
 {
 	if (sounds.empty())
-	{
-		// TODO: add little error message
 		return;
-	}
-
-	std::random_device randomDevice;
-	std::mt19937 generator(randomDevice());
 
 	std::uniform_int_distribution<size_t> distribution(0, sounds.size() - 1);
-
-	size_t soundIndex = distribution(generator);
+	const size_t soundIndex = distribution(m_RandomGenerator);
 
 	m_SoundPlayer.PlaySound(sounds[soundIndex]);
 }
@@ -388,7 +317,6 @@ void BoardLayer::PlayMove(NeraChessEngine::Move move)
 		m_AnimationFromSquare = move.GetStartSquare();
 		m_AnimationPiece = move.GetMovePiece();
 	}
-
 }
 
 void BoardLayer::BeginHumanMoveInput()
@@ -397,9 +325,9 @@ void BoardLayer::BeginHumanMoveInput()
 	m_AcceptingHumanMove = true;
 }
 
-bool BoardLayer::TryGetHumanMove(NeraChessEngine::Move* move)
+bool BoardLayer::TryGetHumanMove(NeraChessEngine::Move& move)
 {
-	return m_HumanMoveQueue.Pop(move);
+	return m_HumanMoveQueue.TryPop(move);
 }
 
 void BoardLayer::CancelHumanMoveInput()
@@ -408,19 +336,19 @@ void BoardLayer::CancelHumanMoveInput()
 	m_HumanMoveQueue.Clear();
 }
 
-bool BoardLayer::OnMouseButtonPressed(ApplicationCore::MouseButtonPressedEvent& event)
+bool BoardLayer::OnMouseButtonPressed(ApplicationCore::MouseButtonPressedEvent&)
 {
-	bool mouseInBoardX = m_Margin.X <= m_MousePosition.X && m_MousePosition.X <= m_Margin.X + 8 * m_SquareSize.X;
-	bool mouseInBoardY = m_Margin.Y <= m_MousePosition.Y && m_MousePosition.Y <= m_Margin.Y + 8 * m_SquareSize.Y;
+	bool mouseInBoardX = m_Margin.X <= m_MousePosition.X && m_MousePosition.X < m_Margin.X + 8 * m_SquareSize.X;
+	bool mouseInBoardY = m_Margin.Y <= m_MousePosition.Y && m_MousePosition.Y < m_Margin.Y + 8 * m_SquareSize.Y;
 	bool mouseInBoard = mouseInBoardX && mouseInBoardY;
 
 	if (!mouseInBoard)
 		return false;
 
-	uint8_t rank = m_WhiteBottom ? 7 - ((m_MousePosition.Y - m_Margin.Y) / m_SquareSize.Y) :
-		((m_MousePosition.Y - m_Margin.Y) / m_SquareSize.Y);
-	uint8_t file = m_WhiteBottom ? (m_MousePosition.X - m_Margin.X) / m_SquareSize.X : 
-		7 - (m_MousePosition.X - m_Margin.X) / m_SquareSize.X;
+	uint8_t rank = m_WhiteBottom ? 7 - ((m_MousePosition.Y - m_Margin.Y) / m_SquareSize.Y)
+								 : ((m_MousePosition.Y - m_Margin.Y) / m_SquareSize.Y);
+	uint8_t file = m_WhiteBottom ? (m_MousePosition.X - m_Margin.X) / m_SquareSize.X
+								 : 7 - (m_MousePosition.X - m_Margin.X) / m_SquareSize.X;
 
 	NeraChessEngine::Square square = file + 8 * rank;
 
@@ -428,12 +356,9 @@ bool BoardLayer::OnMouseButtonPressed(ApplicationCore::MouseButtonPressedEvent& 
 	if (m_SelectedPiece != NeraChessEngine::PieceType::NO_PIECE)
 	{
 		NeraChessEngine::Move move = 0;
-		// TODO: fix this, don't recalculate this here everytime
-		m_LegalMoves = m_ChessBoard.GetLegalMoves();
-		for (NeraChessEngine::Move legalMove : m_LegalMoves)
+		for (NeraChessEngine::Move legalMove : m_ChessBoard.GetLegalMoves())
 		{
-			if (legalMove.GetStartSquare() == m_SelectedPieceSquare &&
-				legalMove.GetTargetSquare() == square)
+			if (legalMove.GetStartSquare() == m_SelectedPieceSquare && legalMove.GetTargetSquare() == square)
 			{
 				move = legalMove;
 				break;
@@ -460,16 +385,15 @@ bool BoardLayer::OnMouseButtonPressed(ApplicationCore::MouseButtonPressedEvent& 
 
 		m_SelectedPiece = piece;
 		m_SelectedPieceSquare = square;
-
 	}
 
 	return true;
 }
 
-bool BoardLayer::OnMouseButtonReleased(ApplicationCore::MouseButtonReleasedEvent& event)
+bool BoardLayer::OnMouseButtonReleased(ApplicationCore::MouseButtonReleasedEvent&)
 {
-	bool mouseInBoardX = m_Margin.X <= m_MousePosition.X && m_MousePosition.X <= m_Margin.X + 8 * m_SquareSize.X;
-	bool mouseInBoardY = m_Margin.Y <= m_MousePosition.Y && m_MousePosition.Y <= m_Margin.Y + 8 * m_SquareSize.Y;
+	bool mouseInBoardX = m_Margin.X <= m_MousePosition.X && m_MousePosition.X < m_Margin.X + 8 * m_SquareSize.X;
+	bool mouseInBoardY = m_Margin.Y <= m_MousePosition.Y && m_MousePosition.Y < m_Margin.Y + 8 * m_SquareSize.Y;
 	bool mouseInBoard = mouseInBoardX && mouseInBoardY;
 
 	if (!mouseInBoard)
@@ -479,11 +403,11 @@ bool BoardLayer::OnMouseButtonReleased(ApplicationCore::MouseButtonReleasedEvent
 
 		return true;
 	}
-	
-	uint8_t rank = m_WhiteBottom ? 7 - ((m_MousePosition.Y - m_Margin.Y) / m_SquareSize.Y) :
-		((m_MousePosition.Y - m_Margin.Y) / m_SquareSize.Y);
-	uint8_t file = m_WhiteBottom ? (m_MousePosition.X - m_Margin.X) / m_SquareSize.X : 
-		7 - (m_MousePosition.X - m_Margin.X) / m_SquareSize.X;
+
+	uint8_t rank = m_WhiteBottom ? 7 - ((m_MousePosition.Y - m_Margin.Y) / m_SquareSize.Y)
+								 : ((m_MousePosition.Y - m_Margin.Y) / m_SquareSize.Y);
+	uint8_t file = m_WhiteBottom ? (m_MousePosition.X - m_Margin.X) / m_SquareSize.X
+								 : 7 - (m_MousePosition.X - m_Margin.X) / m_SquareSize.X;
 
 	NeraChessEngine::Square square = file + 8 * rank;
 
@@ -498,12 +422,9 @@ bool BoardLayer::OnMouseButtonReleased(ApplicationCore::MouseButtonReleasedEvent
 		}
 
 		NeraChessEngine::Move move = 0;
-		// TODO: fix this, don't recalculate this here everytime
-		m_LegalMoves = m_ChessBoard.GetLegalMoves();
-		for (NeraChessEngine::Move legalMove : m_LegalMoves)
+		for (NeraChessEngine::Move legalMove : m_ChessBoard.GetLegalMoves())
 		{
-			if (legalMove.GetStartSquare() == m_SelectedPieceSquare &&
-				legalMove.GetTargetSquare() == square)
+			if (legalMove.GetStartSquare() == m_SelectedPieceSquare && legalMove.GetTargetSquare() == square)
 			{
 				move = legalMove;
 				break;
@@ -521,7 +442,6 @@ bool BoardLayer::OnMouseButtonReleased(ApplicationCore::MouseButtonReleasedEvent
 
 		m_SelectedPiece = NeraChessEngine::PieceType::NO_PIECE;
 		m_SelectedPieceSquare = 64;
-
 	}
 
 	return true;
@@ -552,9 +472,9 @@ void BoardLayer::UpdateSize(ApplicationCore::Vec2<uint32_t> windowSize)
 
 	uint32_t smallerMargin = uint32_t(smallerSide * m_MarginProportion);
 
-	uint32_t squareSide = (smallerSide - 2 * smallerMargin) / 8;
+	uint32_t squareSide = std::max(1U, (smallerSide - 2 * smallerMargin) / 8);
 
-	m_SquareSize = { squareSide, squareSide };
+	m_SquareSize = {squareSide, squareSide};
 
 	bool isHorizontalWindow = boardAreaWidth > windowSize.Y;
 
@@ -568,6 +488,4 @@ void BoardLayer::UpdateSize(ApplicationCore::Vec2<uint32_t> windowSize)
 		m_Margin.X = smallerMargin;
 		m_Margin.Y = (windowSize.Y - m_SquareSize.Y * 8) / 2;
 	}
-
-
 }

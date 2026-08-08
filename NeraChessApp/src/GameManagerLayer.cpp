@@ -1,22 +1,14 @@
 #include "GameManagerLayer.h"
 
-#include "Core/Application.h"
-
 #include "BoardLayer.h"
+#include "Core/Application.h"
 
 #include <algorithm>
 #include <atomic>
 #include <chrono>
-#include <thread>
 #include <print>
+#include <thread>
 #include <utility>
-
-template<typename TPlayer1, typename TPlayer2>
-void GameManagerLayer::SetPlayerTypes()
-{
-	m_Player1 = std::make_unique<TPlayer1>();
-	m_Player2 = std::make_unique<TPlayer2>();
-}
 
 GameManagerLayer::~GameManagerLayer()
 {
@@ -25,12 +17,12 @@ GameManagerLayer::~GameManagerLayer()
 		m_GameThread.join();
 }
 
-void GameManagerLayer::OnUpdate(float deltaTime)
+void GameManagerLayer::OnUpdate(float)
 {
 
 	NeraChessEngine::Move move{0};
 
-	while (m_MoveQueue.Pop(&move))
+	while (m_MoveQueue.TryPop(move))
 	{
 		m_ChessBoard.MakeMove(move, true);
 
@@ -38,7 +30,6 @@ void GameManagerLayer::OnUpdate(float deltaTime)
 		if (boardLayer)
 			boardLayer->PlayMove(move);
 	}
-
 }
 
 bool GameManagerLayer::SetTimeControl(NeraChessEngine::TimeControl timeControl)
@@ -51,8 +42,7 @@ bool GameManagerLayer::SetTimeControl(NeraChessEngine::TimeControl timeControl)
 
 GameSnapshot GameManagerLayer::GetSnapshot() const
 {
-	return
-	{
+	return {
 		.clock = m_Clock.GetSnapshot(),
 		.timeControl = m_Clock.GetTimeControl(),
 		.result = m_GameResult.load(),
@@ -82,7 +72,6 @@ void GameManagerLayer::StartGame()
 	m_GameEndReason = GameEndReason::None;
 
 	m_ChessBoard = NeraChessEngine::ChessBoard();
-	
 
 	BoardLayer* boardLayer = ApplicationCore::Application::Get().GetLayer<BoardLayer>();
 	if (boardLayer)
@@ -91,18 +80,16 @@ void GameManagerLayer::StartGame()
 		boardLayer->SetWhiteBottom(m_Player1IsWhite.load());
 	}
 
-	m_Player1Turn = m_Player1IsWhite.load() == m_ChessBoard.GetBoardState().HasFlag(NeraChessEngine::BoardStateFlags::WhiteToMove);
+	m_Player1Turn =
+		m_Player1IsWhite.load() == m_ChessBoard.GetBoardState().HasFlag(NeraChessEngine::BoardStateFlags::WhiteToMove);
 
 	m_MoveQueue.Clear();
 
 	std::println("Game started, {} starts.", m_Player1Turn ? "Player 1" : "Player 2");
 
 	m_GameThread = std::jthread([this, board = m_ChessBoard](std::stop_token stopToken) mutable
-	{
-		RunGame(stopToken, std::move(board));
-	});
+								{ RunGame(stopToken, std::move(board)); });
 }
-
 
 void GameManagerLayer::StopGame()
 {
@@ -118,32 +105,31 @@ void GameManagerLayer::StopGame()
 
 void GameManagerLayer::RunGame(std::stop_token stopToken, NeraChessEngine::ChessBoard board)
 {
-	const bool whiteStarts = board.GetBoardState().HasFlag(
-		NeraChessEngine::BoardStateFlags::WhiteToMove);
+	const bool whiteStarts = board.GetBoardState().HasFlag(NeraChessEngine::BoardStateFlags::WhiteToMove);
 	m_Clock.Start(whiteStarts);
 
 	while (!stopToken.stop_requested() && !m_GameStopRequested)
 	{
 
 		ChessPlayer* currentPlayer = m_Player1Turn ? m_Player1.get() : m_Player2.get();
-		const bool whiteToMove = board.GetBoardState().HasFlag(
-			NeraChessEngine::BoardStateFlags::WhiteToMove);
+		const bool whiteToMove = board.GetBoardState().HasFlag(NeraChessEngine::BoardStateFlags::WhiteToMove);
 
 		std::atomic<bool> moveFinished = false;
-		std::jthread flagWatcher([this, currentPlayer, whiteToMove, &moveFinished](std::stop_token watchToken)
-		{
-			using namespace std::chrono_literals;
-			while (!watchToken.stop_requested() && !moveFinished && !m_GameStopRequested)
+		std::jthread flagWatcher(
+			[this, currentPlayer, whiteToMove, &moveFinished](std::stop_token watchToken)
 			{
-				const auto remaining = m_Clock.GetRemaining(whiteToMove);
-				if (remaining.count() == 0)
+				using namespace std::chrono_literals;
+				while (!watchToken.stop_requested() && !moveFinished && !m_GameStopRequested)
 				{
-					currentPlayer->StopSearching();
-					return;
+					const auto remaining = m_Clock.GetRemaining(whiteToMove);
+					if (remaining.count() == 0)
+					{
+						currentPlayer->StopSearching();
+						return;
+					}
+					std::this_thread::sleep_for(std::min(remaining, 10ms));
 				}
-				std::this_thread::sleep_for(std::min(remaining, 10ms));
-			}
-		});
+			});
 
 		NeraChessEngine::Move move = currentPlayer->GetNextMove(board, m_Clock);
 		moveFinished = true;
@@ -178,9 +164,7 @@ void GameManagerLayer::RunGame(std::stop_token stopToken, NeraChessEngine::Chess
 
 		m_MoveQueue.Push(move);
 
-		std::println("Move Played: {}{}",
-			move.GetStartSquare().ToString(),
-			move.GetTargetSquare().ToString());
+		std::println("Move Played: {}{}", move.GetStartSquare().ToString(), move.GetTargetSquare().ToString());
 
 		uint16_t gameOverFlags = board.GetGameOver(true);
 		if (gameOverFlags & (uint16_t)NeraChessEngine::GameOverFlags::IS_GAME_OVER)
@@ -241,10 +225,9 @@ void GameManagerLayer::SetBoardResult(uint16_t gameOverFlags, bool movingSideWas
 			m_GameEndReason = GameEndReason::DrawAgreement;
 	}
 
-	std::println("Game over: result {}, reason {}.",
-		static_cast<int>(m_GameResult.load()), static_cast<int>(m_GameEndReason.load()));
+	std::println("Game over: result {}, reason {}.", static_cast<int>(m_GameResult.load()),
+				 static_cast<int>(m_GameEndReason.load()));
 }
-
 
 void GameManagerLayer::Reset()
 {

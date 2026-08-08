@@ -2,26 +2,16 @@
 
 #include "Event.h"
 
-#include <memory>
-
 namespace ApplicationCore
 {
-	class Layer
-	{
-	public:
-		virtual ~Layer() = default;
+class Layer
+{
+  public:
+	virtual ~Layer() = default;
 
-		virtual void OnEvent(Event& event) {}
+	virtual void OnEvent(Event&) {}
 
-		virtual void OnUpdate(float ts) {}
-		virtual void OnRender() {}
-
-		template<std::derived_from<Layer> T, typename... Args>
-		void TransitionTo(Args&&... args)
-		{
-			QueueTransition(std::move(std::make_unique<T>(std::forward<Args>(args)...)));
-		}
-	private:
-		void QueueTransition(std::unique_ptr<Layer> layer);
-	};
-}
+	virtual void OnUpdate(float) {}
+	virtual void OnRender() {}
+};
+} // namespace ApplicationCore

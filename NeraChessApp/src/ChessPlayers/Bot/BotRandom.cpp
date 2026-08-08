@@ -2,19 +2,19 @@
 
 #include <random>
 
-NeraChessEngine::Move BotRandom::GetNextMove(const NeraChessEngine::ChessBoard& board, const NeraChessEngine::Clock& timer)
+NeraChessEngine::Move BotRandom::GetNextMove(const NeraChessEngine::ChessBoard& board, const NeraChessEngine::Clock&)
 {
-    const NeraChessEngine::MoveList<218> legalMoves = board.GetLegalMoves();
-    if (legalMoves.size() == 0)
-        return 0;
+	const NeraChessEngine::MoveList<218> legalMoves = board.GetLegalMoves();
+	if (legalMoves.size() == 0)
+		return 0;
 
-    std::random_device rd;
+	std::random_device rd;
 
-    std::mt19937 gen(rd());
+	std::mt19937 gen(rd());
 
 	std::uniform_int_distribution<size_t> dist(0, legalMoves.size() - 1);
 
-    uint8_t moveIndex = (uint8_t)dist(gen);
+	uint8_t moveIndex = (uint8_t)dist(gen);
 
 	return legalMoves[moveIndex];
 }

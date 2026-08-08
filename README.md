@@ -1,11 +1,14 @@
 # NeraChess
 
-![NeraChess Screenshot](<assets/screenshots/NeraChessUIStartingPosition.png>)
+[![Build](https://github.com/raphaelhounsiagaman/NeraChess/actions/workflows/build.yml/badge.svg)](https://github.com/raphaelhounsiagaman/NeraChess/actions/workflows/build.yml)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+[![Lichess Bullet rating](https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Flichess.org%2Fapi%2Fuser%2FNeraChess&query=%24.perfs.bullet.rating&label=bullet&logo=lichess&color=black)](https://lichess.org/@/NeraChess)
+[![Lichess Blitz rating](https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Flichess.org%2Fapi%2Fuser%2FNeraChess&query=%24.perfs.blitz.rating&label=blitz&logo=lichess&color=black)](https://lichess.org/@/NeraChess)
+[![Lichess Rapid rating](https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Flichess.org%2Fapi%2Fuser%2FNeraChess&query=%24.perfs.rapid.rating&label=rapid&logo=lichess&color=black)](https://lichess.org/@/NeraChess)
 
-NeraChess is a chess engine written in modern C++.  
-It consists of classical search techniques.
+NeraChess is a C++23 chess engine, UCI executable, and SDL2/Dear ImGui desktop application. It combines a bitboard rules engine, deterministic classical search, clock-aware play, and cross-platform tooling in a layered codebase.
 
-The project started as a personal learning project and gradually evolved into a fully working engine. It is not meant to compete with top engines like Stockfish or Leela, but to explore how far a self-written engine can go.
+![NeraChess desktop application](assets/screenshots/NeraChessUIStartingPosition.png)
 
 At engine commit `212e012`, a 300-game paired-opening tournament estimated
 NeraChess at **2627 Stockfish 18 UCI-Elo-equivalent** at `10+0.1`, with a
@@ -14,16 +17,7 @@ hardware- and test-pool-specific engine benchmark, not a FIDE, online-platform,
 or universal Elo rating. See the [strength calibration report](docs/ENGINE_STRENGTH.md)
 for the results, method, and limitations.
 
----
-
-## Project Goals
-
-The main goals of this project are:
-
-- Learn C++ in depth (architecture, performance, memory handling)
-- Understand how chess engines work internally
-- Build something complete and usable from scratch
-
+The public [NeraChess Lichess bot](https://lichess.org/@/NeraChess) provides a separate real-world measurement. The badges above read its live Bullet, Blitz, and Rapid ratings from the Lichess API, so the repository does not rely on a manually maintained online rating. Lichess ratings are pool- and time-control-specific and should not be interpreted as FIDE Elo.
 
 ---
 
@@ -55,7 +49,7 @@ The main goals of this project are:
 - Clock-aware time management
 - UCI protocol support, including opponent-time pondering
 
-The search is functional and reasonably optimized, but not heavily micro-optimized compared to professional engines.
+The search favors clear, testable engine techniques over platform-specific micro-optimization.
 
 ---
 
@@ -212,7 +206,7 @@ make -C NeraChessTests config=release
 ./bin/Release/NeraChessUCI/NeraChessUCI
 ```
 
-The macOS and Windows GUI builds copy the `Ressources` directory beside the
+The macOS and Windows GUI builds copy the `Resources` directory beside the
 executable. The UCI build copies the opening book beside its executable on all
 platforms. Both targets resolve their bundled resources from the executable,
 so they can be launched from any working directory.
@@ -252,9 +246,22 @@ than a reproducible Elo measurement.
 ## Known Limitations
 
 - Evaluation parameters are hand-tuned rather than trained from games.
+- Search performance and calibrated strength depend on hardware, thread count, and time control.
+
+---
+
+## Contributing
+
+Bug reports and focused pull requests are welcome. See [CONTRIBUTING.md](CONTRIBUTING.md) for build, test, style, and review expectations.
+
+---
+
+## Third-party software
+
+The repository includes Dear ImGui, SDL2 development files for Windows, and Premake. Their respective license files remain alongside the vendored code. SDL2_image and SDL2_mixer runtime files also include their upstream and optional-codec notices.
 
 ---
 
 ## License
 
-MIT License as in LICENSE.TXT
+NeraChess is available under the [MIT License](LICENSE).

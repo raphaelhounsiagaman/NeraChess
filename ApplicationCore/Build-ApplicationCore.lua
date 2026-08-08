@@ -5,6 +5,7 @@ project "ApplicationCore"
   targetdir ("../bin/%{cfg.buildcfg}/%{prj.name}")
   objdir ("../bin/Intermediates/%{cfg.buildcfg}/%{prj.name}")
   staticruntime "off"
+  warnings "Extra"
 
   files
   {
@@ -67,6 +68,5 @@ project "ApplicationCore"
     defines { "DIST" }
     runtime "Release"
     optimize "On"
-    linktimeoptimization "On"
     symbols "Off"
-  filter{}
+  filter {}
