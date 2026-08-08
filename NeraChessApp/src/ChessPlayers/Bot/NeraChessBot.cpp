@@ -3,13 +3,17 @@
 #include "Resources.h"
 #include "TimeManagement.h"
 
+#include <algorithm>
 #include <iostream>
 #include <string>
+#include <thread>
 
 NeraChessBot::NeraChessBot()
     : m_OpeningBookPath(NeraChessApp::GetResourcePath("OpeningBook/OpeningBook.txt")),
       m_OpeningBook(m_OpeningBookPath)
 {
+    const unsigned hardwareThreads = std::max(1U, std::thread::hardware_concurrency());
+    m_SearchEngine.SetThreadCount(std::min<size_t>(4, hardwareThreads));
     if (!m_OpeningBook.IsAvailable())
         std::cout << "Opening book missing (" << m_OpeningBookPath << ")\n";
 }

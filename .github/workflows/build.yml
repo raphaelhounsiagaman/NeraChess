@@ -50,6 +50,17 @@ jobs:
           make -C NeraChessTests config=debug -B -j"$jobs" CXXFLAGS="$sanitizer_flags" LDFLAGS='-fsanitize=address,undefined'
           ./bin/Debug/NeraChessTests/NeraChessTests
 
+      - name: Build and run thread-sanitized regressions
+        run: |
+          jobs="$(nproc)"
+          sanitizer_flags='-fsanitize=thread -fno-omit-frame-pointer -O1 -g'
+          make -C NeraChessEngine config=debug -B -j"$jobs" CXXFLAGS="$sanitizer_flags"
+          make -C NeraChessSearch config=debug -B -j"$jobs" CXXFLAGS="$sanitizer_flags"
+          make -C NeraChessUCI config=debug -B -j"$jobs" CXXFLAGS="$sanitizer_flags" LDFLAGS='-fsanitize=thread'
+          make -C NeraChessTests config=debug -B -j"$jobs" CXXFLAGS="$sanitizer_flags" LDFLAGS='-fsanitize=thread'
+          TSAN_OPTIONS='halt_on_error=1 second_deadlock_stack=1' ./bin/Debug/NeraChessTests/NeraChessTests
+          TSAN_OPTIONS='halt_on_error=1 second_deadlock_stack=1' python3 scripts/Test-UciPonder.py ./bin/Debug/NeraChessUCI/NeraChessUCI
+
   macos:
     name: macOS
     runs-on: macos-latest
