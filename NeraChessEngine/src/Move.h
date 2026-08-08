@@ -7,17 +7,15 @@
 #include "Square.h"
 
 /*
-* 
 * | Bits  | Purpose         |
 * | ----- | --------------- |
 * | 0     | validation      |
-* | 1–6   | start square    |
-* | 7–12  | target square   |
-* | 13–16 | move piece      |
-* | 17–20 | promotion piece |
-* | 21–28 | move flags      |
-* | 29–31 | unused		    |
-* 
+* | 1-6   | start square    |
+* | 7-12  | target square   |
+* | 13-16 | move piece      |
+* | 17-20 | promotion piece |
+* | 21-28 | move flags      |
+* | 29-31 | unused          |
 */
 
 namespace NeraChessEngine

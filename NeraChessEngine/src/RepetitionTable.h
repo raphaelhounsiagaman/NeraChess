@@ -1,28 +1,23 @@
 #pragma once
 
-#include <array>
+#include <cassert>
+#include <cstddef>
+#include <cstdint>
+#include <vector>
 
 namespace NeraChessEngine
 {
 
-	using Bitboard = uint64_t;
-
-	struct RepetitionEntry
-	{
-		std::array<Bitboard, 12> pieceBitboards;
-		uint8_t repetitionCount = 0;
-	};
-
-	class RepetitionTable
+    class RepetitionTable
 	{
 	public:
-		RepetitionTable() = default;
+			RepetitionTable();
 		~RepetitionTable() = default;
 
-		void AddEntry(const std::array<Bitboard, 12>& pieceBitboards);
-		void RemoveEntry(const std::array<Bitboard, 12>& pieceBitboards);
+            void AddEntry(uint64_t positionKey);
+            void RemoveEntry(uint64_t positionKey);
 
-		uint8_t GetRepetitionCount(const std::array<Bitboard, 12>& pieceBitboards) const;
+            uint16_t GetRepetitionCount(uint64_t positionKey, std::size_t reversiblePlies) const;
 
 		void Clear();
 
@@ -30,7 +25,7 @@ namespace NeraChessEngine
 
 	private:
 
-		std::array<RepetitionEntry, 50> m_Entries;
+			std::vector<uint64_t> m_Keys;
 
 	};
 

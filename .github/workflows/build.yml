@@ -8,6 +8,48 @@ permissions:
   contents: read
 
 jobs:
+  linux-headless:
+    name: Linux Headless + Sanitizers
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+
+      - name: Generate Makefiles
+        run: bash ./scripts/Setup-Linux.sh gmake
+
+      - name: Build headless Debug and Release
+        run: |
+          jobs="$(nproc)"
+          make -C NeraChessEngine config=debug -j"$jobs"
+          make -C NeraChessSearch config=debug -j"$jobs"
+          make -C NeraChessUCI config=debug -j"$jobs"
+          make -C NeraChessTests config=debug -j"$jobs"
+          make -C NeraChessEngine config=release -j"$jobs"
+          make -C NeraChessSearch config=release -j"$jobs"
+          make -C NeraChessUCI config=release -j"$jobs"
+          make -C NeraChessTests config=release -j"$jobs"
+
+      - name: Run release regressions and UCI smoke test
+        run: |
+          ./bin/Release/NeraChessTests/NeraChessTests
+          uci_output="$(printf 'uci\nisready\nposition startpos\ngo depth 3 wtime 60000 btime 60000 winc 1000 binc 1000 movestogo 30\n' | ./bin/Release/NeraChessUCI/NeraChessUCI)"
+          printf '%s\n' "$uci_output"
+          grep -q '^uciok$' <<< "$uci_output"
+          grep -q '^readyok$' <<< "$uci_output"
+          grep -q '^bestmove e2e4$' <<< "$uci_output"
+          python3 scripts/Test-UciPonder.py ./bin/Release/NeraChessUCI/NeraChessUCI
+
+      - name: Build and run sanitized regressions
+        run: |
+          jobs="$(nproc)"
+          sanitizer_flags='-fsanitize=address,undefined -fno-omit-frame-pointer'
+          make -C NeraChessEngine config=debug -B -j"$jobs" CXXFLAGS="$sanitizer_flags"
+          make -C NeraChessSearch config=debug -B -j"$jobs" CXXFLAGS="$sanitizer_flags"
+          make -C NeraChessTests config=debug -B -j"$jobs" CXXFLAGS="$sanitizer_flags" LDFLAGS='-fsanitize=address,undefined'
+          ./bin/Debug/NeraChessTests/NeraChessTests
+
   macos:
     name: macOS
     runs-on: macos-latest
@@ -31,7 +73,21 @@ jobs:
         env:
           SDL_AUDIODRIVER: dummy
           SDL_VIDEODRIVER: dummy
-        run: ./bin/Release/NeraChessApp/NeraChessApp --smoke-test
+        run: |
+          ./bin/Release/NeraChessApp/NeraChessApp --smoke-test
+          ./bin/Release/NeraChessApp/NeraChessApp --clock-smoke-test
+
+      - name: Run engine regression tests
+        run: ./bin/Release/NeraChessTests/NeraChessTests
+
+      - name: Run UCI protocol smoke test
+        run: |
+          uci_output="$(printf 'uci\nisready\nposition startpos\ngo depth 3 wtime 60000 btime 60000 winc 1000 binc 1000 movestogo 30\n' | ./bin/Release/NeraChessUCI/NeraChessUCI)"
+          printf '%s\n' "$uci_output"
+          grep -q '^uciok$' <<< "$uci_output"
+          grep -q '^readyok$' <<< "$uci_output"
+          grep -q '^bestmove e2e4$' <<< "$uci_output"
+          python3 scripts/Test-UciPonder.py ./bin/Release/NeraChessUCI/NeraChessUCI
 
   windows:
     name: Windows
@@ -59,4 +115,21 @@ jobs:
         env:
           SDL_AUDIODRIVER: dummy
           SDL_VIDEODRIVER: dummy
-        run: bin\Release\NeraChessApp\NeraChessApp.exe --smoke-test
+        run: |
+          bin\Release\NeraChessApp\NeraChessApp.exe --smoke-test
+          bin\Release\NeraChessApp\NeraChessApp.exe --clock-smoke-test
+
+      - name: Run engine regression tests
+        shell: cmd
+        run: bin\Release\NeraChessTests\NeraChessTests.exe
+
+      - name: Run UCI protocol smoke test
+        shell: pwsh
+        run: |
+          $output = @("uci", "isready", "position startpos", "go depth 3 wtime 60000 btime 60000 winc 1000 binc 1000 movestogo 30") |
+            & bin\Release\NeraChessUCI\NeraChessUCI.exe
+          $output | Write-Output
+          if ($output -notcontains "uciok") { throw "UCI handshake failed" }
+          if ($output -notcontains "readyok") { throw "UCI readiness failed" }
+          if ($output -notcontains "bestmove e2e4") { throw "UCI opening-book lookup failed" }
+          python scripts/Test-UciPonder.py bin\Release\NeraChessUCI\NeraChessUCI.exe

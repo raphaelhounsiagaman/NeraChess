@@ -4,6 +4,7 @@
 #include "Core/Event.h"
 
 #include "Resources.h"
+#include "UILayout.h"
 
 #include <string>
 #include <vector>
@@ -543,7 +544,11 @@ bool BoardLayer::OnWindowResize(ApplicationCore::WindowResizeEvent& event)
 
 void BoardLayer::UpdateSize(ApplicationCore::Vec2<uint32_t> windowSize)
 {
-	uint32_t smallerSide = std::min(windowSize.X, windowSize.Y);
+	uint32_t boardAreaWidth = windowSize.X;
+	if (windowSize.X >= NeraChessApp::UILayout::MinimumSideBySideWidth)
+		boardAreaWidth -= NeraChessApp::UILayout::SidePanelReservedWidth;
+
+	uint32_t smallerSide = std::min(boardAreaWidth, windowSize.Y);
 
 	uint32_t smallerMargin = uint32_t(smallerSide * m_MarginProportion);
 
@@ -551,12 +556,12 @@ void BoardLayer::UpdateSize(ApplicationCore::Vec2<uint32_t> windowSize)
 
 	m_SquareSize = { squareSide, squareSide };
 
-	bool isHorizontalWindow = windowSize.X > windowSize.Y;
+	bool isHorizontalWindow = boardAreaWidth > windowSize.Y;
 
 	if (isHorizontalWindow)
 	{
 		m_Margin.Y = smallerMargin;
-		m_Margin.X = (windowSize.X - m_SquareSize.X * 8) / 2;
+		m_Margin.X = (boardAreaWidth - m_SquareSize.X * 8) / 2;
 	}
 	else
 	{

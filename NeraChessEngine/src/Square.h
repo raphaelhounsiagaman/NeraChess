@@ -51,37 +51,25 @@ namespace NeraChessEngine
 
 		static bool IsValidCoordinates(uint8_t file, uint8_t rank);
 
-		static const Square a1;
-		static const Square b1;
-		static const Square c1;
-		static const Square d1;
-		static const Square e1;
-		static const Square f1;
-		static const Square g1;
-		static const Square h1;
+		enum : uint8_t
+		{
+			a1 = 0, b1 = 1, c1 = 2, d1 = 3, e1 = 4, f1 = 5, g1 = 6, h1 = 7,
+			a8 = 56, b8 = 57, c8 = 58, d8 = 59, e8 = 60, f8 = 61, g8 = 62, h8 = 63,
+		};
 
-		static const Square a8;
-		static const Square b8;
-		static const Square c8;
-		static const Square d8;
-		static const Square e8;
-		static const Square f8;
-		static const Square g8;
-		static const Square h8;
+		static constexpr Bitboard FileA = 0x0101010101010101ULL;
+		static constexpr Bitboard FileH = FileA << 7;
+		static constexpr Bitboard NotAFile = ~FileA;
+		static constexpr Bitboard NotHFile = ~FileH;
 
-		static const Bitboard FileA;
-		static const Bitboard FileH;
-		static const Bitboard NotAFile;
-		static const Bitboard NotHFile;
-		 
-		static const Bitboard Rank1;
-		static const Bitboard Rank2;
-		static const Bitboard Rank3;
-		static const Bitboard Rank4;
-		static const Bitboard Rank5;
-		static const Bitboard Rank6;
-		static const Bitboard Rank7;
-		static const Bitboard Rank8;
+		static constexpr Bitboard Rank1 = 0xFFULL;
+		static constexpr Bitboard Rank2 = Rank1 << (8 * 1);
+		static constexpr Bitboard Rank3 = Rank1 << (8 * 2);
+		static constexpr Bitboard Rank4 = Rank1 << (8 * 3);
+		static constexpr Bitboard Rank5 = Rank1 << (8 * 4);
+		static constexpr Bitboard Rank6 = Rank1 << (8 * 5);
+		static constexpr Bitboard Rank7 = Rank1 << (8 * 6);
+		static constexpr Bitboard Rank8 = Rank1 << (8 * 7);
 
 	};
 

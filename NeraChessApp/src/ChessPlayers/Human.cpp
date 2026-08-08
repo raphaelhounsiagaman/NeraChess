@@ -19,12 +19,17 @@ NeraChessEngine::Move Human::GetNextMove(const NeraChessEngine::ChessBoard& boar
 
     boardLayer->BeginHumanMoveInput();
 
+	const bool whiteToMove = board.GetBoardState().HasFlag(
+		NeraChessEngine::BoardStateFlags::WhiteToMove);
+
     while (!m_StopSearching)
     {
         if (boardLayer->TryGetHumanMove(&move))
             return move;
+		if (timer.HasExpired(whiteToMove))
+			break;
 
-        std::this_thread::sleep_for(std::chrono::milliseconds(50));
+		std::this_thread::sleep_for(std::chrono::milliseconds(10));
     }
 
     boardLayer->CancelHumanMoveInput();

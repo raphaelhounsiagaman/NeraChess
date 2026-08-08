@@ -1,11 +1,12 @@
 #include "ChessBoard.h"
 
 #include <array>
+#include <charconv>
 #include <cstdint>
 #include <iostream>
+#include <limits>
 #include <sstream>
 #include <string>
-#include <vector>
 #include <chrono>
 
 #include "MoveGenerator.h"
@@ -37,157 +38,171 @@ namespace NeraChessEngine
 		m_MovesPlayed.reserve(100);
 
 		std::istringstream fenStream(fen);
-		std::string part;
-		std::vector<std::string> fenParts;
-
-		while (fenStream >> part)
+		std::array<std::string, 6> fenParts;
+		for (std::string& part : fenParts)
 		{
-			fenParts.push_back(part);
+			if (!(fenStream >> part))
+			{
+				m_Error = 1;
+				return;
+			}
 		}
-
-		if (fenParts.size() != 6)
+		std::string extraPart;
+		if (fenStream >> extraPart)
 		{
-			std::printf("Invalid FEN string: %s\n", fen.c_str());
 			m_Error = 1;
 			return;
 		}
 
-		uint8_t file = 0;
-		uint8_t rank = 7;
+		int file = 0;
+		int rank = 7;
+		bool previousWasDigit = false;
 		for (char character : fenParts[0])
 		{
-			switch (character)
+			if (character == '/')
 			{
-			case 'p':
-				m_BoardState.pieceBitboards[(uint8_t)PieceType::BLACK_PAWN] |= 1ULL << (rank * 8 + file);
-				file++;
-				break;
-			case 'n':
-				m_BoardState.pieceBitboards[(uint8_t)PieceType::BLACK_KNIGHT] |= 1ULL << (rank * 8 + file);
-				file++;
-				break;
-			case 'b':
-				m_BoardState.pieceBitboards[(uint8_t)PieceType::BLACK_BISHOP] |= 1ULL << (rank * 8 + file);
-				file++;
-				break;
-			case 'r':
-				m_BoardState.pieceBitboards[(uint8_t)PieceType::BLACK_ROOK] |= 1ULL << (rank * 8 + file);
-				file++;
-				break;
-			case 'q':
-				m_BoardState.pieceBitboards[(uint8_t)PieceType::BLACK_QUEEN] |= 1ULL << (rank * 8 + file);
-				file++;
-				break;
-			case 'k':
-				m_BoardState.pieceBitboards[(uint8_t)PieceType::BLACK_KING] |= 1ULL << (rank * 8 + file);
-				file++;
-				break;
-			case 'P':
-				m_BoardState.pieceBitboards[(uint8_t)PieceType::WHITE_PAWN] |= 1ULL << (rank * 8 + file);
-				file++;
-				break;
-			case 'N':
-				m_BoardState.pieceBitboards[(uint8_t)PieceType::WHITE_KNIGHT] |= 1ULL << (rank * 8 + file);
-				file++;
-				break;
-			case 'B':
-				m_BoardState.pieceBitboards[(uint8_t)PieceType::WHITE_BISHOP] |= 1ULL << (rank * 8 + file);
-				file++;
-				break;
-			case 'R':
-				m_BoardState.pieceBitboards[(uint8_t)PieceType::WHITE_ROOK] |= 1ULL << (rank * 8 + file);
-				file++;
-				break;
-			case 'Q':
-				m_BoardState.pieceBitboards[(uint8_t)PieceType::WHITE_QUEEN] |= 1ULL << (rank * 8 + file);
-				file++;
-				break;
-			case 'K':
-				m_BoardState.pieceBitboards[(uint8_t)PieceType::WHITE_KING] |= 1ULL << (rank * 8 + file);
-				file++;
-				break;
-			case '-': case '1':
-				file++;
-				break;
-			case '2':
-				file += 2;
-				break;
-			case '3':
-				file += 3;
-				break;
-			case '4':
-				file += 4;
-				break;
-			case '5':
-				file += 5;
-				break;
-			case '6':
-				file += 6;
-				break;
-			case '7':
-				file += 7;
-				break;
-			case '8':
-				file += 8;
-				break;
-			case '/':
+				if (file != 8 || rank == 0)
+				{
+					m_Error = 1;
+					return;
+				}
+				--rank;
 				file = 0;
-				rank--;
-				break;
-			default:
-				break;
-			}
-		}
-
-		m_BoardState.boardStateFlags |= fenParts[1][0] == 'w' ? (uint8_t)BoardStateFlags::WhiteToMove : 0;
-
-		for (char character : fenParts[2])
-		{
-			switch (character)
-			{
-			case 'K':
-				m_BoardState.boardStateFlags |= (uint8_t)BoardStateFlags::CanWhiteCastleKing;
-				break;
-			case 'Q':
-				m_BoardState.boardStateFlags |= (uint8_t)BoardStateFlags::CanWhiteCastleQueen;
-				break;
-			case 'k':
-				m_BoardState.boardStateFlags |= (uint8_t)BoardStateFlags::CanBlackCastleKing;
-				break;
-			case 'q':
-				m_BoardState.boardStateFlags |= (uint8_t)BoardStateFlags::CanBlackCastleQueen;
-				break;
-			default:
-				break;
+				previousWasDigit = false;
+				continue;
 			}
 
-		}
-
-		if (fenParts[3][0] != '-')
-		{
-			uint8_t file = fenParts[3][0] - 'a';
-			uint8_t rank = fenParts[3][1] - '1';
-
-			if (file > 7 || rank > 7)
+			if (character >= '1' && character <= '8')
 			{
-				std::printf("Invalid en passant square in FEN string: %s\n", fenParts[3].c_str());
+				if (previousWasDigit || file + character - '0' > 8)
+				{
+					m_Error = 1;
+					return;
+				}
+				file += character - '0';
+				previousWasDigit = true;
+				continue;
+			}
+
+			if (file >= 8)
+			{
 				m_Error = 1;
 				return;
 			}
-			else
+
+			Piece piece = PieceType::NO_PIECE;
+			switch (character)
 			{
-				m_BoardState.boardStateFlags |= (uint8_t)BoardStateFlags::CanEnPassent;
-				m_BoardState.enPassantFile = file;
+			case 'p': piece = PieceType::BLACK_PAWN; break;
+			case 'n': piece = PieceType::BLACK_KNIGHT; break;
+			case 'b': piece = PieceType::BLACK_BISHOP; break;
+			case 'r': piece = PieceType::BLACK_ROOK; break;
+			case 'q': piece = PieceType::BLACK_QUEEN; break;
+			case 'k': piece = PieceType::BLACK_KING; break;
+			case 'P': piece = PieceType::WHITE_PAWN; break;
+			case 'N': piece = PieceType::WHITE_KNIGHT; break;
+			case 'B': piece = PieceType::WHITE_BISHOP; break;
+			case 'R': piece = PieceType::WHITE_ROOK; break;
+			case 'Q': piece = PieceType::WHITE_QUEEN; break;
+			case 'K': piece = PieceType::WHITE_KING; break;
+			default:
+				m_Error = 1;
+				return;
+			}
+			m_BoardState.pieceBitboards[piece] |= 1ULL << (rank * 8 + file);
+			++file;
+			previousWasDigit = false;
+		}
+		if (rank != 0 || file != 8 ||
+			BitUtil::PopCnt(m_BoardState.pieceBitboards[PieceType::WHITE_KING]) != 1 ||
+			BitUtil::PopCnt(m_BoardState.pieceBitboards[PieceType::BLACK_KING]) != 1 ||
+			((m_BoardState.pieceBitboards[PieceType::WHITE_PAWN] |
+				m_BoardState.pieceBitboards[PieceType::BLACK_PAWN]) &
+				(Square::Rank1 | Square::Rank8)))
+		{
+			m_Error = 1;
+			return;
+		}
+
+		if (fenParts[1] == "w")
+			m_BoardState.boardStateFlags |= BoardStateFlags::WhiteToMove;
+		else if (fenParts[1] != "b")
+		{
+			m_Error = 1;
+			return;
+		}
+
+		if (fenParts[2] != "-")
+		{
+			for (char character : fenParts[2])
+			{
+				uint8_t flag = 0;
+				switch (character)
+				{
+				case 'K': flag = BoardStateFlags::CanWhiteCastleKing; break;
+				case 'Q': flag = BoardStateFlags::CanWhiteCastleQueen; break;
+				case 'k': flag = BoardStateFlags::CanBlackCastleKing; break;
+				case 'q': flag = BoardStateFlags::CanBlackCastleQueen; break;
+				default:
+					m_Error = 1;
+					return;
+				}
+				if (m_BoardState.boardStateFlags & flag)
+				{
+					m_Error = 1;
+					return;
+				}
+				m_BoardState.boardStateFlags |= flag;
 			}
 		}
 
-		m_HalfMoveClock = std::stoi(fenParts[4]);
+		if (fenParts[3] != "-")
+		{
+			const char expectedRank = m_BoardState.HasFlag(BoardStateFlags::WhiteToMove)
+				? '6' : '3';
+			if (fenParts[3].size() != 2 || fenParts[3][0] < 'a' ||
+				fenParts[3][0] > 'h' || fenParts[3][1] != expectedRank)
+			{
+				m_Error = 1;
+				return;
+			}
+			m_BoardState.boardStateFlags |= BoardStateFlags::CanEnPassent;
+			m_BoardState.enPassantFile = fenParts[3][0] - 'a';
+		}
 
-		m_FullMoves = std::stoi(fenParts[5]);
+		auto parseClock = [](const std::string& value, uint16_t& result, bool allowZero)
+		{
+			uint32_t parsed = 0;
+			const auto [end, error] = std::from_chars(
+				value.data(), value.data() + value.size(), parsed);
+			if (error != std::errc{} || end != value.data() + value.size() ||
+				parsed > std::numeric_limits<uint16_t>::max() || (!allowZero && parsed == 0))
+			{
+				return false;
+			}
+			result = static_cast<uint16_t>(parsed);
+			return true;
+		};
+		if (!parseClock(fenParts[4], m_HalfMoveClock, true) ||
+			!parseClock(fenParts[5], m_FullMoves, false))
+		{
+			m_Error = 1;
+			return;
+		}
 
-		m_RepetitionTable.AddEntry(m_BoardState.pieceBitboards);
+		BoardState nonMovingSide = m_BoardState;
+		nonMovingSide.boardStateFlags ^= BoardStateFlags::WhiteToMove;
+		MoveGenerator legalityValidator;
+		(void)legalityValidator.GenerateMoves(nonMovingSide);
+		if (legalityValidator.InCheck())
+		{
+			m_Error = 1;
+			return;
+		}
 
 		m_ZobristKey = Zobrist::CalculateZobristKey(*this);
+		m_ZobristKeySet = true;
+		m_RepetitionTable.AddEntry(GetRepetitionKey());
 
 	}
 
@@ -195,7 +210,7 @@ namespace NeraChessEngine
 	{
 		bool same = true;
 
-		if (m_RepetitionTable != m_RepetitionTable)
+		if (m_RepetitionTable != other.m_RepetitionTable)
 			same = false;
 		else if (m_BoardState != other.m_BoardState)
 			same = false;
@@ -209,24 +224,6 @@ namespace NeraChessEngine
 			same = false;
 
 		return same;
-	}
-
-	void ChessBoard::RemovePiece(Square square)
-	{
-		for (Piece piece = PieceType::WHITE_PAWN; piece <= PieceType::BLACK_KING; piece++)
-		{
-			if ((m_BoardState.pieceBitboards[piece] >> square) & 1ULL)
-			{
-				m_BoardState.pieceBitboards[piece] &= ~(1ULL << square);
-				return;
-			}
-		}
-	}
-
-	void ChessBoard::SetPiece(Square square, Piece piece)
-	{
-		RemovePiece(square);
-		m_BoardState.pieceBitboards[piece] |= (1ULL << square);
 	}
 
 	Piece ChessBoard::GetPiece(const uint8_t square) const
@@ -258,7 +255,8 @@ namespace NeraChessEngine
 		}
 
 
-		m_ZobristKeySet = false;
+		m_ZobristKey = GetZobristKey();
+		m_ZobristKeySet = true;
 
 		m_WasBoardStateChanged = true;
 
@@ -273,27 +271,29 @@ namespace NeraChessEngine
 
 		const bool whitesMove = movePiece.IsWhite();
 
-		const Piece capturedPiece =
-			(moveFlags & MoveFlags::IS_EN_PASSANT) 
+		const Piece capturedPiece = (moveFlags & MoveFlags::IS_EN_PASSANT)
 			? (whitesMove ? PieceType::BLACK_PAWN : PieceType::WHITE_PAWN)
-			: GetPiece(move.GetTargetSquare());
+			: ((moveFlags & MoveFlags::IS_CAPTURE) ? GetPiece(targetSquare) : PieceType::NO_PIECE);
 
 		UndoInfo info{};
 		info.capturedPiece = capturedPiece;
 		info.castlingRights = m_BoardState.GetCastlingRights();
 		info.enPassantFile = m_BoardState.HasFlag(BoardStateFlags::CanEnPassent) ? m_BoardState.enPassantFile : 8;
 		info.halfmoveClock = m_HalfMoveClock;
+		info.zobristKey = m_ZobristKey;
+		const uint8_t previousHashEnPassantFile = GetZobristEnPassantFile();
 
 		if (!gameMove)
 			m_UndoStack.push(info);
 
-		// remove the piece from the start square
-		m_BoardState.pieceBitboards[movePiece] &= ~startSquareBitboard;
-		m_BoardState.pieceBitboards[movePiece] |= targetSquareBitboard;
-
 		Bitboard& movePieceBoard = m_BoardState.pieceBitboards[movePiece];
 		movePieceBoard &= ~startSquareBitboard;
 		movePieceBoard |= targetSquareBitboard;
+		m_ZobristKey ^= Zobrist::piecesArray[movePiece][startSquare];
+		m_ZobristKey ^= Zobrist::piecesArray[movePiece][targetSquare];
+		m_ZobristKey ^= Zobrist::castlingRights[info.castlingRights];
+		m_ZobristKey ^= Zobrist::enPassantFile[previousHashEnPassantFile];
+		m_ZobristKey ^= Zobrist::sideToMove;
 
 		m_HalfMoveClock++;
 		if (movePiece == PieceType::WHITE_PAWN || movePiece == PieceType::BLACK_PAWN || (moveFlags & MoveFlags::IS_CAPTURE))
@@ -306,6 +306,8 @@ namespace NeraChessEngine
 		if (moveFlags & MoveFlags::IS_CAPTURE)
 		{
 			m_BoardState.pieceBitboards[capturedPiece] &= ~targetSquareBitboard;
+			if (!(moveFlags & MoveFlags::IS_EN_PASSANT))
+				m_ZobristKey ^= Zobrist::piecesArray[capturedPiece][targetSquare];
 
 			if (capturedPiece == PieceType::WHITE_ROOK && targetSquare == 0)
 			{
@@ -327,6 +329,7 @@ namespace NeraChessEngine
 			{
 				uint8_t capturedPawnSquare = targetSquare + (movePiece == PieceType::WHITE_PAWN ? -8 : 8);
 				m_BoardState.pieceBitboards[capturedPiece] &= ~(s_SquareBitboard[capturedPawnSquare]);
+				m_ZobristKey ^= Zobrist::piecesArray[capturedPiece][capturedPawnSquare];
 			}
 		}
 
@@ -344,11 +347,15 @@ namespace NeraChessEngine
 				{
 					m_BoardState.pieceBitboards[PieceType::WHITE_ROOK] &= ~s_SquareBitboard[0];
 					m_BoardState.pieceBitboards[PieceType::WHITE_ROOK] |= s_SquareBitboard[3];
+					m_ZobristKey ^= Zobrist::piecesArray[PieceType::WHITE_ROOK][0];
+					m_ZobristKey ^= Zobrist::piecesArray[PieceType::WHITE_ROOK][3];
 				}
 				else
 				{
 					m_BoardState.pieceBitboards[PieceType::WHITE_ROOK] &= ~s_SquareBitboard[7];
 					m_BoardState.pieceBitboards[PieceType::WHITE_ROOK] |= s_SquareBitboard[5];
+					m_ZobristKey ^= Zobrist::piecesArray[PieceType::WHITE_ROOK][7];
+					m_ZobristKey ^= Zobrist::piecesArray[PieceType::WHITE_ROOK][5];
 				}
 
 			}
@@ -361,11 +368,15 @@ namespace NeraChessEngine
 				{
 					m_BoardState.pieceBitboards[PieceType::BLACK_ROOK] &= ~s_SquareBitboard[56];
 					m_BoardState.pieceBitboards[PieceType::BLACK_ROOK] |= s_SquareBitboard[59];
+					m_ZobristKey ^= Zobrist::piecesArray[PieceType::BLACK_ROOK][56];
+					m_ZobristKey ^= Zobrist::piecesArray[PieceType::BLACK_ROOK][59];
 				}
 				else
 				{
 					m_BoardState.pieceBitboards[PieceType::BLACK_ROOK] &= ~s_SquareBitboard[63];
 					m_BoardState.pieceBitboards[PieceType::BLACK_ROOK] |= s_SquareBitboard[61];
+					m_ZobristKey ^= Zobrist::piecesArray[PieceType::BLACK_ROOK][63];
+					m_ZobristKey ^= Zobrist::piecesArray[PieceType::BLACK_ROOK][61];
 				}
 
 
@@ -420,17 +431,20 @@ namespace NeraChessEngine
 		{
 			movePieceBoard &= ~targetSquareBitboard;
 			m_BoardState.pieceBitboards[promoPiece] |= targetSquareBitboard;
+			m_ZobristKey ^= Zobrist::piecesArray[movePiece][targetSquare];
+			m_ZobristKey ^= Zobrist::piecesArray[promoPiece][targetSquare];
 		}
 	
 		m_MovesPlayed.push_back(move);
 	
 
-		m_RepetitionTable.AddEntry(m_BoardState.pieceBitboards);
-
 		if (!whitesMove)
 			m_FullMoves++;
 
 		m_BoardState.boardStateFlags ^= BoardStateFlags::WhiteToMove;
+		m_ZobristKey ^= Zobrist::castlingRights[m_BoardState.GetCastlingRights()];
+		m_ZobristKey ^= Zobrist::enPassantFile[GetZobristEnPassantFile()];
+		m_RepetitionTable.AddEntry(GetRepetitionKey());
 	}
 
 
@@ -442,14 +456,14 @@ namespace NeraChessEngine
 			return;
 		}
 
-		m_ZobristKeySet = false;
-
 		m_WasBoardStateChanged = true;
 
 		m_MovesPlayed.pop_back();
 		UndoInfo info = m_UndoStack.pop();
 
-		m_RepetitionTable.RemoveEntry(m_BoardState.pieceBitboards);
+		m_RepetitionTable.RemoveEntry(GetRepetitionKey());
+		m_ZobristKey = info.zobristKey;
+		m_ZobristKeySet = true;
 
 		const bool whitesMove = move.GetMovePiece().IsWhite();
 
@@ -546,28 +560,46 @@ namespace NeraChessEngine
 		if (IsInCheck())
 			return false;
 
-		if (m_BoardState.HasFlag(BoardStateFlags::WhiteToMove))
-		{
-			m_BoardState.boardStateFlags &= ~(uint8_t)BoardStateFlags::WhiteToMove;
-		}
-		else
-		{
-			m_BoardState.boardStateFlags |= (uint8_t)BoardStateFlags::WhiteToMove;
-		}
+		UndoInfo info{};
+		info.castlingRights = m_BoardState.GetCastlingRights();
+		info.enPassantFile = m_BoardState.HasFlag(BoardStateFlags::CanEnPassent)
+			? m_BoardState.enPassantFile : 8;
+		info.halfmoveClock = m_HalfMoveClock;
+		info.zobristKey = GetZobristKey();
+		const uint8_t previousHashEnPassantFile = GetZobristEnPassantFile();
+		m_UndoStack.push(info);
+
+		m_ZobristKey ^= Zobrist::enPassantFile[previousHashEnPassantFile];
+		m_ZobristKey ^= Zobrist::enPassantFile[8];
+		m_ZobristKey ^= Zobrist::sideToMove;
+		m_BoardState.boardStateFlags ^= BoardStateFlags::WhiteToMove;
+		m_BoardState.boardStateFlags &= ~BoardStateFlags::CanEnPassent;
+		m_BoardState.enPassantFile = 8;
+		m_WasBoardStateChanged = true;
+		m_GameOverFlags = 0;
 
 		return true;
 	}
 
 	void ChessBoard::UndoNullMove()
 	{
-		if (m_BoardState.HasFlag(BoardStateFlags::WhiteToMove))
+		UndoInfo info = m_UndoStack.pop();
+		m_BoardState.boardStateFlags ^= BoardStateFlags::WhiteToMove;
+		if (info.enPassantFile < 8)
 		{
-			m_BoardState.boardStateFlags &= ~(uint8_t)BoardStateFlags::WhiteToMove;
+			m_BoardState.boardStateFlags |= BoardStateFlags::CanEnPassent;
+			m_BoardState.enPassantFile = info.enPassantFile;
 		}
 		else
 		{
-			m_BoardState.boardStateFlags |= (uint8_t)BoardStateFlags::WhiteToMove;
+			m_BoardState.boardStateFlags &= ~BoardStateFlags::CanEnPassent;
+			m_BoardState.enPassantFile = 8;
 		}
+		m_HalfMoveClock = info.halfmoveClock;
+		m_ZobristKey = info.zobristKey;
+		m_ZobristKeySet = true;
+		m_WasBoardStateChanged = true;
+		m_GameOverFlags = 0;
 	}
 
 	MoveList<218> ChessBoard::GetLegalMoves() const
@@ -582,45 +614,50 @@ namespace NeraChessEngine
 
 	uint16_t ChessBoard::GetGameOver(bool gameCheck) const
 	{
-		gameCheck = true;
-
+		uint16_t flags = GameOverFlags::IS_GAME_OVER;
 		if (m_WasBoardStateChanged)
 		{
 			m_LegalMoves = m_MoveGenerator.GenerateMoves(m_BoardState);
 			m_WasBoardStateChanged = false;
 		}	
 	
-		m_GameOverFlags |= GameOverFlags::IS_GAME_OVER;
-
 		if (m_LegalMoves.size() == 0)
 		{
 
 			if (m_MoveGenerator.InCheck())
 			{
-				m_GameOverFlags |= GameOverFlags::IS_CHECKMATE;
-				return m_GameOverFlags;
+				flags |= GameOverFlags::IS_CHECKMATE;
+				if (!m_BoardState.HasFlag(BoardStateFlags::WhiteToMove))
+					flags |= GameOverFlags::IS_WHITE_WIN;
+				m_GameOverFlags = flags;
+				return flags;
 			}
-		
-			m_GameOverFlags |= GameOverFlags::IS_STALEMATE;
-			return m_GameOverFlags;
+
+			flags |= GameOverFlags::IS_STALEMATE | GameOverFlags::IS_DRAW;
+			m_GameOverFlags = flags;
+			return flags;
 		}
 
-		if (m_HalfMoveClock >= 50)
+		if (m_HalfMoveClock >= 100)
 		{
-			m_GameOverFlags |= GameOverFlags::IS_50MOVE_RULE;
-			return m_GameOverFlags;
+			flags |= GameOverFlags::IS_50MOVE_RULE | GameOverFlags::IS_DRAW;
+			m_GameOverFlags = flags;
+			return flags;
 		}
 
-		if (gameCheck && m_RepetitionTable.GetRepetitionCount(m_BoardState.pieceBitboards) >= 3)
+		if (gameCheck &&
+			m_RepetitionTable.GetRepetitionCount(GetRepetitionKey(), m_HalfMoveClock) >= 3)
 		{
-			m_GameOverFlags |= GameOverFlags::IS_REPETITION;
-			return m_GameOverFlags;
+			flags |= GameOverFlags::IS_REPETITION | GameOverFlags::IS_DRAW;
+			m_GameOverFlags = flags;
+			return flags;
 		}
 
 		if (InsufficentMaterial(*this))
 		{
-			m_GameOverFlags |= GameOverFlags::IS_INSUFFICIENT_MATERIAL;
-			return m_GameOverFlags;
+			flags |= GameOverFlags::IS_INSUFFICIENT_MATERIAL | GameOverFlags::IS_DRAW;
+			m_GameOverFlags = flags;
+			return flags;
 		}
 
 		m_GameOverFlags = 0;
@@ -635,6 +672,28 @@ namespace NeraChessEngine
 		m_ZobristKey = Zobrist::CalculateZobristKey(*this);
 		m_ZobristKeySet = true;
 		return m_ZobristKey;
+	}
+
+	uint64_t ChessBoard::GetRepetitionKey() const
+	{
+		return GetZobristKey();
+	}
+
+	uint8_t ChessBoard::GetZobristEnPassantFile() const
+	{
+		if (!m_BoardState.HasFlag(BoardStateFlags::CanEnPassent) || m_BoardState.enPassantFile >= 8)
+			return 8;
+
+		const bool whiteToMove = m_BoardState.HasFlag(BoardStateFlags::WhiteToMove);
+		const uint8_t rank = whiteToMove ? 4 : 3;
+		const uint8_t file = m_BoardState.enPassantFile;
+		const Bitboard pawns = m_BoardState.pieceBitboards[
+			whiteToMove ? PieceType::WHITE_PAWN : PieceType::BLACK_PAWN];
+		if (file > 0 && (pawns & s_SquareBitboard[rank * 8 + file - 1]))
+			return file;
+		if (file < 7 && (pawns & s_SquareBitboard[rank * 8 + file + 1]))
+			return file;
+		return 8;
 	}
 
 	std::string ChessBoard::GetFENString() const
@@ -866,7 +925,7 @@ namespace NeraChessEngine
 		return nodes;
 	}
 
-	bool ChessBoard::InsufficentMaterial(ChessBoard board)
+	bool ChessBoard::InsufficentMaterial(const ChessBoard& board)
 	{
 		if (board.m_BoardState.pieceBitboards[PieceType::WHITE_PAWN]   | 
 			board.m_BoardState.pieceBitboards[PieceType::WHITE_ROOK]   |
@@ -891,11 +950,19 @@ namespace NeraChessEngine
 			return true;
 		}
 
-		if (numMinors == 2 && numWhiteBishops == 1 && numBlackBishops == 1)
+		if (numWhiteKnights == 0 && numBlackKnights == 0)
 		{
-			bool whiteBishopIsLightSquare = Square(BitUtil::GetLSBIndex(board.m_BoardState.pieceBitboards[PieceType::BLACK_BISHOP])).IsLightSquare();
-			bool blackBishopIsLightSquare = Square(BitUtil::GetLSBIndex(board.m_BoardState.pieceBitboards[PieceType::WHITE_BISHOP])).IsLightSquare();
-			return whiteBishopIsLightSquare == blackBishopIsLightSquare;
+			Bitboard bishops = board.m_BoardState.pieceBitboards[PieceType::WHITE_BISHOP] |
+				board.m_BoardState.pieceBitboards[PieceType::BLACK_BISHOP];
+			bool sawLightSquare = false;
+			bool sawDarkSquare = false;
+			while (bishops)
+			{
+				const Square square = BitUtil::PopLSB(bishops);
+				sawLightSquare |= square.IsLightSquare();
+				sawDarkSquare |= !square.IsLightSquare();
+			}
+			return !(sawLightSquare && sawDarkSquare);
 		}
 
 		return false;
