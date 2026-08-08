@@ -7,24 +7,22 @@
 namespace ApplicationCore
 {
 
-	class Sound
-	{
-	public:
-		Sound(const std::string& soundPath);
-		~Sound();
+class Sound
+{
+  public:
+	explicit Sound(const std::string& soundPath);
+	~Sound();
 
-		Sound(const Sound&) = delete;
-		Sound& operator=(const Sound&) = delete;
+	Sound(const Sound&) = delete;
+	Sound& operator=(const Sound&) = delete;
 
-		Sound(Sound&& other) noexcept;
-		Sound& operator=(Sound&& other) noexcept;
+	Sound(Sound&& other) noexcept;
+	Sound& operator=(Sound&& other) noexcept;
 
-	private:
+  private:
+	friend class SoundPlayer;
 
-		friend class SoundPlayer;
+	Mix_Chunk* m_Chunk = nullptr;
+};
 
-		Mix_Chunk* m_Chunk = nullptr;
-	};
-
-
-}
+} // namespace ApplicationCore

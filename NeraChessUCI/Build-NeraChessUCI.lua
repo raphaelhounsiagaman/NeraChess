@@ -5,6 +5,13 @@ project "NeraChessUCI"
   targetdir ("../bin/%{cfg.buildcfg}/%{prj.name}")
   objdir ("../bin/Intermediates/%{cfg.buildcfg}/%{prj.name}")
   staticruntime "off"
+  warnings "Extra"
+
+  filter "toolset:gcc"
+    fatalwarnings "All"
+  filter "toolset:clang"
+    fatalwarnings "All"
+  filter {}
 
   files
   {
@@ -27,8 +34,8 @@ project "NeraChessUCI"
 
   postbuildcommands
   {
-    '{MKDIR} "%{cfg.targetdir}/Ressources/OpeningBook"',
-    '{COPYFILE} "%{prj.location}/../NeraChessApp/Ressources/OpeningBook/OpeningBook.txt" "%{cfg.targetdir}/Ressources/OpeningBook/OpeningBook.txt"',
+    '{MKDIR} "%{cfg.targetdir}/Resources/OpeningBook"',
+    '{COPYFILE} "%{prj.location}/../NeraChessApp/Resources/OpeningBook/OpeningBook.txt" "%{cfg.targetdir}/Resources/OpeningBook/OpeningBook.txt"',
   }
 
   filter "system:windows"

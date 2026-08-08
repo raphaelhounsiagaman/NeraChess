@@ -166,7 +166,7 @@ namespace NeraChessEngine
 				m_Error = 1;
 				return;
 			}
-			m_BoardState.boardStateFlags |= BoardStateFlags::CanEnPassent;
+			m_BoardState.boardStateFlags |= BoardStateFlags::CanEnPassant;
 			m_BoardState.enPassantFile = fenParts[3][0] - 'a';
 		}
 
@@ -278,7 +278,7 @@ namespace NeraChessEngine
 		UndoInfo info{};
 		info.capturedPiece = capturedPiece;
 		info.castlingRights = m_BoardState.GetCastlingRights();
-		info.enPassantFile = m_BoardState.HasFlag(BoardStateFlags::CanEnPassent) ? m_BoardState.enPassantFile : 8;
+		info.enPassantFile = m_BoardState.HasFlag(BoardStateFlags::CanEnPassant) ? m_BoardState.enPassantFile : 8;
 		info.halfmoveClock = m_HalfMoveClock;
 		info.zobristKey = m_ZobristKey;
 		const uint8_t previousHashEnPassantFile = GetZobristEnPassantFile();
@@ -418,12 +418,12 @@ namespace NeraChessEngine
 
 		if (moveFlags & MoveFlags::PAWN_TWO_UP)
 		{
-			m_BoardState.boardStateFlags |= BoardStateFlags::CanEnPassent;
+			m_BoardState.boardStateFlags |= BoardStateFlags::CanEnPassant;
 			m_BoardState.enPassantFile = targetSquare % 8;
 		}
 		else
 		{
-			m_BoardState.boardStateFlags &= ~BoardStateFlags::CanEnPassent;
+			m_BoardState.boardStateFlags &= ~BoardStateFlags::CanEnPassant;
 			m_BoardState.enPassantFile = 8;
 		}
 	
@@ -540,12 +540,12 @@ namespace NeraChessEngine
 
 		if (info.enPassantFile != 8)
 		{
-			m_BoardState.boardStateFlags |= BoardStateFlags::CanEnPassent;
+			m_BoardState.boardStateFlags |= BoardStateFlags::CanEnPassant;
 			m_BoardState.enPassantFile = info.enPassantFile;
 		}
 		else
 		{
-			m_BoardState.boardStateFlags &= ~BoardStateFlags::CanEnPassent;
+			m_BoardState.boardStateFlags &= ~BoardStateFlags::CanEnPassant;
 			m_BoardState.enPassantFile = 8;
 		}
 		if (moveFlags & MoveFlags::IS_PROMOTION)
@@ -562,7 +562,7 @@ namespace NeraChessEngine
 
 		UndoInfo info{};
 		info.castlingRights = m_BoardState.GetCastlingRights();
-		info.enPassantFile = m_BoardState.HasFlag(BoardStateFlags::CanEnPassent)
+		info.enPassantFile = m_BoardState.HasFlag(BoardStateFlags::CanEnPassant)
 			? m_BoardState.enPassantFile : 8;
 		info.halfmoveClock = m_HalfMoveClock;
 		info.zobristKey = GetZobristKey();
@@ -573,7 +573,7 @@ namespace NeraChessEngine
 		m_ZobristKey ^= Zobrist::enPassantFile[8];
 		m_ZobristKey ^= Zobrist::sideToMove;
 		m_BoardState.boardStateFlags ^= BoardStateFlags::WhiteToMove;
-		m_BoardState.boardStateFlags &= ~BoardStateFlags::CanEnPassent;
+		m_BoardState.boardStateFlags &= ~BoardStateFlags::CanEnPassant;
 		m_BoardState.enPassantFile = 8;
 		m_WasBoardStateChanged = true;
 		m_GameOverFlags = 0;
@@ -587,12 +587,12 @@ namespace NeraChessEngine
 		m_BoardState.boardStateFlags ^= BoardStateFlags::WhiteToMove;
 		if (info.enPassantFile < 8)
 		{
-			m_BoardState.boardStateFlags |= BoardStateFlags::CanEnPassent;
+			m_BoardState.boardStateFlags |= BoardStateFlags::CanEnPassant;
 			m_BoardState.enPassantFile = info.enPassantFile;
 		}
 		else
 		{
-			m_BoardState.boardStateFlags &= ~BoardStateFlags::CanEnPassent;
+			m_BoardState.boardStateFlags &= ~BoardStateFlags::CanEnPassant;
 			m_BoardState.enPassantFile = 8;
 		}
 		m_HalfMoveClock = info.halfmoveClock;
@@ -681,7 +681,7 @@ namespace NeraChessEngine
 
 	uint8_t ChessBoard::GetZobristEnPassantFile() const
 	{
-		if (!m_BoardState.HasFlag(BoardStateFlags::CanEnPassent) || m_BoardState.enPassantFile >= 8)
+		if (!m_BoardState.HasFlag(BoardStateFlags::CanEnPassant) || m_BoardState.enPassantFile >= 8)
 			return 8;
 
 		const bool whiteToMove = m_BoardState.HasFlag(BoardStateFlags::WhiteToMove);
@@ -800,7 +800,7 @@ namespace NeraChessEngine
 		}
 
 
-		if (!(m_BoardState.boardStateFlags & BoardStateFlags::CanEnPassent))
+		if (!(m_BoardState.boardStateFlags & BoardStateFlags::CanEnPassant))
 			enPassentAvailable = false;
 
 		if (enPassentAvailable)
