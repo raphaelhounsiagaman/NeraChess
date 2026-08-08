@@ -52,33 +52,32 @@ namespace NeraChessEngine
         void MakeMove(Move move, bool gameMove = false);
 	    void UndoMove(Move move);
 
-	    bool MakeNullMove(); // TODO: implement correctly
-	    void UndoNullMove(); // TODO: implement correctly
+	    bool MakeNullMove();
+	    void UndoNullMove();
 
 	    const BoardState& GetBoardState() const { return m_BoardState; }
 
-	    uint8_t GetHalfMoveClock() const{ return m_HalfMoveClock; }
+		    uint16_t GetHalfMoveClock() const{ return m_HalfMoveClock; }
 	    uint16_t GetFullMoveClock() const { return m_FullMoves; }
 
         Piece GetPiece(const uint8_t square) const;
         bool IsInCheck() const;
-        uint16_t GetGameOver(bool gameCheck = false) const;
+        uint16_t GetGameOver(bool gameCheck = true) const;
 
         uint64_t GetZobristKey() const;
+		uint8_t GetZobristEnPassantFile() const;
         std::string GetFENString() const;
 
         uint8_t GetError() const { return m_Error; }
 
         bool operator==(const ChessBoard& other) const;
 
-        void RemovePiece(Square square);
-		void SetPiece(Square square, Piece piece);
-
-    private:
+	    private:
 
         static uint64_t PerfTest(int depth, ChessBoard& board);
 
-	    static bool InsufficentMaterial(ChessBoard board);
+	    static bool InsufficentMaterial(const ChessBoard& board);
+	    uint64_t GetRepetitionKey() const;
 
     private:
 
@@ -99,7 +98,7 @@ namespace NeraChessEngine
 
         std::vector<Move> m_MovesPlayed{};
 
-        uint8_t m_HalfMoveClock = 0;
+		    uint16_t m_HalfMoveClock = 0;
         uint16_t m_FullMoves = 1;
 
         static constexpr Bitboard s_SquareBitboard[64] = {

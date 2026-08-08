@@ -9,7 +9,7 @@ namespace NeraChessEngine
 {
     struct  Zobrist
     {
-        static uint64_t CalculateZobristKey(ChessBoard board);
+        static uint64_t CalculateZobristKey(const ChessBoard& board);
 
         static const std::array<std::array<uint64_t, 64>, 12> piecesArray;
  
@@ -30,4 +30,3 @@ namespace NeraChessEngine
     };
 
 } // namespace NeraChessEngine
-

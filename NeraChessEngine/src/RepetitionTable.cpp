@@ -1,84 +1,45 @@
 #include "RepetitionTable.h"
 
-#include <algorithm>
-
 namespace NeraChessEngine
 {
-
-	void RepetitionTable::AddEntry(const std::array<Bitboard, 12>& pieceBitboards)
+	RepetitionTable::RepetitionTable()
 	{
-		for (RepetitionEntry& entry : m_Entries)
-		{
-			if (entry.pieceBitboards == pieceBitboards)
-			{
-				entry.repetitionCount += 1;
-				return;
-			}
-		}
-
-		for (RepetitionEntry& entry : m_Entries)
-		{
-			if (entry.repetitionCount == 0)
-			{
-				entry.pieceBitboards = pieceBitboards;
-				entry.repetitionCount += 1;
-				return;
-			}
-		}
+		m_Keys.reserve(256);
 	}
 
-	void RepetitionTable::RemoveEntry(const std::array<Bitboard, 12>& pieceBitboards)
+	void RepetitionTable::AddEntry(uint64_t positionKey)
 	{
-		for (RepetitionEntry& entry : m_Entries)
-		{
-			if (entry.pieceBitboards == pieceBitboards)
-			{
-				entry.repetitionCount = std::max(0, entry.repetitionCount - 1);
-				return;
-			}
-		}
+		m_Keys.push_back(positionKey);
 	}
 
-	uint8_t RepetitionTable::GetRepetitionCount(const std::array<Bitboard, 12>& pieceBitboards) const
+	void RepetitionTable::RemoveEntry(uint64_t positionKey)
 	{
-		for (const RepetitionEntry& entry : m_Entries)
-		{
-			if (entry.pieceBitboards == pieceBitboards)
-			{
-				return entry.repetitionCount;
-			}
-		}
+		assert(!m_Keys.empty());
+		assert(m_Keys.back() == positionKey);
+		m_Keys.pop_back();
+	}
 
-		return 0;
+	uint16_t RepetitionTable::GetRepetitionCount(uint64_t positionKey,
+		std::size_t reversiblePlies) const
+	{
+		uint16_t count = 0;
+		for (std::size_t distance = 0;
+			distance < m_Keys.size() && distance <= reversiblePlies && count < 3;
+			distance += 2)
+		{
+			count += m_Keys[m_Keys.size() - 1 - distance] == positionKey;
+		}
+		return count;
 	}
 
 	void RepetitionTable::Clear()
 	{
-		for (RepetitionEntry& entry : m_Entries)
-		{
-			entry.repetitionCount = 0;
-		}
+		m_Keys.clear();
 	}
 
 	bool RepetitionTable::operator==(const RepetitionTable& other) const
 	{
-		bool same = true;
-	
-		for (uint8_t i = 0; i < m_Entries.size(); i++)
-		{
-			if (m_Entries[i].repetitionCount != other.m_Entries[i].repetitionCount)
-			{
-				same = false;
-				break;
-			}
-			else if (m_Entries[i].repetitionCount != 0 && m_Entries[i].pieceBitboards != other.m_Entries[i].pieceBitboards)
-			{
-				same = false;
-				break;
-			}
-		}
-
-		return same;
+		return m_Keys == other.m_Keys;
 	}
 
 } // namespace NeraChessEngine

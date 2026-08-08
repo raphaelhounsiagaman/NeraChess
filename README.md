@@ -7,7 +7,12 @@ It consists of classical search techniques.
 
 The project started as a personal learning project and gradually evolved into a fully working engine. It is not meant to compete with top engines like Stockfish or Leela, but to explore how far a self-written engine can go.
 
-Current estimated strength: roughly beginner to intermediate club level (~1200–1400 Elo, depending on time control).
+At engine commit `212e012`, a 300-game paired-opening tournament estimated
+NeraChess at **2627 Stockfish 18 UCI-Elo-equivalent** at `10+0.1`, with a
+paired-bootstrap 95% confidence interval of 2587--2664. This is a
+hardware- and test-pool-specific engine benchmark, not a FIDE, online-platform,
+or universal Elo rating. See the [strength calibration report](docs/ENGINE_STRENGTH.md)
+for the results, method, and limitations.
 
 ---
 
@@ -24,18 +29,30 @@ The main goals of this project are:
 
 ## Current Features
 
+### Timed games
+
+- Selectable `1 min`, `3 min + 2 sec`, `10 min`, `15 min + 10 sec`, and
+  `90 min + 40 sec` time controls
+- Independent White and Black clocks with increment after each completed move
+- Live active-player highlighting, sub-ten-second tenths, and flag-fall results
+- Search budgets derived from the bot's actual remaining time and increment
+
 ### Search
 
 - Principal Variation Search (PVS)
 - Iterative Deepening
+- Aspiration windows and mate-distance pruning
 - Alpha-Beta Pruning
-- Transposition Table (256 MB)
+- Clustered transposition table with configurable size
 - Late Move Reductions (LMR)
+- Null-move, futility, delta, and static-exchange pruning
 - Quiescence Search
 - Killer Moves
-- History Heuristic
-- Opening Book support
-- Basic time management
+- Side-aware history, killer, and countermove heuristics
+- Tapered piece-square, pawn-structure, mobility, and king-safety evaluation
+- Indexed opening book with transposition-aware lookup
+- Clock-aware time management
+- UCI protocol support, including opponent-time pondering
 
 The search is functional and reasonably optimized, but not heavily micro-optimized compared to professional engines.
 
@@ -46,6 +63,12 @@ The search is functional and reasonably optimized, but not heavily micro-optimiz
 NeraChess follows a layered architecture inspired by the application structure shown in The Cherno’s C++ Application Architecture series on YouTube.
 
 The goal of this structure is separation of concerns rather than extreme abstraction. The project is divided into logical layers with clear responsibilities:
+
+- `NeraChessEngine`: board state, legal move generation, hashing, clocks, and rules
+- `NeraChessSearch`: evaluation, search, transposition table, time management, and opening book
+- `NeraChessUCI`: headless asynchronous UCI protocol adapter
+- `NeraChessApp`: SDL/ImGui desktop application and chess-player adapters
+- `NeraChessTests`: headless perft, state, search, tactical, book, and benchmark coverage
 
 ---
 
@@ -99,6 +122,44 @@ make config=release
 ./bin/Release/NeraChessApp/NeraChessApp
 ```
 
+The headless UCI engine can be launched directly or configured in any
+UCI-compatible chess GUI:
+
+```sh
+./bin/Release/NeraChessUCI/NeraChessUCI
+```
+
+It supports standard position setup, `go` depth/node/time limits,
+`searchmoves`, asynchronous `stop`, `ponder`/`ponderhit`, hash sizing and
+clearing, `OwnBook`, `BookFile`, and `Ponder` options, bundled opening-book
+play, and iterative `info` output.
+
+When `Ponder` is enabled, normal searches include the predicted opponent reply
+in `bestmove ... ponder ...` when one is available. A `go ponder` search remains
+silent until the GUI sends `ponderhit` for a correct prediction or `stop` for a
+different move. The saved clock budget starts at `ponderhit`, so the opponent's
+thinking time is not charged to NeraChess. For `lichess-bot`, enable this
+behavior with:
+
+```yaml
+engine:
+  ponder: true
+```
+
+UCI clocks are supplied by the controlling chess GUI on each search rather
+than stored by the engine process. NeraChess supports the standard `wtime`,
+`btime`, `winc`, `binc`, and `movestogo` fields, for example:
+
+```text
+position startpos moves e2e4 e7e5
+go wtime 178400 btime 179100 winc 2000 binc 2000 movestogo 38
+```
+
+All UCI clock values are milliseconds. NeraChess selects the clock belonging
+to the side to move, preserves a flag-fall reserve, and returns before its hard
+time budget while still using iterative-deepening results from completed
+depths.
+
 Set `NERACHESS_MACOS_DEPENDENCY_PREFIX` before project generation only when
 the SDL libraries are installed under a prefix other than `brew --prefix`.
 
@@ -124,9 +185,25 @@ scripts\Setup-Windows.bat vs2022
 Open `NeraChess.slnx` for Visual Studio 2026 or `NeraChess.sln` for Visual
 Studio 2022, select Debug or Release, and build `NeraChessApp`.
 
-On both platforms, the build copies the `Ressources` directory beside the
-executable. The application resolves assets relative to its executable, so it
-can be launched from any working directory.
+### Linux headless engine
+
+The bundled Linux Premake executable can generate Makefiles for the engine,
+UCI target, and regression suite without SDL:
+
+```sh
+bash ./scripts/Setup-Linux.sh gmake
+make -C NeraChessEngine config=release
+make -C NeraChessSearch config=release
+make -C NeraChessUCI config=release
+make -C NeraChessTests config=release
+./bin/Release/NeraChessTests/NeraChessTests
+./bin/Release/NeraChessUCI/NeraChessUCI
+```
+
+The macOS and Windows GUI builds copy the `Ressources` directory beside the
+executable. The UCI build copies the opening book beside its executable on all
+platforms. Both targets resolve their bundled resources from the executable,
+so they can be launched from any working directory.
 
 To verify SDL initialization, resource loading, and clean game-thread shutdown
 without entering the application loop, run a built executable with:
@@ -135,14 +212,30 @@ without entering the application loop, run a built executable with:
 ./bin/Debug/NeraChessApp/NeraChessApp --smoke-test
 ```
 
+## Verification and benchmarks
+
+The normal regression suite includes 17 reference perft positions, make/undo
+and hash invariants, draw rules, FEN validation, transposition-table behavior,
+evaluation symmetry, tactical search choices, time management, and the full
+opening-book index:
+
+```sh
+./bin/Release/NeraChessTests/NeraChessTests
+```
+
+Two deterministic benchmark modes are also available:
+
+```sh
+./bin/Release/NeraChessTests/NeraChessTests --bench
+./bin/Release/NeraChessTests/NeraChessTests --search-bench
+```
+
 ---
 
 ## Known Limitations
 
-- No UCI support yet.
 - No multi-threaded search.
-- Network switching requires recompilation.
-- Limited benchmarking infrastructure.
+- Evaluation parameters are hand-tuned rather than trained from games.
 
 ---
 

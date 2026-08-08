@@ -3,7 +3,8 @@
 namespace NeraChessEngine
 {
 
-    std::mt19937_64 Zobrist::rng(std::random_device{}());
+    // A fixed seed makes hashes reproducible across runs, platforms and tests.
+    std::mt19937_64 Zobrist::rng(0x4E45524143484553ULL);
 
     template<size_t Size>
     std::array<uint64_t, Size> Zobrist::GetRandomArray()
@@ -34,7 +35,7 @@ namespace NeraChessEngine
     const std::array<uint64_t, 9> Zobrist::enPassantFile = GetRandomArray<9>();
     const uint64_t Zobrist::sideToMove = rng();
 
-    uint64_t Zobrist::CalculateZobristKey(ChessBoard board)
+    uint64_t Zobrist::CalculateZobristKey(const ChessBoard& board)
     {
         uint64_t zobristKey = 0;
 
@@ -48,7 +49,7 @@ namespace NeraChessEngine
             }
         }
 
-        zobristKey ^= enPassantFile[board.GetBoardState().enPassantFile];
+		zobristKey ^= enPassantFile[board.GetZobristEnPassantFile()];
 
         if (!board.GetBoardState().HasFlag(BoardStateFlags::WhiteToMove))
         {
