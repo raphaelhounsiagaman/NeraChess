@@ -4,6 +4,10 @@ on:
   push:
   pull_request:
 
+concurrency:
+  group: build-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 permissions:
   contents: read
 
@@ -11,6 +15,7 @@ jobs:
   linux-headless:
     name: Linux Headless + Sanitizers
     runs-on: ubuntu-latest
+    timeout-minutes: 30
 
     steps:
       - name: Check out repository
@@ -64,6 +69,7 @@ jobs:
   macos:
     name: macOS
     runs-on: macos-latest
+    timeout-minutes: 30
 
     steps:
       - name: Check out repository
@@ -103,6 +109,7 @@ jobs:
   windows:
     name: Windows
     runs-on: windows-latest
+    timeout-minutes: 30
 
     steps:
       - name: Check out repository

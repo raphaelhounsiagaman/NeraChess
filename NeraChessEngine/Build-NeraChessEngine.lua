@@ -5,6 +5,13 @@ project "NeraChessEngine"
   targetdir ("../bin/%{cfg.buildcfg}/%{prj.name}")
   objdir ("../bin/Intermediates/%{cfg.buildcfg}/%{prj.name}")
   staticruntime "off"
+  warnings "Extra"
+
+  filter "toolset:gcc"
+    fatalwarnings "All"
+  filter "toolset:clang"
+    fatalwarnings "All"
+  filter {}
 
   files
   {
@@ -44,8 +51,8 @@ project "NeraChessEngine"
     symbols "On"
 
   filter "configurations:Dist"
-  defines { "DIST" }
-  runtime "Release"
-  optimize "On"
-  symbols "Off"
-filter{}
+    defines { "DIST" }
+    runtime "Release"
+    optimize "On"
+    symbols "Off"
+  filter {}

@@ -529,7 +529,7 @@ namespace NeraChessEngine
 			m_FriendlyDiagonalSliders = m_BoardState.pieceBitboards[(uint8_t)PieceType::WHITE_BISHOP] | m_BoardState.pieceBitboards[(uint8_t)PieceType::WHITE_QUEEN];
 
 			m_FriendlyPawns = m_BoardState.pieceBitboards[(uint8_t)PieceType::WHITE_PAWN];
-			m_FriendlyKinghts = m_BoardState.pieceBitboards[(uint8_t)PieceType::WHITE_KNIGHT];
+			m_FriendlyKnights = m_BoardState.pieceBitboards[(uint8_t)PieceType::WHITE_KNIGHT];
 			m_FriendlyKing = m_BoardState.pieceBitboards[(uint8_t)PieceType::WHITE_KING];
 
 			m_OpponentPawns = m_BoardState.pieceBitboards[(uint8_t)PieceType::BLACK_PAWN];
@@ -553,7 +553,7 @@ namespace NeraChessEngine
 			m_FriendlyDiagonalSliders = m_BoardState.pieceBitboards[(uint8_t)PieceType::BLACK_BISHOP] | m_BoardState.pieceBitboards[(uint8_t)PieceType::BLACK_QUEEN];
 
 			m_FriendlyPawns = m_BoardState.pieceBitboards[(uint8_t)PieceType::BLACK_PAWN];
-			m_FriendlyKinghts = m_BoardState.pieceBitboards[(uint8_t)PieceType::BLACK_KNIGHT];
+			m_FriendlyKnights = m_BoardState.pieceBitboards[(uint8_t)PieceType::BLACK_KNIGHT];
 			m_FriendlyKing = m_BoardState.pieceBitboards[(uint8_t)PieceType::BLACK_KING];
 
 			m_OpponentPawns = m_BoardState.pieceBitboards[(uint8_t)PieceType::WHITE_PAWN];
@@ -841,7 +841,7 @@ namespace NeraChessEngine
 
 	void MoveGenerator::CalculateKnightMoves()
 	{
-		Bitboard knights = m_FriendlyKinghts & m_NotPinRays;
+		Bitboard knights = m_FriendlyKnights & m_NotPinRays;
 		Bitboard moveMask = ~m_FriendlyPieces & m_CheckRayBitmask;
 
 		while (knights != 0)

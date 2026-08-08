@@ -5,6 +5,13 @@ project "NeraChessTests"
   targetdir ("../bin/%{cfg.buildcfg}/%{prj.name}")
   objdir ("../bin/Intermediates/%{cfg.buildcfg}/%{prj.name}")
   staticruntime "off"
+  warnings "Extra"
+
+  filter "toolset:gcc"
+    fatalwarnings "All"
+  filter "toolset:clang"
+    fatalwarnings "All"
+  filter {}
 
   files
   {

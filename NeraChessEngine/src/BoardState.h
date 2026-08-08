@@ -16,7 +16,7 @@ namespace NeraChessEngine
         CanBlackCastleQueen = 1 << 2, // Bit 3
         CanBlackCastleKing = 1 << 3, // Bit 4
 
-        CanEnPassent = 1 << 4, // Bit 5
+        CanEnPassant = 1 << 4, // Bit 5
 
         WhiteToMove = 1 << 5, // Bit 6
     };

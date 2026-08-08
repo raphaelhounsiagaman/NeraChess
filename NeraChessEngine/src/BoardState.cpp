@@ -10,7 +10,7 @@ namespace NeraChessEngine
 			same = false;
 		if (boardStateFlags != other.boardStateFlags)
 			same = false;
-		if (boardStateFlags & BoardStateFlags::CanEnPassent && enPassantFile != other.enPassantFile)
+		if (boardStateFlags & BoardStateFlags::CanEnPassant && enPassantFile != other.enPassantFile)
 			same = false;
 
 		return same;

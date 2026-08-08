@@ -2,62 +2,70 @@
 
 #include "Event.h"
 #include "Renderer/Renderer.h"
-#include "Sound/SoundPlayer.h"
-
 #include "SDL.h"
 #include "SDL_image.h"
+#include "Sound/SoundPlayer.h"
 
-#include <string>
 #include <functional>
+#include <string>
 
 namespace ApplicationCore
 {
-	struct WindowSpecification
+struct WindowSpecification
+{
+	std::string Title;
+	uint32_t Width = 1280;
+	uint32_t Height = 720;
+	bool IsResizeable = true;
+	bool VSync = true;
+
+	std::function<void(Event&)> EventCallback;
+
+	RendererSpecification RendererSpec;
+	SoundPlayerSpecification SoundPlayerSpec;
+};
+
+class Window
+{
+  public:
+	explicit Window(const WindowSpecification& windowSpec = WindowSpecification());
+	~Window();
+
+	void Create();
+	void Destroy();
+
+	void Update();
+
+	void PollEvents();
+
+	Vec2<uint32_t> GetSize() const;
+	bool ShouldClose() const
 	{
-		std::string Title;
-		uint32_t Width = 1280;
-		uint32_t Height = 720;
-		bool IsResizeable = true;
-		bool VSync = true;
+		return m_ShouldClose;
+	}
 
-		std::function<void(Event&)> EventCallback;
-
-		RendererSpecification RendererSpec;
-		SoundPlayerSpecification SoundPlayerSpec;
-	};
-
-	class Window
+	Renderer& GetRenderer()
 	{
-	public:
-		Window(const WindowSpecification& windowSpec = WindowSpecification());
-		~Window();
+		return m_Renderer;
+	}
+	SoundPlayer& GetSoundPlayer()
+	{
+		return m_SoundPlayer;
+	}
 
-		void Create();
-		void Destroy();
+  private:
+	void RaiseEvent(Event& event);
 
-		void Update();
+  private:
+	WindowSpecification m_Specification;
 
-		void PollEvents();
+	SDL_Window* m_SDLWindow = nullptr;
 
-		const Vec2<uint32_t> GetSize() const;
-		bool ShouldClose() const { return m_ShouldClose; }
+	Renderer m_Renderer;
+	SoundPlayer m_SoundPlayer;
 
-		Renderer& GetRenderer() { return m_Renderer; }
-		SoundPlayer& GetSoundPlayer() { return m_SoundPlayer; }
+	bool m_SDLInitialized = false;
+	bool m_ShouldClose = false;
+};
 
-	private:
-
-		void RaiseEvent(Event& event);
-
-	private:
-		WindowSpecification m_Specification;
-
-		SDL_Window* m_SDLWindow = nullptr;
-		
-		Renderer m_Renderer;
-		SoundPlayer m_SoundPlayer;
-
-		bool m_ShouldClose = false;
-	};
-
-}
+} // namespace ApplicationCore

@@ -1,5 +1,7 @@
 # Directories
 .vs/
+.idea/
+.vscode/
 bin/
 *.xcodeproj/
 *.xcworkspace/
@@ -13,6 +15,12 @@ bin/
 *.sln
 *.slnx
 *.log
+compile_commands.json
+coverage/
+*.gcda
+*.gcno
+*.profraw
+*.profdata
 Makefile
 *.make
 imgui.ini

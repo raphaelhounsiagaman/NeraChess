@@ -1,15 +1,15 @@
 #pragma once
 
-#include "Core/Layer.h"
-
 #include "ChessBoard.h"
+#include "ChessPlayers/Bot/NeraChessBot.h"
+#include "ChessPlayers/ChessPlayer.h"
+#include "ChessPlayers/Human.h"
 #include "Clock.h"
+#include "Core/Layer.h"
 #include "MoveQueue.h"
 
-#include "ChessPlayers/AllPlayer.h"
-
-#include <memory>
 #include <atomic>
+#include <memory>
 #include <thread>
 
 enum class GameResult : uint8_t
@@ -50,30 +50,26 @@ struct GameSnapshot
 
 class GameManagerLayer : public ApplicationCore::Layer
 {
-public:
+  public:
 	GameManagerLayer() = default;
 	~GameManagerLayer();
 
-	virtual void OnEvent(ApplicationCore::Event& event) override {};
-	virtual void OnUpdate(float deltaTime) override;
-	virtual void OnRender() override {};
-
-	template<typename TPlayer1, typename TPlayer2>
-	void SetPlayerTypes();
+	void OnEvent(ApplicationCore::Event&) override {}
+	void OnUpdate(float) override;
+	void OnRender() override {}
 
 	void StartGame();
 	void StopGame();
 	bool SetTimeControl(NeraChessEngine::TimeControl timeControl);
 	GameSnapshot GetSnapshot() const;
 
-private:
+  private:
 	void RunGame(std::stop_token stopToken, NeraChessEngine::ChessBoard board);
 	void SetBoardResult(uint16_t gameOverFlags, bool movingSideWasWhite);
 	void Reset();
 
-private:
-
-	NeraChessEngine::Clock m_Clock{ NeraChessEngine::MainTimeControls[2].timeControl };
+  private:
+	NeraChessEngine::Clock m_Clock{NeraChessEngine::MainTimeControls[2].timeControl};
 	NeraChessEngine::ChessBoard m_ChessBoard{};
 
 	NeraChessEngine::MoveQueue m_MoveQueue;
