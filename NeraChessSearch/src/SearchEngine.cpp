@@ -20,38 +20,44 @@ namespace NeraChessSearch
     {
         constexpr std::array<int, 6> PieceValues = { 100, 320, 330, 500, 900, 0 };
 
-        // Late move reductions are accumulated in 1/1024 of a ply so that the base
-        // curve and the individual adjustments can stay fractional, and only the
-        // final sum is truncated to whole plies.
-        constexpr int REDUCTION_SCALE = 1024;
-        constexpr int MAX_REDUCTION_DEPTH = 64;
-        constexpr int MAX_REDUCTION_MOVES = 64;
+        // Selective-search tuning. Every margin is in centipawns and every depth is in
+        // plies. The values follow the usual published ranges; they were checked against
+        // the baseline with self-play rather than copied from another engine's tuning.
+        constexpr int ReverseFutilityMaxDepth = 7;
+        constexpr int ReverseFutilityMargin = 130;
+        constexpr int FutilityMaxDepth = 6;
+        constexpr int FutilityMargin = 90;
+        constexpr int FutilityBase = 70;
+        constexpr int LateMovePruningMaxDepth = 8;
+        constexpr int InternalIterativeReductionMinDepth = 4;
+        // Only the quiet moves that plausibly caused a cutoff need a history malus.
+        constexpr size_t MaxTrackedQuietMoves = 64;
 
-        // Base curve: 0.85 + ln(depth) * ln(moveIndex) / 2.35. The logarithmic shape
-        // keeps early moves at shallow depths almost unreduced while letting late
-        // moves at high depths be cut hard, which the previous fixed ladder (capped
-        // at three plies regardless of depth) could not express.
-        struct ReductionTable
+        // Late move reductions, indexed by remaining depth and move number. The
+        // logarithmic shape is what lets late quiet moves lose several plies at high
+        // depth while the first few moves stay nearly full depth.
+        constexpr int ReductionDepthLimit = 64;
+        constexpr int ReductionMoveLimit = 64;
+
+        std::array<std::array<int8_t, ReductionMoveLimit>, ReductionDepthLimit> BuildReductions()
         {
-            std::array<std::array<int16_t, MAX_REDUCTION_MOVES>, MAX_REDUCTION_DEPTH> values{};
-
-            ReductionTable()
+            std::array<std::array<int8_t, ReductionMoveLimit>, ReductionDepthLimit> table{};
+            for (int depth = 1; depth < ReductionDepthLimit; ++depth)
             {
-                for (int depth = 1; depth < MAX_REDUCTION_DEPTH; ++depth)
+                for (int moveNumber = 1; moveNumber < ReductionMoveLimit; ++moveNumber)
                 {
-                    for (int moveIndex = 1; moveIndex < MAX_REDUCTION_MOVES; ++moveIndex)
-                    {
-                        const double reduction = 0.85 +
-                            std::log(static_cast<double>(depth)) *
-                            std::log(static_cast<double>(moveIndex)) / 2.35;
-                        values[depth][moveIndex] = static_cast<int16_t>(
-                            std::lround(reduction * REDUCTION_SCALE));
-                    }
+                    const double reduction = 0.85 +
+                        std::log(static_cast<double>(depth)) *
+                            std::log(static_cast<double>(moveNumber)) / 2.30;
+                    table[depth][moveNumber] =
+                        static_cast<int8_t>(std::clamp(static_cast<int>(reduction), 0, 31));
                 }
             }
-        };
+            return table;
+        }
 
-        const ReductionTable Reductions;
+        const std::array<std::array<int8_t, ReductionMoveLimit>, ReductionDepthLimit> Reductions =
+            BuildReductions();
     }
 
     SearchEngine::SearchEngine(size_t hashMegabytes)
@@ -123,7 +129,7 @@ namespace NeraChessSearch
         m_CounterMoves = {};
         m_PvTable = {};
         m_PvLength = {};
-        m_StaticEvals.fill(SCORE_NONE);
+        m_StaticEval.fill(SCORE_NONE);
     }
 
     SearchResult SearchEngine::Search(const ChessBoard& position, const SearchLimits& limits)
@@ -215,7 +221,7 @@ namespace NeraChessSearch
         m_UnflushedNodes = 0;
         m_SelectiveDepth = 0;
         m_PvLength.fill(0);
-        m_StaticEvals.fill(SCORE_NONE);
+        m_StaticEval.fill(SCORE_NONE);
         for (auto& side : m_History)
         {
             for (auto& from : side)
@@ -344,6 +350,9 @@ namespace NeraChessSearch
         }
 
         m_PvLength[0] = 0;
+        // Seed the static-evaluation stack so the "improving" test is meaningful from
+        // ply 2 onwards instead of silently disabled for the first two plies.
+        m_StaticEval[0] = board.IsInCheck() ? SCORE_NONE : Evaluate(board);
         bool firstMove = true;
         for (const Move move : moves)
         {
@@ -441,56 +450,52 @@ namespace NeraChessSearch
         const bool inCheck = board.IsInCheck();
         const bool mateBounds = beta <= -SCORE_MATE + MAX_PLY ||
             beta >= SCORE_MATE - MAX_PLY;
-        const bool canReverseFutility = !pvNode && !inCheck && !mateBounds && depth <= 2;
-        const bool canFutilityPrune = !pvNode && !inCheck && !mateBounds && depth <= 2;
-        const bool canNullPrune = allowNull && !pvNode && !inCheck && !mateBounds &&
-            depth >= 3 && HasNonPawnMaterial(board);
-        // The static evaluation is now kept for every non-check node so that the
-        // improving flag (this side is better than it was two plies ago) is available
-        // to late move reductions instead of only to the pruning heuristics.
-        Score staticEval = SCORE_DRAW;
-        bool improving = false;
-        if (inCheck)
-        {
-            m_StaticEvals[ply] = SCORE_NONE;
-        }
-        else
-        {
-            staticEval = Evaluate(board);
-            m_StaticEvals[ply] = staticEval;
-            if (ply >= 2 && m_StaticEvals[ply - 2] != SCORE_NONE)
-                improving = staticEval > m_StaticEvals[ply - 2];
-            else if (ply >= 4 && m_StaticEvals[ply - 4] != SCORE_NONE)
-                improving = staticEval > m_StaticEvals[ply - 4];
-            else
-                improving = true;
-        }
 
-        if (canReverseFutility && staticEval - 120 * depth >= beta)
+        // The static evaluation of every ply is kept so a node can tell whether its own
+        // side is improving relative to two plies ago. Pruning margins and reductions
+        // are all conditioned on it: a position that is getting worse deserves a wider,
+        // more careful search than one that is getting better.
+        const Score staticEval = inCheck ? SCORE_NONE : Evaluate(board);
+        m_StaticEval[ply] = staticEval;
+        const bool improving = !inCheck && ply >= 2 &&
+            m_StaticEval[ply - 2] != SCORE_NONE && staticEval > m_StaticEval[ply - 2];
+        const bool canPrune = !pvNode && !inCheck && !mateBounds;
+
+        // Reverse futility: the side to move is so far ahead that even conceding
+        // ReverseFutilityMargin per remaining ply keeps it above beta.
+        if (canPrune && depth <= ReverseFutilityMaxDepth &&
+            staticEval - ReverseFutilityMargin * (depth - improving) >= beta)
+        {
             return staticEval;
+        }
 
-        if (canNullPrune)
+        if (allowNull && canPrune && depth >= 3 && HasNonPawnMaterial(board) &&
+            staticEval >= beta && board.MakeNullMove())
         {
-            if (staticEval >= beta && board.MakeNullMove())
-            {
-                const int reduction = 2 + depth / 4;
-                const Score nullScore = -PrincipalVariationSearch(board, -beta, -beta + 1,
-                    depth - 1 - reduction, ply + 1, false, false, 0, !cutNode);
-                board.UndoNullMove();
+            const int reduction = 3 + depth / 4 +
+                std::min(3, (staticEval - beta) / 200);
+            const Score nullScore = -PrincipalVariationSearch(board, -beta, -beta + 1,
+                depth - 1 - reduction, ply + 1, false, false, 0, !cutNode);
+            board.UndoNullMove();
 
-                if (m_Aborted)
-                    return SCORE_DRAW;
-                if (nullScore >= beta)
+            if (m_Aborted)
+                return SCORE_DRAW;
+            if (nullScore >= beta)
+            {
+                if (ttScoreUsable)
                 {
-                    if (ttScoreUsable)
-                    {
-                        m_TranspositionTable->Store(key, ScoreToTT(beta, ply), depth,
-                            TTBound::Lower, ttMove);
-                    }
-                    return beta;
+                    m_TranspositionTable->Store(key, ScoreToTT(beta, ply), depth,
+                        TTBound::Lower, ttMove);
                 }
+                return beta;
             }
         }
+
+        // Internal iterative reduction: a node deep enough to matter but with no stored
+        // move will order badly, so it is cheaper to search it a ply shallower and let
+        // the resulting entry order the re-search.
+        if (depth >= InternalIterativeReductionMinDepth && ttMove == 0 && (pvNode || cutNode))
+            --depth;
 
         const Score originalAlpha = alpha;
         MoveList<218> moves = board.GetLegalMoves();
@@ -498,10 +503,11 @@ namespace NeraChessSearch
 
         Score bestScore = -SCORE_INF;
         Move bestMove = 0;
-        std::array<Move, 218> quietMovesSearched{};
+        std::array<Move, MaxTrackedQuietMoves> quietMovesSearched;
         size_t quietMoveCount = 0;
         const Move counterMove = GetCounterMove(previousMove);
         const uint8_t side = board.GetBoardState().HasFlag(BoardStateFlags::WhiteToMove) ? 0 : 1;
+        const int lateMoveCountLimit = LateMoveCountLimit(depth, improving);
         bool firstMove = true;
         int moveIndex = 0;
         for (const Move move : moves)
@@ -510,40 +516,49 @@ namespace NeraChessSearch
             const bool killer = quiet &&
                 (move == m_KillerMoves[ply][0] || move == m_KillerMoves[ply][1]);
             const bool counter = quiet && move == counterMove;
-            board.MakeMove(move);
-            const bool givesCheck = board.IsInCheck();
-            if (canFutilityPrune && staticEval + 120 * depth <= alpha &&
-                bestMove != 0 && !killer && !counter && !givesCheck && IsFutilityPrunable(move))
+
+            // Everything below decides against a move without making it. The board is
+            // only touched once a move survives, which is what makes a wider pruning
+            // layer cheaper than the narrow one it replaces. Checking moves are always
+            // exempt: a quiet check is exactly the kind of move that decides a forced
+            // line, and it is also the kind that orders badly enough to be pruned.
+            bool givesCheck = false;
+            if (canPrune && quiet && bestScore > -SCORE_INF)
             {
-                board.UndoMove(move);
-                ++moveIndex;
-                continue;
+                const bool prunableByCount =
+                    depth <= LateMovePruningMaxDepth && moveIndex >= lateMoveCountLimit;
+                const bool prunableByMargin = depth <= FutilityMaxDepth && !killer && !counter &&
+                    staticEval + FutilityMargin * depth + FutilityBase <= alpha &&
+                    IsFutilityPrunable(move);
+                if (prunableByCount || prunableByMargin)
+                {
+                    givesCheck = board.GivesCheck(move);
+                    if (!givesCheck)
+                    {
+                        // Skipping rather than leaving the loop: killers and counter
+                        // moves sort ahead of losing captures, so breaking out here
+                        // would also discard captures that still have to be searched.
+                        ++moveIndex;
+                        continue;
+                    }
+                }
             }
+
+            board.MakeMove(move);
+            givesCheck = board.IsInCheck();
             Score score;
             if (firstMove)
             {
-                // The first child of a principal variation node is itself a
-                // principal variation node; elsewhere cut and all nodes alternate.
                 score = -PrincipalVariationSearch(board, -beta, -alpha,
                     depth - 1, ply + 1, pvNode, true, move, pvNode ? false : !cutNode);
             }
             else
             {
-                int reduction = 0;
-                // Killers and countermoves are no longer exempt: their history is
-                // already high, so the history term inside LateMoveReduction gives
-                // them a smaller reduction instead of none at all. Reductions now
-                // start one move earlier outside the principal variation.
-                if (depth >= 3 && moveIndex >= (pvNode ? 3 : 2) && quiet &&
-                    !inCheck && !givesCheck)
-                {
-                    int32_t historyScore =
-                        m_History[side][move.GetStartSquare()][move.GetTargetSquare()];
-                    if (killer || counter)
-                        historyScore = std::max(historyScore, MAX_HISTORY / 2);
-                    reduction = LateMoveReduction(depth, moveIndex, pvNode, improving,
-                        cutNode, ttMove != 0, historyScore);
-                }
+                const int reduction = quiet && !inCheck && !givesCheck
+                    ? LateMoveReduction(depth, moveIndex, pvNode, cutNode, improving,
+                        killer || counter,
+                        m_History[side][move.GetStartSquare()][move.GetTargetSquare()])
+                    : 0;
 
                 score = -PrincipalVariationSearch(board, -alpha - 1, -alpha,
                     depth - 1 - reduction, ply + 1, false, true, move, true);
@@ -561,7 +576,7 @@ namespace NeraChessSearch
             if (m_Aborted)
                 return SCORE_DRAW;
 
-            if (quiet)
+            if (quiet && quietMoveCount < quietMovesSearched.size())
                 quietMovesSearched[quietMoveCount++] = move;
 
             if (score > bestScore)
@@ -586,9 +601,11 @@ namespace NeraChessSearch
                     const int bonus = std::min(16'384, 32 * depth * depth);
                     UpdateHistoryScore(
                         m_History[side][move.GetStartSquare()][move.GetTargetSquare()], bonus);
-                    for (size_t index = 0; index + 1 < quietMoveCount; ++index)
+                    for (size_t index = 0; index < quietMoveCount; ++index)
                     {
                         const Move failed = quietMovesSearched[index];
+                        if (failed == move)
+                            continue;
                         UpdateHistoryScore(
                             m_History[side][failed.GetStartSquare()][failed.GetTargetSquare()],
                             -bonus / 2);
@@ -920,38 +937,32 @@ namespace NeraChessSearch
         return true;
     }
 
-    int SearchEngine::LateMoveReduction(int depth, int moveIndex, bool pvNode, bool improving,
-        bool cutNode, bool ttMove, int32_t historyScore)
+    int SearchEngine::LateMoveReduction(int depth, int moveIndex, bool pvNode, bool cutNode,
+        bool improving, bool orderedQuiet, int32_t historyScore)
     {
-        const int tableDepth = std::clamp(depth, 1, MAX_REDUCTION_DEPTH - 1);
-        const int tableMove = std::clamp(moveIndex, 1, MAX_REDUCTION_MOVES - 1);
-        int reduction = Reductions.values[tableDepth][tableMove];
+        if (depth < 3 || moveIndex < 3)
+            return 0;
 
-        // Principal variation nodes carry the game continuation, so keep them shallow.
+        int reduction = Reductions[std::min(depth, ReductionDepthLimit - 1)]
+                                  [std::min(moveIndex, ReductionMoveLimit - 1)];
         if (pvNode)
-            reduction -= REDUCTION_SCALE;
-        // Expected fail-high nodes are the cheapest place to be aggressive.
-        if (cutNode)
-            reduction += 3 * REDUCTION_SCALE / 2;
-        // A rising static evaluation means the line is worth another look.
+            --reduction;
         if (improving)
-            reduction -= REDUCTION_SCALE;
-        // A transposition-table move means the node was searched before and its
-        // ordering is trustworthy, so the tail of the move list is more likely junk.
-        if (ttMove)
-            reduction += REDUCTION_SCALE / 2;
-
-        // History steers the reduction continuously instead of relying only on the
-        // killer/countermove exemptions: quiets that repeatedly cut are reduced up
-        // to two plies less, quiets that repeatedly fail are reduced up to two more.
-        reduction -= std::clamp(historyScore, -MAX_HISTORY, MAX_HISTORY) *
-            (2 * REDUCTION_SCALE) / MAX_HISTORY;
-
-        reduction /= REDUCTION_SCALE;
-
-        // Never reduce into quiescence: the re-search that verifies a raised alpha
-        // has to be strictly deeper than the reduced search for LMR to stay sound.
+            --reduction;
+        if (orderedQuiet)
+            --reduction;
+        if (cutNode)
+            ++reduction;
+        // History is clamped to +/-16384, so this shifts the reduction by at most four
+        // plies either way based on how the move has actually performed.
+        reduction -= historyScore / 4096;
         return std::clamp(reduction, 0, depth - 2);
+    }
+
+    int SearchEngine::LateMoveCountLimit(int depth, bool improving)
+    {
+        const int limited = std::min(depth, LateMovePruningMaxDepth);
+        return (3 + limited * limited) / (improving ? 1 : 2);
     }
 
     bool SearchEngine::HasNonPawnMaterial(const ChessBoard& board)
