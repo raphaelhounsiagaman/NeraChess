@@ -246,6 +246,46 @@ namespace
         }
     }
 
+    // ChessBoard::GivesCheck answers the same question as making the move and asking
+    // IsInCheck, so the two are compared exhaustively over every move of every position
+    // in a small tree. The search prunes on this predicate, so a disagreement would
+    // quietly discard forcing moves rather than fail loudly.
+    void CompareGivesCheckAgainstMakeMove(ChessBoard& board, int depth)
+    {
+        for (const auto move : board.GetLegalMoves())
+        {
+            const bool predicted = board.GivesCheck(move);
+            board.MakeMove(move);
+            const bool actual = board.IsInCheck();
+            Require(predicted == actual, "GivesCheck disagreed with the move generator");
+            if (depth > 1)
+                CompareGivesCheckAgainstMakeMove(board, depth - 1);
+            board.UndoMove(move);
+        }
+    }
+
+    void TestGivesCheck()
+    {
+        static constexpr std::string_view positions[] = {
+            "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1",
+            "r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq - 0 1",
+            "8/2p5/3p4/KP5r/1R3p1k/8/4P1P1/8 w - - 0 1",
+            "r3k2r/Pppp1ppp/1b3nbN/nP6/BBP1P3/q4N2/Pp1P2PP/R2Q1RK1 w kq - 0 1",
+            // En passant, promotion and castling are the three cases where the board
+            // after the move differs from "piece moves from A to B".
+            "8/8/1k6/2b5/2pP4/8/5K2/8 b - d3 0 1",
+            "4k3/1P6/8/8/8/8/6p1/4K3 w - - 0 1",
+            "r3k2r/8/8/8/8/8/8/R3K2R w KQkq - 0 1",
+            "8/8/8/8/1k6/8/2P5/4K2R w K - 0 1",
+        };
+
+        for (const auto fen : positions)
+        {
+            ChessBoard board{ std::string(fen) };
+            CompareGivesCheckAgainstMakeMove(board, 3);
+        }
+    }
+
     void TestNullMoveState()
     {
         ChessBoard board("4k3/8/8/3pP3/8/8/8/4K3 w - d6 17 42");
@@ -634,15 +674,73 @@ namespace
         SearchLimits limits;
         limits.maxDepth = 6;
 
-        ChessBoard strategic("r1bq1rk1/pp2bppp/2n1pn2/2pp4/3P4/2PBPN2/PP1N1PPP/R1BQ1RK1 w - - 4 9");
-        Require(search.Search(strategic, limits).bestMove == FindMove(strategic, "d4c5"),
-            "search missed the benchmark's strongest strategic break");
+        // Forced mates behind a quiet sacrifice. These are the positions a selective
+        // search gets wrong first: the key move is quiet, orders badly, and is exactly
+        // what late-move and futility pruning discard. Asserting on the mate score as
+        // well as the move keeps the test about the search rather than about taste.
+        struct MateCase
+        {
+            std::string_view fen;
+            std::string_view move;
+            int mateInPlies;
+        };
+        static constexpr MateCase mates[] = {
+            { "2rr3k/pp3pp1/1nnqbN1p/3pN3/2pP4/2P3Q1/PPB4P/R4RK1 w - - 0 1", "g3g6", 3 },
+            { "1k1r4/pp1b1R2/3q2pp/4p3/2B5/4Q3/PPP2B2/2K5 b - - 0 1", "d6d1", 5 },
+            { "r5rk/5p1p/5R2/4B3/8/8/7P/7K w - - 0 1", "f6a6", 5 },
+        };
+
+        for (const MateCase& mate : mates)
+        {
+            search.NewGame();
+            ChessBoard board{ std::string(mate.fen) };
+            SearchLimits mateLimits;
+            mateLimits.maxDepth = mate.mateInPlies + 3;
+            const SearchResult result = search.Search(board, mateLimits);
+            Require(result.bestMove == FindMove(board, mate.move),
+                "search missed a forced mate behind a quiet move");
+            Require(result.score >= SCORE_MATE - MAX_PLY,
+                "search found the mating move without a mate score");
+        }
 
         search.NewGame();
         ChessBoard tactical("r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq - 0 1");
         const auto bestMove = search.Search(tactical, limits).bestMove;
         Require(bestMove == FindMove(tactical, "d5e6") || bestMove == FindMove(tactical, "e2a6"),
             "search missed both top tactical continuations in the benchmark");
+    }
+
+    // The magic tables are generated from the ray-walking functions, so the constant-time
+    // lookups must agree with them for every occupancy. Move ordering and evaluation both
+    // read the tables directly, so a mismatch would be silent.
+    void TestSliderAttackLookups()
+    {
+        using NeraChessEngine::Bitboard;
+        using NeraChessEngine::MoveGenerator;
+
+        uint64_t state = 0x9E3779B97F4A7C15ULL;
+        const auto nextRandom = [&state]()
+        {
+            state ^= state << 13;
+            state ^= state >> 7;
+            state ^= state << 17;
+            return state;
+        };
+
+        for (uint8_t square = 0; square < 64; ++square)
+        {
+            for (int trial = 0; trial < 64; ++trial)
+            {
+                // Sparse occupancies resemble real positions more than uniform bits do.
+                const Bitboard occupancy = nextRandom() & nextRandom() & nextRandom();
+                Require(MoveGenerator::LookupRookAttacks(square, occupancy) ==
+                        MoveGenerator::CalculatePossibleRookMoves(square, occupancy),
+                    "magic rook lookup disagrees with the ray walk");
+                Require(MoveGenerator::LookupBishopAttacks(square, occupancy) ==
+                        MoveGenerator::CalculatePossibleBishopMoves(square, occupancy),
+                    "magic bishop lookup disagrees with the ray walk");
+            }
+        }
     }
 
     void TestStaticExchangeEvaluation()
@@ -855,6 +953,7 @@ int main(int argc, char** argv)
         TestTerminalPositions();
         TestRepetition();
         TestIncrementalZobrist();
+        TestGivesCheck();
         TestNullMoveState();
         TestTranspositionTable();
         TestConcurrentTranspositionTable();
@@ -863,6 +962,7 @@ int main(int argc, char** argv)
         TestMultithreadedSearch();
         TestTaperedEvaluation();
         TestSearchChoices();
+        TestSliderAttackLookups();
         TestStaticExchangeEvaluation();
         TestClockAndTimeManagement();
         TestOpeningBook();
