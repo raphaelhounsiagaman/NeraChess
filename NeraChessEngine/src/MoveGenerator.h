@@ -34,7 +34,7 @@ namespace NeraChessEngine
 
 		void GeneratePromotions(Square startSquare, Square targetSquare);
 
-		Bitboard GetSlidingAttacks(Square square, Bitboard blockers, bool orthogonal);
+		static Bitboard GetSlidingAttacks(Square square, Bitboard blockers, bool orthogonal);
 
 		Piece GetPiece(Square square);
 
@@ -133,6 +133,11 @@ namespace NeraChessEngine
 
 		static Bitboard CalculatePossibleRookMoves(Square from_square, Bitboard blockers);
 		static Bitboard CalculatePossibleBishopMoves(Square from_square, Bitboard blockers);
+
+		// CalculatePossible*Moves walks the ray and exists to build the magic tables.
+		// These are the constant-time lookups meant for use inside the search.
+		static Bitboard LookupRookAttacks(Square square, Bitboard occupancy);
+		static Bitboard LookupBishopAttacks(Square square, Bitboard occupancy);
 
 		static const std::unique_ptr<Bitboard[]> s_RookMoveMasksArray;
 		static const std::unique_ptr<Bitboard[]> s_BishopMoveMasksArray;
