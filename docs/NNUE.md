@@ -4,10 +4,11 @@ This document describes the NNUE evaluation being built on this branch: the
 architecture, the pieces that exist, the pieces that do not, and the order they
 should be built in.
 
-> **Status.** The scaffolding is in place and tested. No trained network
-> exists, and the hand-crafted evaluation this branch replaced is gone, so
-> `NeraChess` on this branch evaluates every position as `0` and plays no
-> better than its search alone. That is expected until step 4 below is done.
+> **Status.** Inference and the self-play training loop both work end to end.
+> No network is committed to the repository, so a fresh checkout evaluates
+> every position as `0` and plays no better than its search alone until you
+> train one — see [Training by self-play](#training-by-self-play), which needs
+> no external engine.
 
 ---
 
@@ -89,8 +90,14 @@ and `test_mirrored_positions_produce_mirrored_features` in the Python one.
 | `Network.{h,cpp}` | Weight storage, loading, saving, and the forward pass |
 | `NetworkFormat.{h,cpp}` | The `.nnue` container |
 | `Quantization.h` | Fixed-point conventions, activation, dequantization |
-| `SimdOps.h` | Vector primitives; scalar reference only so far |
+| `SimdOps.h` | Vector primitives: scalar reference plus NEON, SSE2, and AVX2 |
 | `NnueEvaluator.{h,cpp}` | The process-wide network and the engine's entry point |
+
+### `NeraChessSelfPlay` — training data
+
+Generates training data without any external engine. `--mode material` labels
+random play with material balance to bootstrap generation 0; the default mode
+plays games with a network and labels them with search scores and results.
 
 ### `NNUETraining` — training
 
@@ -153,22 +160,119 @@ packaged copy without committing a binary blob.
 - **NEON, SSE2, and AVX2 kernels**, each checked bit-for-bit against scalar
 - The PyTorch model, loss, batching, and training loop
 - Quantization and export
+- **Self-play data generation and the training loop**, end to end and with no
+  external engine
 
 ### Not done
 
-1. **Training data.** No dataset and no way to generate one; `datagen.play_game`
-   is unimplemented.
-2. **A trained network.** Nothing to load yet.
+1. **A network worth shipping.** The loop runs and produces stronger networks
+   each generation, but nobody has yet spent the hours needed to train one that
+   plays well.
+2. **Architecture growth** — king buckets, output buckets, a wider hidden layer
+   — each worth A/B testing against the previous network rather than assuming.
 
-### Suggested order
+---
 
-1. **Training data**, by borrowing labels from an existing engine. Everything
-   else is unmeasurable without it.
-2. **A first network**, even a weak one. This is the point where the engine
-   plays chess again and where every piece of the pipeline gets validated
-   against reality rather than against a fixture.
-3. **Architecture growth** — king buckets, output buckets, a wider hidden layer
-   — each one A/B tested against the last network rather than assumed.
+## Training by self-play
+
+NeraChess never labels positions with another engine's evaluations. That leaves
+a bootstrapping problem, because training needs search scores, search needs an
+evaluation, and the evaluation is the network being trained.
+
+The circle is broken with exactly one piece of injected knowledge — piece
+values, the same ones the move ordering already uses for static exchange
+evaluation — and even that lives in the training data rather than in the
+engine.
+
+### Generation 0: material, learned rather than coded
+
+`NeraChessSelfPlay --mode material` plays random legal moves and labels each
+position with its material balance. Training on that yields a network that
+evaluates material and nothing else:
+
+| Position | gen0 evaluation |
+| --- | --- |
+| Start position | -14 |
+| Up a knight | +309 |
+| Up a queen | +877 |
+| Down eight pawns | -778 |
+
+Accurate to about 25cp, which is all it needs to be. The alternative — putting
+a material evaluation back into C++ — would mean a second evaluation path in
+the engine that has to be removed again later. This way generation 0 is a file
+that gets deleted.
+
+### Generation 1 and beyond: real games
+
+`NeraChessSelfPlay` then plays games with the current network, labelling every
+position with the search score and the eventual game result. Training on
+generation 0's games produces a network that has learned things generation 0
+had no concept of:
+
+| Property | gen0 (material) | gen1 (self-play) |
+| --- | --- | --- |
+| Centralized knight over a rim knight | +4 | **+68** |
+| Pawn on the seventh over the second | -5 | **+88** |
+
+Nobody told it that knights belong in the centre or that passed pawns want to
+advance. Those are the piece-square terms the hand-crafted evaluation used to
+contain, recovered from self-play alone.
+
+### The three things that decide whether it works
+
+**Adjudication.** A weak network shuffles until the fifty-move rule fires, so
+without it nearly every label is a draw and the data teaches nothing. Games are
+adjudicated as a win when the score stays past `--win-score` for `--win-plies`
+consecutive plies, and as a draw when it stays near zero late in the game. With
+adjudication on, a generation-0 run produces roughly 74% decisive games; without
+it, almost none.
+
+**Opening variety.** A deterministic engine from the start position plays one
+game forever. `--random-plies` plays random legal moves first, and those
+positions are never recorded.
+
+**Filtering.** A score that belongs to a tactic the search is still resolving
+is not a label for the position. Positions in check, positions whose best move
+is a capture or promotion, mate scores, and anything beyond `--max-score` are
+all dropped, along with approximate duplicates.
+
+### Running it
+
+```bash
+python3 NNUETraining/scripts/pipeline.py --workdir runs/first --generations 5
+```
+
+That does everything: material data, generation 0, then self-play, train, and
+verify for each generation. It reuses files that already exist, so an
+interrupted run resumes. `--install NeraChessApp/Resources/NNUE/nera.nnue`
+copies the final network where both binaries will find it.
+
+The stages can be run individually:
+
+```bash
+./bin/Release/NeraChessSelfPlay/NeraChessSelfPlay --mode material --output gen0.txt --positions 1000000
+```
+
+```bash
+./bin/Release/NeraChessSelfPlay/NeraChessSelfPlay --network gen0.nnue --output gen1.txt --positions 2000000 --depth 6
+```
+
+### What it costs
+
+Measured on an 8-core Apple M-series:
+
+| Stage | Rate | For one generation |
+| --- | --- | --- |
+| Material labelling | ~850k positions/s | 1M positions in ~2s |
+| Self-play at depth 6 | ~120 positions/s | 2M positions in ~4.5 hours |
+| Training (CPU) | ~4.5s per 200k positions per epoch | 2M positions, 20 epochs, ~1.5 hours |
+
+Self-play dominates, and it is evaluation-bound rather than move-generation
+bound, so it scales with cores. Use `--nodes` instead of `--depth` for a fixed
+budget per move, and lower the depth for the early generations — position
+variety matters more than label precision when the network is still weak.
+
+Every generation is `--seed` reproducible.
 
 ---
 

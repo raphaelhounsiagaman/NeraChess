@@ -86,5 +86,83 @@ class BatchingTest(unittest.TestCase):
             list(data.batched([], batch_size=0))
 
 
+class FeatureCacheTest(unittest.TestCase):
+    def samples(self) -> list[data.Sample]:
+        return [
+            data.Sample(START, 25.0, 1.0),
+            data.Sample(ENDGAME, -40.0, 0.0),
+            data.Sample("4k3/8/8/3p4/8/8/8/4K3 b - - 0 1", 12.5, 0.5),
+        ]
+
+    def test_holds_every_sample(self) -> None:
+        cache = data.FeatureCache.from_samples(self.samples())
+        self.assertEqual(len(cache), 3)
+
+    def test_batch_matches_collate(self) -> None:
+        # The cache is an optimization, so it must produce exactly what the
+        # straightforward path produces.
+        samples = self.samples()
+        cache = data.FeatureCache.from_samples(samples)
+
+        cached = cache.batch(range(len(samples)))
+        direct = data.collate(samples)
+
+        self.assertEqual(cached.own_indices, direct.own_indices)
+        self.assertEqual(cached.own_offsets, direct.own_offsets)
+        self.assertEqual(cached.their_indices, direct.their_indices)
+        self.assertEqual(cached.their_offsets, direct.their_offsets)
+        self.assertEqual(cached.scores, direct.scores)
+        self.assertEqual(cached.results, direct.results)
+
+    def test_batches_cover_every_sample_once(self) -> None:
+        samples = [data.Sample(START, float(index), 0.5) for index in range(10)]
+        cache = data.FeatureCache.from_samples(samples)
+
+        seen = [score for batch in cache.batches(3) for score in batch.scores]
+        self.assertEqual(sorted(seen), [float(index) for index in range(10)])
+
+    def test_shuffling_reorders_without_losing_samples(self) -> None:
+        samples = [data.Sample(START, float(index), 0.5) for index in range(50)]
+        cache = data.FeatureCache.from_samples(samples)
+
+        ordered = [s for b in cache.batches(10) for s in b.scores]
+        shuffled = [s for b in cache.batches(10, shuffle_seed=7) for s in b.scores]
+
+        self.assertNotEqual(ordered, shuffled)
+        self.assertEqual(sorted(shuffled), sorted(ordered))
+
+    def test_pack_round_trip(self) -> None:
+        cache = data.FeatureCache.from_samples(self.samples())
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "nested" / "samples.pack"
+            cache.save(path)
+            restored = data.FeatureCache.load(path)
+
+        self.assertEqual(len(restored), len(cache))
+        self.assertEqual(list(restored.own_indices), list(cache.own_indices))
+        self.assertEqual(list(restored.own_offsets), list(cache.own_offsets))
+        self.assertEqual(list(restored.their_indices), list(cache.their_indices))
+        self.assertEqual(list(restored.their_offsets), list(cache.their_offsets))
+        self.assertEqual(list(restored.scores), list(cache.scores))
+        self.assertEqual(list(restored.results), list(cache.results))
+
+    def test_rejects_a_foreign_pack_file(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "bogus.pack"
+            path.write_bytes(b"NOTAPACK" + bytes(64))
+            with self.assertRaises(ValueError):
+                data.FeatureCache.load(path)
+
+    def test_reads_a_text_file(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "samples.txt"
+            path.write_text(
+                f"# header\n{START} | 25 | 1.0\n{ENDGAME} | -40 | 0.0\n", encoding="utf-8"
+            )
+            cache = data.FeatureCache.from_text(path)
+        self.assertEqual(len(cache), 2)
+        self.assertEqual(list(cache.scores), [25.0, -40.0])
+
+
 if __name__ == "__main__":
     unittest.main()

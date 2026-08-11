@@ -31,11 +31,13 @@ jobs:
           make -C NeraChessNNUE config=debug -j"$jobs"
           make -C NeraChessSearch config=debug -j"$jobs"
           make -C NeraChessUCI config=debug -j"$jobs"
+          make -C NeraChessSelfPlay config=debug -j"$jobs"
           make -C NeraChessTests config=debug -j"$jobs"
           make -C NeraChessEngine config=release -j"$jobs"
           make -C NeraChessNNUE config=release -j"$jobs"
           make -C NeraChessSearch config=release -j"$jobs"
           make -C NeraChessUCI config=release -j"$jobs"
+          make -C NeraChessSelfPlay config=release -j"$jobs"
           make -C NeraChessTests config=release -j"$jobs"
 
       - name: Run release regressions and UCI smoke test
@@ -60,6 +62,32 @@ jobs:
           python3 -m nnue_training.verify \
             --network "${RUNNER_TEMP}/random.nnue" \
             --engine ../bin/Release/NeraChessUCI/NeraChessUCI
+
+      - name: Generate self-play training data
+        run: |
+          # The whole training pipeline in miniature: material labels need no
+          # network, self-play needs one, and both must produce samples the
+          # trainer can parse.
+          ./bin/Release/NeraChessTests/NeraChessTests --write-random-network "${RUNNER_TEMP}/smoke.nnue"
+          ./bin/Release/NeraChessSelfPlay/NeraChessSelfPlay \
+            --mode material --output "${RUNNER_TEMP}/material.txt" \
+            --positions 2000 --threads 2 --seed 1 --quiet
+          ./bin/Release/NeraChessSelfPlay/NeraChessSelfPlay \
+            --network "${RUNNER_TEMP}/smoke.nnue" --output "${RUNNER_TEMP}/selfplay.txt" \
+            --positions 500 --depth 4 --threads 2 --seed 1 --quiet
+          cd NNUETraining
+          python3 - "${RUNNER_TEMP}/material.txt" "${RUNNER_TEMP}/selfplay.txt" <<'PY'
+          import sys
+          from nnue_training import dataset
+
+          for path, minimum in zip(sys.argv[1:], (2000, 500)):
+              cache = dataset.FeatureCache.from_text(path)
+              assert len(cache) >= minimum, f"{path} has only {len(cache)} samples"
+              batch = cache.batch(range(min(64, len(cache))))
+              assert len(batch.own_indices) > 0, f"{path} produced no features"
+              assert all(0.0 <= r <= 1.0 for r in batch.results), f"{path} has a bad result"
+              print(f"{path}: {len(cache)} samples parsed")
+          PY
 
       - name: Build and test the AVX2 NNUE kernels
         run: |

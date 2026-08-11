@@ -15,6 +15,10 @@ binary format is the intended follow-up -- see :class:`PackedSampleReader`.
 
 from __future__ import annotations
 
+import random
+import struct
+import sys
+from array import array
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Iterable, Iterator, Sequence
@@ -75,23 +79,161 @@ def load_text_samples(path: str | Path) -> list[Sample]:
     return list(read_text_samples(path))
 
 
-class PackedSampleReader:
-    """Reader for a fixed-size binary sample format.
+PACK_MAGIC = b"NERAPACK"
+PACK_VERSION = 1
 
-    TODO(nnue): define and implement the packed layout. The shape it needs is
-    a bitboard-style position encoding plus an int16 score and an int8 result,
-    which is about 32 bytes per sample against roughly 90 for text, and it
-    removes FEN parsing from the training loop. Until then, use the text
-    format; it is fast enough for the first few million positions.
+
+class FeatureCache:
+    """Feature indices extracted once, so epochs do not re-parse FENs.
+
+    Parsing a FEN and computing its features costs far more than the gradient
+    step that consumes them, and doing it every epoch makes training on a few
+    million positions pointlessly slow. This holds the whole dataset as flat
+    arrays -- every sample's features concatenated, plus per-sample offsets --
+    which is both fast to slice and compact: two bytes per active feature
+    rather than a Python int per feature.
+
+    Uses only the standard library's ``array`` module, so a dataset can be
+    packed and inspected without PyTorch.
     """
 
-    def __init__(self, path: str | Path) -> None:
-        self.path = Path(path)
+    def __init__(self) -> None:
+        self.own_indices = array("H")
+        self.own_offsets = array("I", [0])
+        self.their_indices = array("H")
+        self.their_offsets = array("I", [0])
+        self.scores = array("f")
+        self.results = array("f")
 
-    def __iter__(self) -> Iterator[Sample]:
-        raise NotImplementedError(
-            "the packed sample format is not implemented yet; use the text format"
+    def __len__(self) -> int:
+        return len(self.scores)
+
+    def append(self, sample: Sample) -> None:
+        own, their = sample.perspectives()
+        self.own_indices.extend(own)
+        self.own_offsets.append(len(self.own_indices))
+        self.their_indices.extend(their)
+        self.their_offsets.append(len(self.their_indices))
+        self.scores.append(sample.score)
+        self.results.append(sample.result)
+
+    @classmethod
+    def from_samples(cls, samples: Iterable[Sample]) -> "FeatureCache":
+        cache = cls()
+        for sample in samples:
+            cache.append(sample)
+        return cache
+
+    @classmethod
+    def from_text(cls, path: str | Path) -> "FeatureCache":
+        return cls.from_samples(read_text_samples(path))
+
+    # -- persistence ------------------------------------------------------
+
+    _ARRAYS = (
+        ("own_indices", "H"),
+        ("own_offsets", "I"),
+        ("their_indices", "H"),
+        ("their_offsets", "I"),
+        ("scores", "f"),
+        ("results", "f"),
+    )
+
+    def save(self, path: str | Path) -> Path:
+        """Writes the cache so a later run skips parsing entirely."""
+        destination = Path(path)
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        with destination.open("wb") as handle:
+            handle.write(PACK_MAGIC)
+            handle.write(struct.pack("<I", PACK_VERSION))
+            handle.write(struct.pack("<Q", len(self)))
+            for name, _ in self._ARRAYS:
+                values: array = getattr(self, name)
+                handle.write(struct.pack("<Q", len(values)))
+            for name, _ in self._ARRAYS:
+                values = getattr(self, name)
+                if sys.byteorder != "little":
+                    values = array(values.typecode, values)
+                    values.byteswap()
+                values.tofile(handle)
+        return destination
+
+    @classmethod
+    def load(cls, path: str | Path) -> "FeatureCache":
+        cache = cls()
+        with Path(path).open("rb") as handle:
+            if handle.read(len(PACK_MAGIC)) != PACK_MAGIC:
+                raise ValueError(f"{path} is not a packed NeraChess dataset")
+            (version,) = struct.unpack("<I", handle.read(4))
+            if version != PACK_VERSION:
+                raise ValueError(
+                    f"{path} uses pack version {version}, expected {PACK_VERSION}"
+                )
+            handle.read(8)  # sample count, implied by the array lengths
+
+            counts = [struct.unpack("<Q", handle.read(8))[0] for _ in cls._ARRAYS]
+            for (name, typecode), count in zip(cls._ARRAYS, counts):
+                values = array(typecode)
+                values.fromfile(handle, count)
+                if sys.byteorder != "little":
+                    values.byteswap()
+                setattr(cache, name, values)
+        return cache
+
+    # -- batching ---------------------------------------------------------
+
+    def batch(self, order: Sequence[int]) -> Batch:
+        """Collates the samples at the given indices into one batch."""
+        own_indices: list[int] = []
+        own_offsets: list[int] = []
+        their_indices: list[int] = []
+        their_offsets: list[int] = []
+        scores: list[float] = []
+        results: list[float] = []
+
+        for sample_index in order:
+            own_offsets.append(len(own_indices))
+            own_indices.extend(
+                self.own_indices[
+                    self.own_offsets[sample_index] : self.own_offsets[sample_index + 1]
+                ]
+            )
+            their_offsets.append(len(their_indices))
+            their_indices.extend(
+                self.their_indices[
+                    self.their_offsets[sample_index] : self.their_offsets[sample_index + 1]
+                ]
+            )
+            scores.append(self.scores[sample_index])
+            results.append(self.results[sample_index])
+
+        return Batch(
+            own_indices=own_indices,
+            own_offsets=own_offsets,
+            their_indices=their_indices,
+            their_offsets=their_offsets,
+            scores=scores,
+            results=results,
         )
+
+    def batches(
+        self, batch_size: int, shuffle_seed: int | None = None
+    ) -> Iterator[Batch]:
+        """Yields batches, optionally in a shuffled order.
+
+        Shuffling matters more than usual here: self-play samples arrive in
+        game order, so an unshuffled batch is a few positions from the same
+        handful of games and its gradient is badly correlated.
+        """
+        if batch_size < 1:
+            raise ValueError("batch size must be positive")
+
+        order = list(range(len(self)))
+        if shuffle_seed is not None:
+            random.Random(shuffle_seed).shuffle(order)
+
+        for start in range(0, len(order), batch_size):
+            yield self.batch(order[start : start + batch_size])
 
 
 @dataclass

@@ -68,10 +68,14 @@ def train(config: TrainConfig) -> Path:
     device = torch.device(config.device)
 
     print(f"loading samples from {config.data_path}")
-    samples = data.load_text_samples(config.data_path)
-    if not samples:
+    started = time.monotonic()
+    if config.data_path.suffix == ".pack":
+        cache = data.FeatureCache.load(config.data_path)
+    else:
+        cache = data.FeatureCache.from_text(config.data_path)
+    if len(cache) == 0:
         raise SystemExit(f"{config.data_path} contains no samples")
-    print(f"loaded {len(samples)} positions")
+    print(f"loaded {len(cache)} positions in {time.monotonic() - started:.1f}s")
 
     model = NnueModel().to(device)
     optimizer = torch.optim.AdamW(
@@ -93,7 +97,10 @@ def train(config: TrainConfig) -> Path:
         total_loss = 0.0
         batch_count = 0
 
-        for batch in data.batched(samples, config.batch_size):
+        # Self-play samples arrive in game order, so an unshuffled batch is a
+        # few positions from the same handful of games and its gradient is
+        # badly correlated. Reshuffle every epoch.
+        for batch in cache.batches(config.batch_size, shuffle_seed=config.seed + epoch):
             own_indices = torch.tensor(batch.own_indices, dtype=torch.long, device=device)
             own_offsets = torch.tensor(batch.own_offsets, dtype=torch.long, device=device)
             their_indices = torch.tensor(

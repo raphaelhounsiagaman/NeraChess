@@ -31,6 +31,8 @@ include "NeraChessSearch/Build-NeraChessSearch.lua"
 
 include "NeraChessUCI/Build-NeraChessUCI.lua"
 
+include "NeraChessSelfPlay/Build-NeraChessSelfPlay.lua"
+
 include "NeraChessTests/Build-NeraChessTests.lua"
 
 include "ApplicationCore/Build-ApplicationCore.lua"

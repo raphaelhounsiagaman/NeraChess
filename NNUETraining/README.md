@@ -4,10 +4,9 @@ Training pipeline for the NeraChess NNUE evaluation network. The engine-side
 inference library lives in [`../NeraChessNNUE`](../NeraChessNNUE); this project
 owns everything that produces a `.nnue` file the engine can load.
 
-> **Status: scaffolding.** No trained network exists yet, and the engine on
-> this branch has no other evaluation, so it plays no better than its search
-> alone. See [`../docs/NNUE.md`](../docs/NNUE.md) for the plan and what is
-> still missing.
+> **Status: working, untrained.** The loop runs end to end and needs no
+> external engine, but no network is committed to the repository. See
+> [`../docs/NNUE.md`](../docs/NNUE.md) for how the bootstrapping works.
 
 ## Layout
 
@@ -18,8 +17,7 @@ owns everything that produces a `.nnue` file the engine can load.
 | `serialize.py` | no | The `.nnue` container, mirrored from `NetworkFormat.h` |
 | `quantize.py` | no | Float parameters to int16, plus a reference forward pass |
 | `engine.py` | no | UCI client for a built `NeraChessUCI` binary |
-| `dataset.py` | no | Training samples and batching |
-| `datagen.py` | no | Self-play data generation |
+| `dataset.py` | no | Training samples, feature caching, and batching |
 | `model.py` | yes | The PyTorch model |
 | `loss.py` | yes | The training objective |
 | `train.py` | yes | Training entry point |
@@ -105,17 +103,24 @@ view, and `result` is the game result from the same point of view (`1.0` win,
 
 ## Getting training data
 
-This branch removed the hand-crafted evaluation, so the engine cannot yet label
-its own positions — it has nothing to label them with. Two ways out:
+Training data comes from self-play and nothing else — no external engine labels
+any position, ever.
 
-1. **Borrow labels.** Score positions with an existing strong engine, or start
-   from a public dataset of already-labelled positions. Fastest path to a first
-   network.
-2. **Bootstrap.** Label with a temporary material-only evaluation, train a weak
-   first network, then re-generate data with that network and iterate. Slower,
-   but keeps the network entirely self-taught.
+The bootstrapping problem (training needs search scores, search needs an
+evaluation, the evaluation is the network) is broken with one piece of injected
+knowledge: piece values, the same ones the move ordering already uses. Even
+that lives in the data rather than in the engine. `NeraChessSelfPlay --mode
+material` labels random play with material balance, which trains a
+generation-0 network; every generation after that trains on the previous one's
+games.
 
-`datagen.py` holds the generation loop and its filtering rules; `play_game` is
-the piece that still needs writing, and it needs legal move generation on the
-Python side (a `python-chess` dependency) or a UCI command that reports the
-game state.
+The whole loop is one command:
+
+```bash
+python3 scripts/pipeline.py --workdir runs/first --generations 5
+```
+
+Generation is written in C++ rather than here, because it needs legal move
+generation, game-over detection, and a search per move — all of which the
+engine already has, at roughly a hundred times the throughput a Python driver
+plus a UCI round-trip per move would manage.

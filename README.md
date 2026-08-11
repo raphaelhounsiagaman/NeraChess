@@ -11,11 +11,11 @@ NeraChess is a C++23 chess engine, UCI executable, and SDL2/Dear ImGui desktop a
 ![NeraChess desktop application](assets/screenshots/NeraChessUIStartingPosition.png)
 
 > **This branch is mid-migration to NNUE.** The hand-crafted evaluation has been
-> removed and replaced with the scaffolding for a trained network, but no
-> network exists yet, so every position evaluates to `0` and the engine plays no
-> better than its search alone. The strength figures below describe `main`, not
-> this branch. See [docs/NNUE.md](docs/NNUE.md) for the architecture, what is
-> built, and what is still missing.
+> replaced by a trained network, and the self-play training loop works, but no
+> network is committed here — so a fresh checkout evaluates every position as
+> `0` and plays no better than its search alone until you train one. The
+> strength figures below describe `main`, not this branch. See
+> [docs/NNUE.md](docs/NNUE.md) for the architecture and the training loop.
 
 At engine commit `212e012`, a 300-game paired-opening tournament estimated
 NeraChess at **2627 Stockfish 18 UCI-Elo-equivalent** at `10+0.1`, with a
@@ -72,10 +72,15 @@ network:
   UCI engine and the desktop bot
 - PyTorch training pipeline in [`NNUETraining`](NNUETraining/README.md), checked
   against the engine position by position
+- Self-play training that uses no external engine: generation 0 learns material
+  from random play, and every generation after it trains on the previous one's
+  games
 
 The classical terms — tapered piece-square tables, pawn structure, mobility, and
-king safety — were removed in favour of the network. Until a network is trained
-this branch has no positional judgement at all; see [docs/NNUE.md](docs/NNUE.md).
+king safety — were removed in favour of the network, which recovers them from
+self-play instead: after one generation the network already values a centralized
+knight over a rim knight and an advanced pawn over a home one, with no such term
+written anywhere. See [docs/NNUE.md](docs/NNUE.md).
 
 ---
 
@@ -90,6 +95,7 @@ The goal of this structure is separation of concerns rather than extreme abstrac
 - `NeraChessSearch`: search, transposition table, time management, opening book, and the evaluation facade
 - `NeraChessUCI`: headless asynchronous UCI protocol adapter
 - `NeraChessApp`: SDL/ImGui desktop application and chess-player adapters
+- `NeraChessSelfPlay`: self-play generator that produces NNUE training data
 - `NeraChessTests`: headless perft, state, search, NNUE, book, and benchmark coverage
 - `NNUETraining`: Python and PyTorch pipeline that produces the network the engine loads
 
@@ -242,6 +248,7 @@ make -C NeraChessEngine config=release
 make -C NeraChessNNUE config=release
 make -C NeraChessSearch config=release
 make -C NeraChessUCI config=release
+make -C NeraChessSelfPlay config=release
 make -C NeraChessTests config=release
 ./bin/Release/NeraChessTests/NeraChessTests
 ./bin/Release/NeraChessUCI/NeraChessUCI
@@ -310,12 +317,26 @@ transformer, incremental updates, and the output layer. Drop one at
 `NeraChessApp/Resources/NNUE/nera.nnue` and both the desktop bot and the UCI
 engine pick it up at startup.
 
+## Training a network
+
+Networks are trained by self-play, with no external engine involved. One command
+runs the whole loop -- material bootstrap, then generate, train, and verify for
+each generation:
+
+```sh
+python3 NNUETraining/scripts/pipeline.py --workdir runs/first --generations 5
+```
+
+See [docs/NNUE.md](docs/NNUE.md) for how the bootstrapping works, what each
+knob does, and what it costs.
+
 ---
 
 ## Known Limitations
 
-- No trained NNUE network exists yet, so this branch has no evaluation and plays
-  far below the calibrated strength quoted above.
+- No trained NNUE network ships with the engine yet. The self-play training loop
+  works, but nobody has spent the hours needed to produce a network worth
+  shipping, so this branch plays far below the calibrated strength quoted above.
 - x86 builds use a vectorized accumulator but a scalar output layer unless AVX2
   is enabled at compile time.
 - Search performance and calibrated strength depend on hardware, thread count, and time control.
