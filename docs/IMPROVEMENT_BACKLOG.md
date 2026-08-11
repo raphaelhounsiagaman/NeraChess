@@ -182,5 +182,35 @@ is an external dependency and a large amount of probing code.
 Rationale: the measured symptom (depth 13–15 at 3 s with 1.5–2 M nps) points directly
 at it, it is entirely internal to `SearchEngine.cpp`, it needs no new data, no external
 dependency, and no rules changes, and each sub-part is independently measurable with
-self-play. Items 2 and 3 are its natural follow-ups — in particular check extensions
-are what make aggressive reductions safe, so a minimal check extension is included.
+self-play.
+
+### What shipped
+
+Depth-scaled reverse futility and futility pruning, late-move-count pruning, a
+logarithmic LMR table adjusted by history/improving/cut-node/killer state, internal
+iterative reduction, and a static-evaluation stack behind an `improving` signal.
+Pruning decisions moved ahead of `MakeMove`, which needed a new
+`ChessBoard::GivesCheck` so that checking moves could stay exempt.
+
+Item 5 was partly addressed along the way: static exchange evaluation was walking rays
+instead of using the magic tables it was built from. Switching it leaves every search
+result identical and raises the node rate 6–9%.
+
+Depth summed over the eight probe positions went from **127 to 141**.
+
+### Measured, and rejected
+
+Both were tried on top of the shipped layer and removed. They are recorded here so they
+are not re-attempted blindly — each may still be worth revisiting under the conditions
+noted.
+
+| Change | Result (600 games, 3 s + 0.03 s) | Why |
+| --- | --- | --- |
+| Blanket check extensions, capped at `ply < 2 * rootDepth` | −11.6 Elo, 95% CI [−34.9, +12.2] | Cost ~1.4 plies of depth. The pruning exemption for checking moves already captures most of the benefit. A tighter gate (safe checks only, or PV nodes only) is untested. |
+| SEE pruning of losing quiet moves, depth ≤ 7 | −22.6 Elo, 95% CI [−43.7, −1.7] | `StaticExchangeEvaluation` copies twelve bitboards per call and was measured before the magic-table fix. Worth retrying now that SEE is cheaper, and cheaper still if the sort's SEE results were reused instead of recomputed. |
+
+### Natural follow-ups
+
+Items 2 (extensions, with a tighter gate than the one rejected above), 3 (continuation
+history), and 4 (search-side two-fold repetition) are the next candidates, in that
+order. Item 5's remaining per-node copies are now the largest speed item left.

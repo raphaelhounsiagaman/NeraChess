@@ -1,5 +1,12 @@
 # Engine strength calibration
 
+## Scope note
+
+The calibrated rating below is from engine commit `212e012` and has **not** been
+re-measured since. The selective-search rewrite is documented separately in
+[Change validation](#change-validation) with self-play and cross-check numbers,
+which are not a rating and do not replace the calibration.
+
 ## Result
 
 At engine code commit `212e012`, NeraChess measured **2627 Stockfish 18
@@ -125,6 +132,40 @@ The generated PGN SHA-256 values were:
   `4ca0897d3992cf28bcc3bb607737f4b2deb2c3f30057c887bbe90e80de9b47cc`
 - Focused tournament:
   `294ba6659a0a2584f530844d1e477df94039881ef679499bb9149a49a2d18e75`
+
+## Change validation
+
+Individual engine changes are validated with paired-opening matches rather than by
+re-running the calibration above. This section records the selective-search rewrite.
+None of these numbers is a rating.
+
+Conditions: Apple M3, 8 logical CPUs, Release build, one thread, 16 MiB hash per engine,
+opening book disabled, `3 s + 0.03 s`. Openings are seeded four-ply random walks from the
+start position, rejected when the pre-change engine evaluates them beyond ±150 cp, and
+each is played twice with colors reversed. Intervals are bootstrapped over opening pairs
+rather than over individual games.
+
+Head to head against the previous search:
+
+| Games | W-D-L | Score | Elo | 95% interval |
+| ---: | ---: | ---: | ---: | --- |
+| 600 | 327-148-125 | 66.8% | +121.7 | +97.4 to +146.5 |
+
+Self-play differences overstate what a change is worth against an unrelated opponent, so
+both builds also played the same foreign anchor over the same openings — Stockfish 18
+with `UCI_LimitStrength=true` and `UCI_Elo=2400`:
+
+| Build | W-D-L | Score vs anchor | Elo vs anchor |
+| --- | ---: | ---: | ---: |
+| Before | 373-63-164 | 67.4% | +126.3 |
+| After | 425-47-128 | 74.8% | +188.5 |
+
+The gap against the fixed anchor is about **+62 Elo**, roughly half the self-play figure,
+which is the usual relationship. The score difference is 7.4 percentage points with a
+standard error near 2.6, so the direction is resolved at this sample size.
+
+Search depth summed over eight fixed positions at three seconds each rose from 127 to
+141 plies.
 
 ## How to read this result
 
