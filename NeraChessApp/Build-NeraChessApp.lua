@@ -30,6 +30,7 @@ project "NeraChessApp"
     "src",
 
     "../NeraChessEngine/src",
+    "../NeraChessNNUE/src",
     "../NeraChessSearch/src",
 
     "../ApplicationCore/src",
@@ -39,6 +40,7 @@ project "NeraChessApp"
   links
   {
     "NeraChessEngine",
+    "NeraChessNNUE",
     "NeraChessSearch",
     "ApplicationCore",
   }

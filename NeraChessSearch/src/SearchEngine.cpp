@@ -3,9 +3,11 @@
 #include "ChessUtil.h"
 #include "Evaluation.h"
 #include "MoveOrdering.h"
+#include "NnueEvaluator.h"
 
 #include <algorithm>
 #include <array>
+#include <cassert>
 #include <cmath>
 #include <exception>
 #include <system_error>
@@ -191,6 +193,8 @@ namespace NeraChessSearch
         }
 
         ChessBoard board = position;
+        m_Accumulators.Reset(NeraChessNNUE::Evaluator::GetNetwork(), board.GetBoardState());
+
         SearchResult result;
         Score rootTerminalScore;
         if (IsDrawOrTerminal(board, rootTerminalScore, 0))
@@ -273,6 +277,14 @@ namespace NeraChessSearch
                 break;
         }
 
+        // Every MakeMove in the search must be matched by an accumulator push
+        // and every UndoMove by a pop, or the accumulator stops describing the
+        // board it is evaluated against. That is harmless while entries are
+        // refreshed on demand and silently wrong the moment incremental
+        // updates land, so catch the imbalance now rather than then.
+        assert(m_Accumulators.Depth() == 0 &&
+            "accumulator stack did not unwind; a make/unmake pair is missing its push/pop");
+
         FlushNodeCount();
         result.nodes = AggregateNodeCount();
         result.selectiveDepth = m_SelectiveDepth;
@@ -313,6 +325,7 @@ namespace NeraChessSearch
         for (const Move move : moves)
         {
             board.MakeMove(move);
+            m_Accumulators.Push();
             Score score;
             if (firstMove)
             {
@@ -328,6 +341,7 @@ namespace NeraChessSearch
                         depth - 1, 1, true, true, move);
             }
             board.UndoMove(move);
+            m_Accumulators.Pop();
 
             if (m_Aborted)
                 return result;
@@ -375,7 +389,7 @@ namespace NeraChessSearch
         if (IsDrawOrTerminal(board, terminalScore, ply))
             return terminalScore;
         if (ply >= MAX_PLY - 1)
-            return Evaluate(board);
+            return EvaluateNode(board);
 
         alpha = std::max(alpha, -SCORE_MATE + ply);
         beta = std::min(beta, SCORE_MATE - ply - 1);
@@ -412,13 +426,16 @@ namespace NeraChessSearch
             depth >= 3 && HasNonPawnMaterial(board);
         Score staticEval = SCORE_DRAW;
         if (canReverseFutility || canFutilityPrune || canNullPrune)
-            staticEval = Evaluate(board);
+            staticEval = EvaluateNode(board);
 
         if (canReverseFutility && staticEval - 120 * depth >= beta)
             return staticEval;
 
         if (canNullPrune)
         {
+            // A null move leaves every piece where it is, so the accumulator
+            // stays valid and needs no push. Only the side to move changes,
+            // and the output layer reads that from the board state.
             if (staticEval >= beta && board.MakeNullMove())
             {
                 const int reduction = 2 + depth / 4;
@@ -459,11 +476,13 @@ namespace NeraChessSearch
                 (move == m_KillerMoves[ply][0] || move == m_KillerMoves[ply][1]);
             const bool counter = quiet && move == counterMove;
             board.MakeMove(move);
+            m_Accumulators.Push();
             const bool givesCheck = board.IsInCheck();
             if (canFutilityPrune && staticEval + 120 * depth <= alpha &&
                 bestMove != 0 && !killer && !counter && !givesCheck && IsFutilityPrunable(move))
             {
                 board.UndoMove(move);
+                m_Accumulators.Pop();
                 ++moveIndex;
                 continue;
             }
@@ -494,6 +513,7 @@ namespace NeraChessSearch
                         depth - 1, ply + 1, true, true, move);
             }
             board.UndoMove(move);
+            m_Accumulators.Pop();
 
             if (m_Aborted)
                 return SCORE_DRAW;
@@ -565,7 +585,7 @@ namespace NeraChessSearch
         if (IsDrawOrTerminal(board, terminalScore, ply))
             return terminalScore;
         if (ply >= MAX_PLY - 1)
-            return Evaluate(board);
+            return EvaluateNode(board);
 
         alpha = std::max(alpha, -SCORE_MATE + ply);
         beta = std::min(beta, SCORE_MATE - ply - 1);
@@ -598,7 +618,7 @@ namespace NeraChessSearch
         Score standPat = -SCORE_INF;
         if (!inCheck)
         {
-            standPat = Evaluate(board);
+            standPat = EvaluateNode(board);
             bestScore = standPat;
             if (bestScore >= beta)
             {
@@ -635,13 +655,16 @@ namespace NeraChessSearch
             }
 
             board.MakeMove(move);
+            m_Accumulators.Push();
             if (!inCheck && !board.IsInCheck() && (deltaPrunable || seePrunable))
             {
                 board.UndoMove(move);
+                m_Accumulators.Pop();
                 continue;
             }
             const Score score = -QuiescenceSearch(board, -beta, -alpha, ply + 1);
             board.UndoMove(move);
+            m_Accumulators.Pop();
 
             if (m_Aborted)
                 return SCORE_DRAW;
@@ -903,5 +926,14 @@ namespace NeraChessSearch
     Score SearchEngine::Evaluate(const ChessBoard& board)
     {
         return Evaluation::Evaluate(board);
+    }
+
+    Score SearchEngine::EvaluateNode(const ChessBoard& board)
+    {
+        // Reads this worker's accumulator for the current ply, which the
+        // make/unmake pairs keep aligned with the board. The entry is stale
+        // until the incremental update lands, so this still costs a refresh
+        // per call.
+        return Evaluation::Evaluate(board.GetBoardState(), m_Accumulators.Current());
     }
 }

@@ -1,5 +1,6 @@
 #pragma once
 
+#include "Accumulator.h"
 #include "ChessBoard.h"
 #include "TranspositionTable.h"
 
@@ -58,6 +59,9 @@ namespace NeraChessSearch
         void SetThreadCount(size_t threadCount);
         size_t GetThreadCount() const { return m_ThreadCount; }
 
+        // Standalone evaluation for callers outside a search, such as the UCI
+        // "eval" command and the regression tests. Refreshes a scratch
+        // accumulator rather than using the search's stack.
         static Score Evaluate(const NeraChessEngine::ChessBoard& board);
 
     private:
@@ -89,6 +93,10 @@ namespace NeraChessSearch
         void SortMoves(const NeraChessEngine::ChessBoard& board,
             NeraChessEngine::MoveList<218>& moves, int ply, NeraChessEngine::Move ttMove,
             NeraChessEngine::Move previousMove = 0);
+        // Evaluation of the node the search is standing on, using this
+        // worker's accumulator stack.
+        Score EvaluateNode(const NeraChessEngine::ChessBoard& board);
+
         void UpdatePrincipalVariation(int ply, NeraChessEngine::Move move);
         void ResetHeuristics();
         void CountNode();
@@ -123,6 +131,12 @@ namespace NeraChessSearch
         uint64_t m_Nodes = 0;
         uint64_t m_UnflushedNodes = 0;
         int m_SelectiveDepth = 0;
+
+        // One NNUE accumulator per ply, private to this worker. Pushed and
+        // popped alongside the board's make/unmake so that an incremental
+        // update has a place to live; today every entry above the root is
+        // marked stale and refreshed on demand.
+        NeraChessNNUE::AccumulatorStack m_Accumulators{};
 
         std::array<std::array<NeraChessEngine::Move, 2>, MAX_PLY> m_KillerMoves{};
         std::array<std::array<std::array<int32_t, 64>, 64>, 2> m_History{};

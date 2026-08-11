@@ -28,10 +28,12 @@ jobs:
         run: |
           jobs="$(nproc)"
           make -C NeraChessEngine config=debug -j"$jobs"
+          make -C NeraChessNNUE config=debug -j"$jobs"
           make -C NeraChessSearch config=debug -j"$jobs"
           make -C NeraChessUCI config=debug -j"$jobs"
           make -C NeraChessTests config=debug -j"$jobs"
           make -C NeraChessEngine config=release -j"$jobs"
+          make -C NeraChessNNUE config=release -j"$jobs"
           make -C NeraChessSearch config=release -j"$jobs"
           make -C NeraChessUCI config=release -j"$jobs"
           make -C NeraChessTests config=release -j"$jobs"
@@ -46,11 +48,25 @@ jobs:
           grep -q '^bestmove e2e4$' <<< "$uci_output"
           python3 scripts/Test-UciPonder.py ./bin/Release/NeraChessUCI/NeraChessUCI
 
+      - name: Run NNUE training tests
+        run: |
+          cd NNUETraining
+          python3 -m unittest discover -s tests -t .
+
+      - name: Verify the engine and trainer agree on a network
+        run: |
+          cd NNUETraining
+          python3 scripts/make_random_network.py --output "${RUNNER_TEMP}/random.nnue"
+          python3 -m nnue_training.verify \
+            --network "${RUNNER_TEMP}/random.nnue" \
+            --engine ../bin/Release/NeraChessUCI/NeraChessUCI
+
       - name: Build and run sanitized regressions
         run: |
           jobs="$(nproc)"
           sanitizer_flags='-fsanitize=address,undefined -fno-omit-frame-pointer'
           make -C NeraChessEngine config=debug -B -j"$jobs" CXXFLAGS="$sanitizer_flags"
+          make -C NeraChessNNUE config=debug -B -j"$jobs" CXXFLAGS="$sanitizer_flags"
           make -C NeraChessSearch config=debug -B -j"$jobs" CXXFLAGS="$sanitizer_flags"
           make -C NeraChessTests config=debug -B -j"$jobs" CXXFLAGS="$sanitizer_flags" LDFLAGS='-fsanitize=address,undefined'
           ./bin/Debug/NeraChessTests/NeraChessTests
@@ -60,6 +76,7 @@ jobs:
           jobs="$(nproc)"
           sanitizer_flags='-fsanitize=thread -fno-omit-frame-pointer -O1 -g'
           make -C NeraChessEngine config=debug -B -j"$jobs" CXXFLAGS="$sanitizer_flags"
+          make -C NeraChessNNUE config=debug -B -j"$jobs" CXXFLAGS="$sanitizer_flags"
           make -C NeraChessSearch config=debug -B -j"$jobs" CXXFLAGS="$sanitizer_flags"
           make -C NeraChessUCI config=debug -B -j"$jobs" CXXFLAGS="$sanitizer_flags" LDFLAGS='-fsanitize=thread'
           make -C NeraChessTests config=debug -B -j"$jobs" CXXFLAGS="$sanitizer_flags" LDFLAGS='-fsanitize=thread'

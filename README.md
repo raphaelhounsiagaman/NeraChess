@@ -10,6 +10,13 @@ NeraChess is a C++23 chess engine, UCI executable, and SDL2/Dear ImGui desktop a
 
 ![NeraChess desktop application](assets/screenshots/NeraChessUIStartingPosition.png)
 
+> **This branch is mid-migration to NNUE.** The hand-crafted evaluation has been
+> removed and replaced with the scaffolding for a trained network, but no
+> network exists yet, so every position evaluates to `0` and the engine plays no
+> better than its search alone. The strength figures below describe `main`, not
+> this branch. See [docs/NNUE.md](docs/NNUE.md) for the architecture, what is
+> built, and what is still missing.
+
 At engine commit `212e012`, a 300-game paired-opening tournament estimated
 NeraChess at **2627 Stockfish 18 UCI-Elo-equivalent** at `10+0.1`, with a
 paired-bootstrap 95% confidence interval of 2587--2664. This is a
@@ -44,12 +51,27 @@ The public [NeraChess Lichess bot](https://lichess.org/@/NeraChess) provides a s
 - Quiescence Search
 - Killer Moves
 - Side-aware history, killer, and countermove heuristics
-- Tapered piece-square, pawn-structure, mobility, and king-safety evaluation
 - Indexed opening book with transposition-aware lookup
 - Clock-aware time management
 - UCI protocol support, including opponent-time pondering
 
 The search favors clear, testable engine techniques over platform-specific micro-optimization.
+
+### Evaluation
+
+Evaluation is being migrated from a hand-tuned function to a trained NNUE
+network:
+
+- `(768 -> 512)x2 -> 1` perspective network, int16-quantized
+- Self-describing `.nnue` format that rejects networks built for another shape
+- Per-ply accumulator stack, refreshed on demand
+- `EvalFile` UCI option, plus automatic discovery of `nera.nnue` beside the executable
+- PyTorch training pipeline in [`NNUETraining`](NNUETraining/README.md), checked
+  against the engine position by position
+
+The classical terms — tapered piece-square tables, pawn structure, mobility, and
+king safety — were removed in favour of the network. Until a network is trained
+this branch has no positional judgement at all; see [docs/NNUE.md](docs/NNUE.md).
 
 ---
 
@@ -60,10 +82,15 @@ NeraChess follows a layered architecture inspired by the application structure s
 The goal of this structure is separation of concerns rather than extreme abstraction. The project is divided into logical layers with clear responsibilities:
 
 - `NeraChessEngine`: board state, legal move generation, hashing, clocks, and rules
-- `NeraChessSearch`: evaluation, search, transposition table, time management, and opening book
+- `NeraChessNNUE`: NNUE network format, feature indexing, accumulator, and inference
+- `NeraChessSearch`: search, transposition table, time management, opening book, and the evaluation facade
 - `NeraChessUCI`: headless asynchronous UCI protocol adapter
 - `NeraChessApp`: SDL/ImGui desktop application and chess-player adapters
-- `NeraChessTests`: headless perft, state, search, tactical, book, and benchmark coverage
+- `NeraChessTests`: headless perft, state, search, NNUE, book, and benchmark coverage
+- `NNUETraining`: Python and PyTorch pipeline that produces the network the engine loads
+
+`NeraChessSearch` reaches the network through a small facade, so search code
+never includes NNUE headers directly.
 
 ---
 
@@ -126,8 +153,17 @@ UCI-compatible chess GUI:
 
 It supports standard position setup, `go` depth/node/time limits,
 `searchmoves`, asynchronous `stop`, `ponder`/`ponderhit`, hash sizing and
-clearing, configurable `Threads`, `OwnBook`, `BookFile`, and `Ponder` options,
-bundled opening-book play, and iterative `info` output.
+clearing, configurable `Threads`, `OwnBook`, `BookFile`, `Ponder`, and
+`EvalFile` options, bundled opening-book play, and iterative `info` output.
+
+Point `EvalFile` at an NNUE network to give the engine an evaluation:
+
+```text
+setoption name EvalFile value /path/to/nera.nnue
+```
+
+The engine also loads `nera.nnue` from its own directory at startup when one is
+present. The `eval` command reports which network is loaded, or why none is.
 
 NeraChess defaults to one UCI search thread for reproducible engine matches.
 Configure additional workers with the standard option, for example:
@@ -199,6 +235,7 @@ UCI target, and regression suite without SDL:
 ```sh
 bash ./scripts/Setup-Linux.sh gmake
 make -C NeraChessEngine config=release
+make -C NeraChessNNUE config=release
 make -C NeraChessSearch config=release
 make -C NeraChessUCI config=release
 make -C NeraChessTests config=release
@@ -222,11 +259,20 @@ without entering the application loop, run a built executable with:
 
 The normal regression suite includes 17 reference perft positions, make/undo
 and hash invariants, draw rules, FEN validation, transposition-table behavior,
-evaluation symmetry, tactical search choices, time management, and the full
-opening-book index:
+NNUE format and accumulator invariants, tactical search choices, time
+management, and the full opening-book index:
 
 ```sh
 ./bin/Release/NeraChessTests/NeraChessTests
+```
+
+Tests that measure evaluation quality skip themselves while no network is
+loaded, and say so.
+
+The NNUE training pipeline has its own suite, which needs no dependencies:
+
+```sh
+cd NNUETraining && python3 -m unittest discover -s tests -t .
 ```
 
 Deterministic perft/search benchmarks and a fixed-time thread-scaling benchmark
@@ -245,7 +291,11 @@ than a reproducible Elo measurement.
 
 ## Known Limitations
 
-- Evaluation parameters are hand-tuned rather than trained from games.
+- No trained NNUE network exists yet, so this branch has no evaluation and plays
+  far below the calibrated strength quoted above.
+- Accumulator updates are full refreshes rather than incremental, which costs
+  roughly two orders of magnitude of evaluation speed once a network is loaded.
+- NNUE inference uses a portable scalar path; no SIMD kernels yet.
 - Search performance and calibrated strength depend on hardware, thread count, and time control.
 
 ---

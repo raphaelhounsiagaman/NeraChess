@@ -24,3 +24,14 @@ coverage/
 Makefile
 *.make
 imgui.ini
+
+# NNUE
+*.nnue
+NNUETraining/data/
+NNUETraining/runs/
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+*.egg-info/
+.ruff_cache/

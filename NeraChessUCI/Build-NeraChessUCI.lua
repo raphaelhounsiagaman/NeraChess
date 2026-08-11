@@ -23,12 +23,14 @@ project "NeraChessUCI"
   {
     "src",
     "../NeraChessEngine/src",
+    "../NeraChessNNUE/src",
     "../NeraChessSearch/src",
   }
 
   links
   {
     "NeraChessEngine",
+    "NeraChessNNUE",
     "NeraChessSearch",
   }
 

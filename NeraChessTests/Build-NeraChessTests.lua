@@ -22,12 +22,14 @@ project "NeraChessTests"
   includedirs
   {
     "../NeraChessEngine/src",
+    "../NeraChessNNUE/src",
     "../NeraChessSearch/src",
   }
 
   links
   {
     "NeraChessEngine",
+    "NeraChessNNUE",
     "NeraChessSearch",
   }
 

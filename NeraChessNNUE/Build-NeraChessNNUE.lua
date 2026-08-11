@@ -1,4 +1,4 @@
-project "NeraChessSearch"
+project "NeraChessNNUE"
   kind "StaticLib"
   language "C++"
   cppdialect "C++23"
@@ -23,13 +23,11 @@ project "NeraChessSearch"
   {
     "src",
     "../NeraChessEngine/src",
-    "../NeraChessNNUE/src",
   }
 
   links
   {
     "NeraChessEngine",
-    "NeraChessNNUE",
   }
 
   filter "system:windows"
