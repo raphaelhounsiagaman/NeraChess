@@ -61,6 +61,22 @@ jobs:
             --network "${RUNNER_TEMP}/random.nnue" \
             --engine ../bin/Release/NeraChessUCI/NeraChessUCI
 
+      - name: Build and test the AVX2 NNUE kernels
+        run: |
+          if ! grep -q avx2 /proc/cpuinfo; then
+            echo "This runner has no AVX2; the default build uses the SSE2 kernels."
+            exit 0
+          fi
+          jobs="$(nproc)"
+          # The default x86 build selects SSE2, so the AVX2 kernels are only
+          # exercised by a build that asks for them. TestNnueSimdKernels checks
+          # them against the scalar reference.
+          make -C NeraChessEngine config=release -B -j"$jobs" CXXFLAGS="-mavx2"
+          make -C NeraChessNNUE config=release -B -j"$jobs" CXXFLAGS="-mavx2"
+          make -C NeraChessSearch config=release -B -j"$jobs" CXXFLAGS="-mavx2"
+          make -C NeraChessTests config=release -B -j"$jobs" CXXFLAGS="-mavx2"
+          ./bin/Release/NeraChessTests/NeraChessTests
+
       - name: Build and run sanitized regressions
         run: |
           jobs="$(nproc)"
