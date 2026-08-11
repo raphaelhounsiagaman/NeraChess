@@ -37,10 +37,15 @@ namespace NeraChessNNUE::Evaluator
 
     NetworkFormat::Status LoadDefault(const std::filesystem::path& executableDirectory)
     {
-        const std::array<std::filesystem::path, 2> candidates = {
+        // Beside the executable first, then the bundled resource layout the
+        // desktop build copies, then the working directory.
+        const std::array<std::filesystem::path, 3> candidates = {
             executableDirectory.empty()
                 ? std::filesystem::path{}
                 : executableDirectory / DefaultNetworkName,
+            executableDirectory.empty()
+                ? std::filesystem::path{}
+                : executableDirectory / "Resources" / "NNUE" / DefaultNetworkName,
             std::filesystem::path{ DefaultNetworkName },
         };
 

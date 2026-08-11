@@ -122,9 +122,17 @@ Load it with the standard UCI option:
 setoption name EvalFile value /path/to/nera.nnue
 ```
 
-The engine also picks up `nera.nnue` from its own directory at startup, so a
-packaged build needs no configuration. The `eval` command reports which network
-is loaded and which SIMD kernels are compiled in.
+Both binaries also discover a network at startup, so a packaged build needs no
+configuration. They look for `nera.nnue` beside the executable, then in
+`Resources/NNUE/` next to it — where the desktop build's resource copy lands —
+then in the working directory. The desktop application checks its own resource
+directory first and says on the console what it found, or that it found
+nothing and will therefore play badly. The UCI `eval` command reports which
+network is loaded and which SIMD kernels are compiled in.
+
+Networks are gitignored, so dropping one at
+`NeraChessApp/Resources/NNUE/nera.nnue` equips both the desktop build and any
+packaged copy without committing a binary blob.
 
 ---
 

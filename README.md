@@ -68,7 +68,8 @@ network:
   unmakes moves, verified against full refreshes in Debug builds
 - NEON, SSE2, and AVX2 kernels, each required to match the scalar reference
   bit for bit so multithreaded search stays deterministic
-- `EvalFile` UCI option, plus automatic discovery of `nera.nnue` beside the executable
+- `EvalFile` UCI option, plus automatic discovery of `nera.nnue` for both the
+  UCI engine and the desktop bot
 - PyTorch training pipeline in [`NNUETraining`](NNUETraining/README.md), checked
   against the engine position by position
 
@@ -305,7 +306,9 @@ weights and point the engine at it:
 ```
 
 Its evaluations are nonsense, but it exercises loading, the feature
-transformer, incremental updates, and the output layer.
+transformer, incremental updates, and the output layer. Drop one at
+`NeraChessApp/Resources/NNUE/nera.nnue` and both the desktop bot and the UCI
+engine pick it up at startup.
 
 ---
 

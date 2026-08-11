@@ -18,6 +18,7 @@ public:
 
 private:
     const std::filesystem::path m_OpeningBookPath;
+    const std::filesystem::path m_NetworkPath;
     NeraChessSearch::OpeningBook m_OpeningBook;
     NeraChessSearch::SearchEngine m_SearchEngine{ 256 };
 };
