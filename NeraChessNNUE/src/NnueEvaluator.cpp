@@ -3,6 +3,7 @@
 #include "SimdOps.h"
 
 #include <array>
+#include <cassert>
 #include <string>
 
 namespace NeraChessNNUE::Evaluator
@@ -99,7 +100,19 @@ namespace NeraChessNNUE::Evaluator
             return NoNetworkScore;
 
         if (!accumulator.computed)
+        {
             accumulator.Refresh(network, state);
+        }
+#if NNUE_VERIFY_ACCUMULATOR
+        else
+        {
+            Accumulator reference;
+            reference.Refresh(network, state);
+            assert(reference.values == accumulator.values &&
+                "incrementally updated accumulator diverged from a full refresh; "
+                "the dirty-piece list for some move is wrong");
+        }
+#endif
 
         const Perspective sideToMove = state.HasFlag(BoardStateFlags::WhiteToMove)
             ? Perspective::White

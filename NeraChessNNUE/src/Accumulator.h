@@ -1,5 +1,6 @@
 #pragma once
 
+#include "DirtyPieces.h"
 #include "FeatureSet.h"
 #include "NetworkArchitecture.h"
 #include "NnueCommon.h"
@@ -8,6 +9,7 @@
 
 #include <array>
 #include <cstddef>
+#include <cstdint>
 
 namespace NeraChessNNUE
 {
@@ -24,6 +26,12 @@ namespace NeraChessNNUE
         // 64-byte aligned so a future SIMD path can use aligned loads.
         alignas(64) std::array<std::array<Weight, Architecture::HiddenSize>, PerspectiveCount>
             values{};
+
+        // Input bucket each half was computed with. A move that changes a
+        // perspective's bucket invalidates that half and forces a refresh of
+        // it; with one bucket this never happens, but tracking it here is what
+        // makes king-bucketed feature sets a local change later.
+        std::array<uint8_t, PerspectiveCount> inputBuckets{};
 
         // False when the contents are stale and a refresh is required before
         // the accumulator may be read.
@@ -59,10 +67,10 @@ namespace NeraChessNNUE
     // Per-thread stack of accumulators, one entry per ply, mirroring the
     // search's make/unmake pairs.
     //
-    // TODO(nnue): Push currently marks the new entry stale so the evaluator
-    // falls back to a full refresh. Making Push take a DirtyPieces list and
-    // call ApplyDelta is the single change that turns this from correct into
-    // fast, and it is the main reason the accumulator lives in a stack at all.
+    // This is where NNUE earns its name. Pushing a move copies the parent's
+    // accumulator and applies only the few feature columns the move changed,
+    // instead of summing one column per piece on the board. Popping is free:
+    // the parent's entry was never touched.
     class AccumulatorStack
     {
     public:
@@ -73,8 +81,19 @@ namespace NeraChessNNUE
         Accumulator& Current() { return m_Entries[Slot()]; }
         const Accumulator& Current() const { return m_Entries[Slot()]; }
 
-        // Enters a child node. The new entry starts stale.
-        void Push();
+        // Enters a child node, updating its accumulator from the parent's.
+        //
+        // `state` is the position *after* the move and `dirty` describes what
+        // the move changed. Falls back to leaving the entry stale -- correct,
+        // only slower -- when the parent is stale, no network is loaded, or
+        // the stack has run out of room.
+        void Push(const Network& network, const NeraChessEngine::BoardState& state,
+            const DirtyPieces& dirty);
+
+        // Enters a child node without updating it, leaving the entry stale for
+        // the evaluator to refresh on demand. For callers with no dirty-piece
+        // list to offer.
+        void PushStale();
 
         // Returns to the parent node.
         void Pop();

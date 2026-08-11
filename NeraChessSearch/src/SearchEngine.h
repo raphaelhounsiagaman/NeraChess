@@ -2,6 +2,7 @@
 
 #include "Accumulator.h"
 #include "ChessBoard.h"
+#include "Network.h"
 #include "TranspositionTable.h"
 
 #include <array>
@@ -97,6 +98,12 @@ namespace NeraChessSearch
         // worker's accumulator stack.
         Score EvaluateNode(const NeraChessEngine::ChessBoard& board);
 
+        // Make and unmake, paired with the accumulator stack. Every move the
+        // search plays goes through these two so the accumulator cannot drift
+        // out of step with the board.
+        void MakeSearchMove(NeraChessEngine::ChessBoard& board, NeraChessEngine::Move move);
+        void UndoSearchMove(NeraChessEngine::ChessBoard& board, NeraChessEngine::Move move);
+
         void UpdatePrincipalVariation(int ply, NeraChessEngine::Move move);
         void ResetHeuristics();
         void CountNode();
@@ -132,11 +139,13 @@ namespace NeraChessSearch
         uint64_t m_UnflushedNodes = 0;
         int m_SelectiveDepth = 0;
 
-        // One NNUE accumulator per ply, private to this worker. Pushed and
-        // popped alongside the board's make/unmake so that an incremental
-        // update has a place to live; today every entry above the root is
-        // marked stale and refreshed on demand.
+        // One NNUE accumulator per ply, private to this worker, updated
+        // incrementally as the search makes and unmakes moves.
         NeraChessNNUE::AccumulatorStack m_Accumulators{};
+
+        // The network in use for the current search, cached so the per-move
+        // path does not re-resolve it. Immutable while a search runs.
+        const NeraChessNNUE::Network* m_Network = nullptr;
 
         std::array<std::array<NeraChessEngine::Move, 2>, MAX_PLY> m_KillerMoves{};
         std::array<std::array<std::array<int32_t, 64>, 64>, 2> m_History{};

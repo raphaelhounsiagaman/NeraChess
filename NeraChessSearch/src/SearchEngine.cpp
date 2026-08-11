@@ -193,7 +193,8 @@ namespace NeraChessSearch
         }
 
         ChessBoard board = position;
-        m_Accumulators.Reset(NeraChessNNUE::Evaluator::GetNetwork(), board.GetBoardState());
+        m_Network = &NeraChessNNUE::Evaluator::GetNetwork();
+        m_Accumulators.Reset(*m_Network, board.GetBoardState());
 
         SearchResult result;
         Score rootTerminalScore;
@@ -324,8 +325,7 @@ namespace NeraChessSearch
         bool firstMove = true;
         for (const Move move : moves)
         {
-            board.MakeMove(move);
-            m_Accumulators.Push();
+            MakeSearchMove(board, move);
             Score score;
             if (firstMove)
             {
@@ -340,8 +340,7 @@ namespace NeraChessSearch
                     score = -PrincipalVariationSearch(board, -beta, -alpha,
                         depth - 1, 1, true, true, move);
             }
-            board.UndoMove(move);
-            m_Accumulators.Pop();
+            UndoSearchMove(board, move);
 
             if (m_Aborted)
                 return result;
@@ -475,14 +474,12 @@ namespace NeraChessSearch
             const bool killer = quiet &&
                 (move == m_KillerMoves[ply][0] || move == m_KillerMoves[ply][1]);
             const bool counter = quiet && move == counterMove;
-            board.MakeMove(move);
-            m_Accumulators.Push();
+            MakeSearchMove(board, move);
             const bool givesCheck = board.IsInCheck();
             if (canFutilityPrune && staticEval + 120 * depth <= alpha &&
                 bestMove != 0 && !killer && !counter && !givesCheck && IsFutilityPrunable(move))
             {
-                board.UndoMove(move);
-                m_Accumulators.Pop();
+                UndoSearchMove(board, move);
                 ++moveIndex;
                 continue;
             }
@@ -512,8 +509,7 @@ namespace NeraChessSearch
                     score = -PrincipalVariationSearch(board, -beta, -alpha,
                         depth - 1, ply + 1, true, true, move);
             }
-            board.UndoMove(move);
-            m_Accumulators.Pop();
+            UndoSearchMove(board, move);
 
             if (m_Aborted)
                 return SCORE_DRAW;
@@ -654,17 +650,14 @@ namespace NeraChessSearch
                 seePrunable = MoveOrdering::StaticExchangeEvaluation(board, move) < -50;
             }
 
-            board.MakeMove(move);
-            m_Accumulators.Push();
+            MakeSearchMove(board, move);
             if (!inCheck && !board.IsInCheck() && (deltaPrunable || seePrunable))
             {
-                board.UndoMove(move);
-                m_Accumulators.Pop();
+                UndoSearchMove(board, move);
                 continue;
             }
             const Score score = -QuiescenceSearch(board, -beta, -alpha, ply + 1);
-            board.UndoMove(move);
-            m_Accumulators.Pop();
+            UndoSearchMove(board, move);
 
             if (m_Aborted)
                 return SCORE_DRAW;
@@ -930,10 +923,32 @@ namespace NeraChessSearch
 
     Score SearchEngine::EvaluateNode(const ChessBoard& board)
     {
-        // Reads this worker's accumulator for the current ply, which the
-        // make/unmake pairs keep aligned with the board. The entry is stale
-        // until the incremental update lands, so this still costs a refresh
-        // per call.
+        // Reads this worker's accumulator for the current ply, which
+        // MakeSearchMove and UndoSearchMove keep aligned with the board.
         return Evaluation::Evaluate(board.GetBoardState(), m_Accumulators.Current());
+    }
+
+    void SearchEngine::MakeSearchMove(ChessBoard& board, Move move)
+    {
+        if (m_Network == nullptr || !m_Network->IsLoaded())
+        {
+            // Nothing to update, and reading the captured piece off the board
+            // would be pure overhead.
+            board.MakeMove(move);
+            m_Accumulators.PushStale();
+            return;
+        }
+
+        // The captured piece has to be read before the move is made; the move
+        // encoding does not carry it.
+        const NeraChessNNUE::DirtyPieces dirty = NeraChessNNUE::DescribeMove(board, move);
+        board.MakeMove(move);
+        m_Accumulators.Push(*m_Network, board.GetBoardState(), dirty);
+    }
+
+    void SearchEngine::UndoSearchMove(ChessBoard& board, Move move)
+    {
+        board.UndoMove(move);
+        m_Accumulators.Pop();
     }
 }

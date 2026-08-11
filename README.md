@@ -64,7 +64,8 @@ network:
 
 - `(768 -> 512)x2 -> 1` perspective network, int16-quantized
 - Self-describing `.nnue` format that rejects networks built for another shape
-- Per-ply accumulator stack, refreshed on demand
+- Per-ply accumulator stack updated incrementally as the search makes and
+  unmakes moves, verified against full refreshes in Debug builds
 - `EvalFile` UCI option, plus automatic discovery of `nera.nnue` beside the executable
 - PyTorch training pipeline in [`NNUETraining`](NNUETraining/README.md), checked
   against the engine position by position
@@ -287,15 +288,31 @@ are also available:
 `--thread-bench` is a quick, scheduling-sensitive scaling diagnostic rather
 than a reproducible Elo measurement.
 
+The NNUE accumulator has its own benchmark, comparing incremental updates
+against full refreshes over the same move tree:
+
+```sh
+./bin/Release/NeraChessTests/NeraChessTests --nnue-bench
+```
+
+To try the network paths before any training exists, write one with random
+weights and point the engine at it:
+
+```sh
+./bin/Release/NeraChessTests/NeraChessTests --write-random-network /tmp/random.nnue
+```
+
+Its evaluations are nonsense, but it exercises loading, the feature
+transformer, incremental updates, and the output layer.
+
 ---
 
 ## Known Limitations
 
 - No trained NNUE network exists yet, so this branch has no evaluation and plays
   far below the calibrated strength quoted above.
-- Accumulator updates are full refreshes rather than incremental, which costs
-  roughly two orders of magnitude of evaluation speed once a network is loaded.
-- NNUE inference uses a portable scalar path; no SIMD kernels yet.
+- NNUE inference uses a portable scalar path; no SIMD kernels yet, which makes
+  the output layer the evaluation bottleneck.
 - Search performance and calibrated strength depend on hardware, thread count, and time control.
 
 ---

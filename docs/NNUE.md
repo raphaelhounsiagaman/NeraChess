@@ -141,26 +141,22 @@ is loaded and which SIMD kernels are compiled in.
 - The scalar forward pass, verified integer-for-integer against the Python
   reference on real positions
 - The evaluator, the `EvalFile` UCI option, and startup discovery
-- The per-ply accumulator stack, pushed and popped in the search
+- **Incremental accumulator updates**, driven by the search's make/unmake pairs
 - The PyTorch model, loss, batching, and training loop
 - Quantization and export
 
 ### Not done
 
-1. **Incremental accumulator updates in the search.** `AccumulatorStack::Push`
-   marks the new entry stale, so the evaluator refreshes on demand. Correct, but
-   it throws away the entire point of NNUE — roughly two orders of magnitude of
-   evaluation speed. The machinery it needs (`DescribeMove`, `ComputeDelta`,
-   `ApplyDelta`) exists and is tested; what is missing is threading the captured
-   piece from `ChessBoard::MakeMove` through to `Push`.
-2. **SIMD kernels.** `SimdOps.h` is scalar only. AVX2, SSE4.1, and NEON paths
+1. **SIMD kernels.** `SimdOps.h` is scalar only. AVX2, SSE4.1, and NEON paths
    belong behind the same interface, and must produce bit-identical results —
    NNUE inference has to be deterministic across machines, or two Lazy SMP
    workers searching the same position disagree and poison the shared
-   transposition table.
-3. **Training data.** No dataset and no way to generate one; `datagen.play_game`
+   transposition table. `--nnue-bench` says this is now the binding constraint:
+   with incremental updates in place, the output layer's 1024 multiply-adds cost
+   more than the accumulator update does.
+2. **Training data.** No dataset and no way to generate one; `datagen.play_game`
    is unimplemented.
-4. **A trained network.** Nothing to load yet.
+3. **A trained network.** Nothing to load yet.
 
 ### Suggested order
 
@@ -169,11 +165,44 @@ is loaded and which SIMD kernels are compiled in.
 2. **A first network**, even a weak one. This is the point where the engine
    plays chess again and where every piece of the pipeline gets validated
    against reality rather than against a fixture.
-3. **Incremental updates**, once there is a network whose speed is worth
-   measuring.
-4. **SIMD kernels**, measured against the scalar path for exact agreement.
-5. **Architecture growth** — king buckets, output buckets, a wider hidden layer
+3. **SIMD kernels**, measured against the scalar path for exact agreement.
+4. **Architecture growth** — king buckets, output buckets, a wider hidden layer
    — each one A/B tested against the last network rather than assumed.
+
+---
+
+## Incremental updates
+
+The search never calls `MakeMove` directly. Every move goes through
+`SearchEngine::MakeSearchMove` and `UndoSearchMove`, which pair the board
+update with an accumulator push and pop. Routing both through one place is
+deliberate: an unpaired make/unmake would leave the accumulator describing a
+different position than the board, and the resulting evaluations would be
+wrong in a way no test output points at.
+
+A push copies the parent's accumulator and applies only what the move changed,
+which `DescribeMove` derives from the move encoding plus the captured piece
+read off the board beforehand. A pop is free — the parent's entry was never
+touched. Null moves push nothing at all: no piece moves, so the accumulator
+stays valid and only the side to move changes, which the output layer reads
+from the board state.
+
+Three things guard this:
+
+* `TestNnueAccumulatorUpdates` checks each move type's delta in isolation.
+* `TestNnueAccumulatorStack` walks real move trees — castling both ways, en
+  passant, promotions with and without capture, rook captures that change
+  castling rights — and requires the incremental accumulator to equal a full
+  refresh at every node.
+* `NNUE_VERIFY_ACCUMULATOR`, on by default in Debug builds, re-derives every
+  accumulator the engine evaluates and asserts it matches a refresh. This
+  covers the search's own paths, quiescence captures included, and it is what
+  turns a subtly wrong delta into an immediate abort.
+
+Measured with `--nnue-bench`, incremental updates evaluate roughly 2.9x faster
+than refreshing on dense middlegame positions. That number is lower than NNUE
+engines usually report because the scalar output layer, not the accumulator,
+is now the bottleneck; SIMD is the next step.
 
 ---
 
@@ -194,16 +223,32 @@ dependencies:
 cd NNUETraining && python3 -m unittest discover -s tests -t .
 ```
 
+A network of random weights is enough to exercise every path a real network
+will. The engine can write one itself, with no Python involved:
+
+```bash
+./bin/Release/NeraChessTests/NeraChessTests --write-random-network /tmp/random.nnue
+```
+
 The end-to-end check is `nnue_training.verify`, which requires the engine and
 the trainer to produce identical integers for the same position and network:
 
 ```bash
-cd NNUETraining && python3 scripts/make_random_network.py --output /tmp/random.nnue
-```
-
-```bash
 cd NNUETraining && python3 -m nnue_training.verify --network /tmp/random.nnue --engine ../bin/Release/NeraChessUCI/NeraChessUCI
 ```
+
+`scripts/make_random_network.py` writes the same file from Python, and with the
+same seed the two are byte-identical.
+
+To measure the accumulator, which compares incremental updates against full
+refreshes over the same move tree:
+
+```bash
+./bin/Release/NeraChessTests/NeraChessTests --nnue-bench
+```
+
+Run it on a Release build; Debug enables `NNUE_VERIFY_ACCUMULATOR`, whose
+refresh-per-evaluation makes the comparison meaningless.
 
 Tests that measure evaluation quality — `TestSearchChoices`, and the strength
 half of the strategic benchmarks — skip themselves while no network is loaded

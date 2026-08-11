@@ -10,6 +10,20 @@
 // expressed relative to a perspective rather than to White, and the two
 // perspectives are combined only in the output layer.
 
+// Debug builds re-derive every incrementally updated accumulator from scratch
+// and assert that the two agree. This is the check that catches a wrong
+// dirty-piece list; without it a bad delta shows up only as an engine that
+// evaluates subtly wrong positions and plays slightly worse, with nothing
+// pointing at the cause. It costs a full refresh per evaluation, so Release
+// builds leave it out.
+#if !defined(NNUE_VERIFY_ACCUMULATOR)
+    #if defined(DEBUG) && !defined(NDEBUG)
+        #define NNUE_VERIFY_ACCUMULATOR 1
+    #else
+        #define NNUE_VERIFY_ACCUMULATOR 0
+    #endif
+#endif
+
 namespace NeraChessNNUE
 {
     // Half-precision accumulator storage. The feature transformer sums one

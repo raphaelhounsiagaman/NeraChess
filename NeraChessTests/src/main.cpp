@@ -4,6 +4,7 @@
 #include "MoveOrdering.h"
 #include "NnueEvaluator.h"
 #include "OpeningBook.h"
+#include "SimdOps.h"
 #include "SearchEngine.h"
 #include "TimeManagement.h"
 #include "TranspositionTable.h"
@@ -15,6 +16,7 @@
 #include <condition_variable>
 #include <cstddef>
 #include <cstdint>
+#include <cstdlib>
 #include <cstring>
 #include <exception>
 #include <filesystem>
@@ -461,23 +463,6 @@ namespace
         std::filesystem::remove(path, error);
     }
 
-    // The piece a move captures, derived the same way ChessBoard::MakeMove
-    // derives it, so DescribeMove sees exactly what the board did.
-    NeraChessEngine::Piece CapturedPieceOf(const ChessBoard& board, NeraChessEngine::Move move)
-    {
-        using namespace NeraChessEngine;
-        const uint8_t flags = move.GetMoveFlags();
-        if (!(flags & MoveFlags::IS_CAPTURE))
-            return PieceType::NO_PIECE;
-        if (flags & MoveFlags::IS_EN_PASSANT)
-        {
-            return move.GetMovePiece().IsWhite()
-                ? Piece(PieceType::BLACK_PAWN)
-                : Piece(PieceType::WHITE_PAWN);
-        }
-        return board.GetPiece(move.GetTargetSquare());
-    }
-
     void TestSearchFoundations()
     {
         using namespace NeraChessEngine;
@@ -851,8 +836,7 @@ namespace
             Nnue::Accumulator incremental;
             incremental.Refresh(network, board.GetBoardState());
 
-            const Nnue::DirtyPieces dirty =
-                Nnue::DescribeMove(move, CapturedPieceOf(board, move));
+            const Nnue::DirtyPieces dirty = Nnue::DescribeMove(board, move);
             for (const Nnue::Perspective perspective :
                 { Nnue::Perspective::White, Nnue::Perspective::Black })
             {
@@ -868,6 +852,82 @@ namespace
             Require(incremental.values == refreshed.values,
                 "NNUE delta case " + std::string(testCase.name) +
                     " diverged from a full refresh");
+        }
+    }
+
+    // Walks a real move tree with the accumulator stack, requiring the
+    // incrementally updated accumulator to equal a full refresh at every node.
+    //
+    // This is the test that matters for incremental updates. A wrong
+    // dirty-piece list for some rare move -- an en-passant capture that also
+    // breaks a pin, a promotion that captures a rook and cancels castling --
+    // would otherwise show up only as an engine that evaluates a handful of
+    // positions wrongly, with nothing pointing at the cause.
+    uint64_t WalkAccumulator(ChessBoard& board, Nnue::AccumulatorStack& stack,
+        const Nnue::Network& network, int depth, std::string_view name)
+    {
+        Nnue::Accumulator reference;
+        reference.Refresh(network, board.GetBoardState());
+        Require(stack.Current().computed,
+            "accumulator walk over " + std::string(name) + " left an entry stale");
+        Require(stack.Current().values == reference.values,
+            "incremental accumulator diverged from a full refresh in " + std::string(name));
+
+        uint64_t nodes = 1;
+        if (depth == 0)
+            return nodes;
+
+        for (const NeraChessEngine::Move move : board.GetLegalMoves())
+        {
+            const Nnue::DirtyPieces dirty = Nnue::DescribeMove(board, move);
+            board.MakeMove(move);
+            stack.Push(network, board.GetBoardState(), dirty);
+
+            nodes += WalkAccumulator(board, stack, network, depth - 1, name);
+
+            board.UndoMove(move);
+            stack.Pop();
+        }
+        return nodes;
+    }
+
+    void TestNnueAccumulatorStack()
+    {
+        struct WalkCase
+        {
+            std::string_view name;
+            std::string_view fen;
+            int depth;
+        };
+
+        // Chosen for move-type coverage rather than size: castling both ways,
+        // en passant, promotions with and without capture, and rook captures
+        // that change castling rights.
+        static constexpr WalkCase cases[] = {
+            { "start", "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1", 3 },
+            { "kiwipete", "r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq - 0 1", 2 },
+            { "pawn endgame", "8/2p5/3p4/KP5r/1R3p1k/8/4P1P1/8 w - - 0 1", 3 },
+            { "promotions", "r3k2r/Pppp1ppp/1b3nbN/nP6/BBP1P3/q4N2/Pp1P2PP/R2Q1RK1 w kq - 0 1", 2 },
+            { "en passant", "8/8/1k6/2b5/2pP4/8/5K2/8 b - d3 0 1", 3 },
+            { "castle rights", "r3k2r/1b4bq/8/8/8/8/7B/R3K2R w KQkq - 0 1", 2 },
+        };
+
+        const std::vector<std::byte> file = BuildSyntheticNetwork(0x14057B7EF767814Full);
+        Nnue::Network network;
+        Require(network.LoadFromMemory(file) == Nnue::NetworkFormat::Status::Ok,
+            "the synthetic network failed to load for the accumulator walk");
+
+        for (const WalkCase& testCase : cases)
+        {
+            ChessBoard board{ std::string(testCase.fen) };
+            Nnue::AccumulatorStack stack;
+            stack.Reset(network, board.GetBoardState());
+
+            WalkAccumulator(board, stack, network, testCase.depth, testCase.name);
+
+            Require(stack.Depth() == 0,
+                "accumulator stack did not unwind after walking " +
+                    std::string(testCase.name));
         }
     }
 
@@ -912,13 +972,40 @@ namespace
         Require(accumulator.computed,
             "evaluating through an accumulator left it marked stale");
 
-        // A search must still return a legal move and stay within its budget
-        // with a network loaded, even one that knows nothing about chess.
+        // Searches must return legal moves with a network loaded, even one that
+        // knows nothing about chess. In Debug builds NNUE_VERIFY_ACCUMULATOR
+        // re-derives every accumulator these searches touch and asserts it
+        // matches a full refresh, so this also covers the search's own
+        // make/unmake paths -- quiescence captures and all.
+        static constexpr std::string_view searchPositions[] = {
+            "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1",
+            "r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq - 0 1",
+            "r3k2r/Pppp1ppp/1b3nbN/nP6/BBP1P3/q4N2/Pp1P2PP/R2Q1RK1 w kq - 0 1",
+            "8/8/1k6/2b5/2pP4/8/5K2/8 b - d3 0 1",
+        };
+
         NeraChessSearch::SearchEngine search(8);
         NeraChessSearch::SearchLimits limits;
-        limits.maxDepth = 4;
-        Require(ContainsMove(start.GetLegalMoves(), search.Search(start, limits).bestMove),
-            "search with a loaded network did not return a legal move");
+        limits.maxDepth = 5;
+        for (const std::string_view fen : searchPositions)
+        {
+            search.NewGame();
+            ChessBoard position{ std::string(fen) };
+            Require(ContainsMove(position.GetLegalMoves(),
+                search.Search(position, limits).bestMove),
+                "search with a loaded network did not return a legal move");
+        }
+
+        // Multithreaded searches keep one accumulator stack per worker; a
+        // shared one would corrupt every helper the moment two threads made
+        // different moves.
+        search.NewGame();
+        search.SetThreadCount(3);
+        ChessBoard threaded("r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq - 0 1");
+        Require(ContainsMove(threaded.GetLegalMoves(),
+            search.Search(threaded, limits).bestMove),
+            "multithreaded search with a loaded network did not return a legal move");
+        search.SetThreadCount(1);
 
         Nnue::Evaluator::Unload();
         RemoveNetworkFile(networkPath);
@@ -952,6 +1039,129 @@ namespace
         const auto bestMove = search.Search(tactical, limits).bestMove;
         Require(bestMove == FindMove(tactical, "d5e6") || bestMove == FindMove(tactical, "e2a6"),
             "search missed both top tactical continuations in the benchmark");
+    }
+
+    // Writes a network of deterministic pseudo-random weights.
+    //
+    // The network knows nothing about chess and its evaluations are nonsense,
+    // but it exercises every path a real network will: loading, the feature
+    // transformer, incremental updates, and the output layer. Equivalent to
+    // NNUETraining/scripts/make_random_network.py, without needing Python.
+    int WriteRandomNetwork(const std::filesystem::path& path, uint64_t seed)
+    {
+        const std::vector<std::byte> file = BuildSyntheticNetwork(seed);
+        std::ofstream stream(path, std::ios::binary | std::ios::trunc);
+        if (!stream)
+        {
+            std::cerr << "could not open " << path << " for writing\n";
+            return 1;
+        }
+        stream.write(reinterpret_cast<const char*>(file.data()),
+            static_cast<std::streamsize>(file.size()));
+        if (!stream)
+        {
+            std::cerr << "could not write " << path << '\n';
+            return 1;
+        }
+
+        Nnue::NetworkFormat::Header header;
+        Nnue::NetworkFormat::ReadHeader(file, header);
+        std::cout << "wrote " << path << " (" << header.Describe() << ", seed 0x"
+                  << std::hex << seed << std::dec << ")\n";
+        return 0;
+    }
+
+    // Walks a move tree evaluating at every node, either updating accumulators
+    // incrementally or forcing a full refresh at each one. Same tree and same
+    // node count either way, so the two timings differ only in accumulator
+    // strategy.
+    uint64_t BenchmarkWalk(ChessBoard& board, Nnue::AccumulatorStack& stack,
+        const Nnue::Network& network, int depth, bool incremental, int64_t& sink)
+    {
+        sink += NeraChessSearch::Evaluation::Evaluate(board.GetBoardState(), stack.Current());
+
+        uint64_t nodes = 1;
+        if (depth == 0)
+            return nodes;
+
+        for (const NeraChessEngine::Move move : board.GetLegalMoves())
+        {
+            if (incremental)
+            {
+                const Nnue::DirtyPieces dirty = Nnue::DescribeMove(board, move);
+                board.MakeMove(move);
+                stack.Push(network, board.GetBoardState(), dirty);
+            }
+            else
+            {
+                board.MakeMove(move);
+                stack.PushStale();
+            }
+
+            nodes += BenchmarkWalk(board, stack, network, depth - 1, incremental, sink);
+
+            board.UndoMove(move);
+            stack.Pop();
+        }
+        return nodes;
+    }
+
+    void RunNnueBenchmark()
+    {
+        struct BenchCase
+        {
+            std::string_view name;
+            std::string_view fen;
+            int depth;
+        };
+        static constexpr BenchCase cases[] = {
+            { "start", "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1", 3 },
+            { "kiwipete", "r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq - 0 1", 3 },
+            { "endgame", "8/2p5/3p4/KP5r/1R3p1k/8/4P1P1/8 w - - 0 1", 4 },
+        };
+
+        const std::filesystem::path networkPath =
+            InstallSyntheticNetwork(0x3C6EF372FE94F82Bull, "nerachess-bench.nnue");
+        const Nnue::Network& network = Nnue::Evaluator::GetNetwork();
+
+        std::cout << "NNUE evaluation benchmark (" << network.GetHeader().Describe() << ")\n"
+                  << "kernels " << Nnue::Simd::TargetName << "\n\n";
+
+        for (const BenchCase& testCase : cases)
+        {
+            double timings[2] = { 0.0, 0.0 };
+            uint64_t nodeCount = 0;
+            int64_t sink = 0;
+
+            for (int pass = 0; pass < 2; ++pass)
+            {
+                const bool incremental = pass == 1;
+                ChessBoard board{ std::string(testCase.fen) };
+                Nnue::AccumulatorStack stack;
+                stack.Reset(network, board.GetBoardState());
+
+                const auto started = std::chrono::steady_clock::now();
+                nodeCount = BenchmarkWalk(board, stack, network, testCase.depth,
+                    incremental, sink);
+                timings[pass] = std::chrono::duration<double>(
+                    std::chrono::steady_clock::now() - started).count();
+            }
+
+            const double refreshRate = nodeCount / std::max(1e-9, timings[0]);
+            const double incrementalRate = nodeCount / std::max(1e-9, timings[1]);
+            std::cout << testCase.name
+                      << ": depth " << testCase.depth
+                      << " nodes " << nodeCount
+                      << " | refresh " << static_cast<uint64_t>(refreshRate) << " eval/s"
+                      << " | incremental " << static_cast<uint64_t>(incrementalRate) << " eval/s"
+                      << " | speedup " << (incrementalRate / std::max(1e-9, refreshRate)) << "x\n";
+            // Keeps the optimizer from deleting the evaluations entirely.
+            if (sink == 0x7FFFFFFFFFFFFFFFll)
+                std::cout << "";
+        }
+
+        Nnue::Evaluator::Unload();
+        RemoveNetworkFile(networkPath);
     }
 
     // Dumps the C++ feature indices for a fixed set of positions as JSON, so
@@ -1208,6 +1418,18 @@ int main(int argc, char** argv)
             PrintNnueFeatureVectors();
             return 0;
         }
+        if (argc == 2 && std::string_view(argv[1]) == "--nnue-bench")
+        {
+            RunNnueBenchmark();
+            return 0;
+        }
+        if (argc >= 3 && std::string_view(argv[1]) == "--write-random-network")
+        {
+            const uint64_t seed = argc >= 4
+                ? std::strtoull(argv[3], nullptr, 0)
+                : 0x9E3779B97F4A7C15ull;
+            return WriteRandomNetwork(argv[2], seed);
+        }
 
         TestFenValidation();
         TestPerft();
@@ -1224,6 +1446,7 @@ int main(int argc, char** argv)
         TestNnueNetworkFormat();
         TestNnueFeatureIndexing();
         TestNnueAccumulatorUpdates();
+        TestNnueAccumulatorStack();
         TestNnueEvaluation();
         TestSearchChoices();
         TestStaticExchangeEvaluation();

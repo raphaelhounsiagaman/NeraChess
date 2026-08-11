@@ -4,6 +4,25 @@ namespace NeraChessNNUE
 {
     using namespace NeraChessEngine;
 
+    Piece CapturedPieceOf(const ChessBoard& board, const Move& move)
+    {
+        const uint8_t flags = move.GetMoveFlags();
+        if (!(flags & MoveFlags::IS_CAPTURE))
+            return PieceType::NO_PIECE;
+        if (flags & MoveFlags::IS_EN_PASSANT)
+        {
+            return move.GetMovePiece().IsWhite()
+                ? Piece(PieceType::BLACK_PAWN)
+                : Piece(PieceType::WHITE_PAWN);
+        }
+        return board.GetPiece(move.GetTargetSquare());
+    }
+
+    DirtyPieces DescribeMove(const ChessBoard& board, const Move& move)
+    {
+        return DescribeMove(move, CapturedPieceOf(board, move));
+    }
+
     DirtyPieces DescribeMove(const Move& move, Piece capturedPiece)
     {
         DirtyPieces dirty;

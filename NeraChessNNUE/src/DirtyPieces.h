@@ -2,6 +2,7 @@
 
 #include "NnueCommon.h"
 
+#include "ChessBoard.h"
 #include "Move.h"
 #include "Piece.h"
 
@@ -48,13 +49,24 @@ namespace NeraChessNNUE
         void Clear() { count = 0; }
     };
 
+    // The piece a move captures, or NO_PIECE. Derived exactly the way
+    // ChessBoard::MakeMove derives it, including the en-passant case where the
+    // captured pawn does not stand on the target square.
+    //
+    // Must be called before the move is made.
+    NeraChessEngine::Piece CapturedPieceOf(const NeraChessEngine::ChessBoard& board,
+        const NeraChessEngine::Move& move);
+
     // Derives the dirty-piece list for a move so the accumulator can be
     // updated incrementally instead of recomputed from scratch.
     //
-    // The move encoding carries everything except the captured piece type,
-    // which the caller must read from the board before the move is made (or
-    // recover from UndoInfo::capturedPiece afterwards). Pass NO_PIECE for
-    // quiet moves.
+    // The move encoding carries everything except the captured piece type, so
+    // the caller supplies it. Pass NO_PIECE for quiet moves.
     DirtyPieces DescribeMove(const NeraChessEngine::Move& move,
         NeraChessEngine::Piece capturedPiece);
+
+    // Convenience overload that reads the captured piece from the board.
+    // Must be called before the move is made.
+    DirtyPieces DescribeMove(const NeraChessEngine::ChessBoard& board,
+        const NeraChessEngine::Move& move);
 }
