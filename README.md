@@ -66,6 +66,8 @@ network:
 - Self-describing `.nnue` format that rejects networks built for another shape
 - Per-ply accumulator stack updated incrementally as the search makes and
   unmakes moves, verified against full refreshes in Debug builds
+- NEON, SSE2, and AVX2 kernels, each required to match the scalar reference
+  bit for bit so multithreaded search stays deterministic
 - `EvalFile` UCI option, plus automatic discovery of `nera.nnue` beside the executable
 - PyTorch training pipeline in [`NNUETraining`](NNUETraining/README.md), checked
   against the engine position by position
@@ -311,8 +313,8 @@ transformer, incremental updates, and the output layer.
 
 - No trained NNUE network exists yet, so this branch has no evaluation and plays
   far below the calibrated strength quoted above.
-- NNUE inference uses a portable scalar path; no SIMD kernels yet, which makes
-  the output layer the evaluation bottleneck.
+- x86 builds use a vectorized accumulator but a scalar output layer unless AVX2
+  is enabled at compile time.
 - Search performance and calibrated strength depend on hardware, thread count, and time control.
 
 ---

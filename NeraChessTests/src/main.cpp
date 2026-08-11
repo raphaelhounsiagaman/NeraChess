@@ -741,6 +741,92 @@ namespace
             "a file shorter than its header was accepted");
     }
 
+    void TestNnueSimdKernels()
+    {
+        // Vector kernels must agree with the scalar reference exactly, not
+        // approximately. A one-off difference would make two search threads
+        // built for different instruction sets disagree about the same
+        // position and write contradictory scores into the shared table.
+        //
+        // The inputs deliberately include the values that break naive kernels:
+        // int16 extremes, the activation's clipping ceiling and the values
+        // either side of it, and weights large enough that a term times a
+        // square approaches the int32 limit.
+        static constexpr Nnue::Weight interesting[] = {
+            0, 1, -1, 255, 256, 254, -255, 32767, -32768, 32766, -32767, 128, -128,
+        };
+
+        uint64_t state = 0x853C49E6748FEA9Bull;
+        const auto next = [&state]() -> Nnue::Weight
+        {
+            state = state * 6'364'136'223'846'793'005ull + 1'442'695'040'888'963'407ull;
+            const uint64_t draw = state >> 33;
+            // Mostly ordinary magnitudes, with extremes mixed in often enough
+            // to matter.
+            if (draw % 4 == 0)
+                return interesting[draw / 4 % std::size(interesting)];
+            return static_cast<Nnue::Weight>(static_cast<int32_t>(draw % 65536) - 32768);
+        };
+
+        // Lengths that exercise whole vectors and every tail width.
+        static constexpr size_t lengths[] = { 0, 1, 3, 7, 8, 15, 16, 17, 31, 33, 512 };
+
+        for (const size_t length : lengths)
+        {
+            for (int trial = 0; trial < 8; ++trial)
+            {
+                std::vector<Nnue::Weight> values(length);
+                std::vector<Nnue::Weight> added(length);
+                std::vector<Nnue::Weight> removed(length);
+                for (size_t index = 0; index < length; ++index)
+                {
+                    values[index] = next();
+                    added[index] = next();
+                    removed[index] = next();
+                }
+
+                const auto compare = [&](std::string_view what,
+                    void (*vector)(Nnue::Weight*, const Nnue::Weight*, size_t),
+                    void (*scalar)(Nnue::Weight*, const Nnue::Weight*, size_t))
+                {
+                    std::vector<Nnue::Weight> byVector = values;
+                    std::vector<Nnue::Weight> byScalar = values;
+                    vector(byVector.data(), added.data(), length);
+                    scalar(byScalar.data(), added.data(), length);
+                    Require(byVector == byScalar,
+                        "SIMD " + std::string(what) + " disagrees with the scalar reference at length " +
+                            std::to_string(length));
+                };
+                compare("Add", Nnue::Simd::Add, Nnue::Simd::Scalar::Add);
+                compare("Subtract", Nnue::Simd::Subtract, Nnue::Simd::Scalar::Subtract);
+
+                std::vector<Nnue::Weight> fusedVector = values;
+                std::vector<Nnue::Weight> fusedScalar = values;
+                Nnue::Simd::AddSubtract(fusedVector.data(), added.data(), removed.data(), length);
+                Nnue::Simd::Scalar::AddSubtract(fusedScalar.data(), added.data(),
+                    removed.data(), length);
+                Require(fusedVector == fusedScalar,
+                    "SIMD AddSubtract disagrees with the scalar reference at length " +
+                        std::to_string(length));
+
+                Require(Nnue::Simd::ActivatedDotProduct(values.data(), added.data(), length) ==
+                    Nnue::Simd::Scalar::ActivatedDotProduct(values.data(), added.data(), length),
+                    "SIMD ActivatedDotProduct disagrees with the scalar reference at length " +
+                        std::to_string(length));
+            }
+        }
+
+        // A saturated accumulator against the largest weights the format
+        // permits: the worst case the output layer can ever be handed.
+        std::vector<Nnue::Weight> saturated(Nnue::Architecture::HiddenSize, 32767);
+        std::vector<Nnue::Weight> extremeWeights(Nnue::Architecture::HiddenSize, -32768);
+        Require(Nnue::Simd::ActivatedDotProduct(saturated.data(), extremeWeights.data(),
+            saturated.size()) ==
+            Nnue::Simd::Scalar::ActivatedDotProduct(saturated.data(), extremeWeights.data(),
+                saturated.size()),
+            "SIMD ActivatedDotProduct overflows where the scalar reference does not");
+    }
+
     void TestNnueFeatureIndexing()
     {
         using namespace NeraChessEngine;
@@ -1443,6 +1529,7 @@ int main(int argc, char** argv)
         TestSearchFoundations();
         TestFiftyMoveTranspositions();
         TestMultithreadedSearch();
+        TestNnueSimdKernels();
         TestNnueNetworkFormat();
         TestNnueFeatureIndexing();
         TestNnueAccumulatorUpdates();

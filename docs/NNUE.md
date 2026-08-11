@@ -138,25 +138,19 @@ is loaded and which SIMD kernels are compiled in.
 - Accumulator refresh, and incremental updates via `ApplyDelta`
 - `DescribeMove`, covering quiet moves, captures, en passant, promotions,
   capture-promotions, and all four castles
-- The scalar forward pass, verified integer-for-integer against the Python
-  reference on real positions
+- The forward pass, verified integer-for-integer against the Python reference
+  on real positions
 - The evaluator, the `EvalFile` UCI option, and startup discovery
 - **Incremental accumulator updates**, driven by the search's make/unmake pairs
+- **NEON, SSE2, and AVX2 kernels**, each checked bit-for-bit against scalar
 - The PyTorch model, loss, batching, and training loop
 - Quantization and export
 
 ### Not done
 
-1. **SIMD kernels.** `SimdOps.h` is scalar only. AVX2, SSE4.1, and NEON paths
-   belong behind the same interface, and must produce bit-identical results —
-   NNUE inference has to be deterministic across machines, or two Lazy SMP
-   workers searching the same position disagree and poison the shared
-   transposition table. `--nnue-bench` says this is now the binding constraint:
-   with incremental updates in place, the output layer's 1024 multiply-adds cost
-   more than the accumulator update does.
-2. **Training data.** No dataset and no way to generate one; `datagen.play_game`
+1. **Training data.** No dataset and no way to generate one; `datagen.play_game`
    is unimplemented.
-3. **A trained network.** Nothing to load yet.
+2. **A trained network.** Nothing to load yet.
 
 ### Suggested order
 
@@ -165,8 +159,7 @@ is loaded and which SIMD kernels are compiled in.
 2. **A first network**, even a weak one. This is the point where the engine
    plays chess again and where every piece of the pipeline gets validated
    against reality rather than against a fixture.
-3. **SIMD kernels**, measured against the scalar path for exact agreement.
-4. **Architecture growth** — king buckets, output buckets, a wider hidden layer
+3. **Architecture growth** — king buckets, output buckets, a wider hidden layer
    — each one A/B tested against the last network rather than assumed.
 
 ---
@@ -199,10 +192,49 @@ Three things guard this:
   covers the search's own paths, quiescence captures included, and it is what
   turns a subtly wrong delta into an immediate abort.
 
-Measured with `--nnue-bench`, incremental updates evaluate roughly 2.9x faster
-than refreshing on dense middlegame positions. That number is lower than NNUE
-engines usually report because the scalar output layer, not the accumulator,
-is now the bottleneck; SIMD is the next step.
+Measured with `--nnue-bench` on an Apple M-series with NEON kernels,
+incremental updates evaluate roughly 5.9x faster than refreshing on dense
+middlegame positions, at around 1.7M evaluations per second.
+
+---
+
+## SIMD
+
+`SimdOps.h` holds the vector primitives: the three accumulator updates and the
+output layer's activated dot product. Selection is at compile time, defaulting
+to the widest instruction set each platform guarantees — NEON on AArch64, SSE2
+on x86-64. AVX2 is used when the build enables it:
+
+```sh
+make config=release CXXFLAGS="-mavx2"
+```
+
+x86 builds without AVX2 get vector accumulator updates but a scalar output
+layer. SSE2 has no packed 32-bit multiply — that arrived with SSE4.1 — and
+emulating one costs more than it saves.
+
+### Exactness is the constraint, not speed
+
+Every kernel must produce results identical to `Simd::Scalar`, bit for bit.
+This is not fastidiousness: Lazy SMP workers share a transposition table, so if
+two threads evaluated the same position differently they would write
+contradictory scores into it and the search would act on whichever landed last.
+A network binary that scored differently on AVX2 and on NEON would also make
+every reproduced game and every regression test machine-dependent.
+
+The kernels are therefore written so that no intermediate value can overflow
+for *any* int16 parameters the format permits, not merely for the small weights
+a trained network happens to produce. With squared clipped ReLU, one term is
+`clamp(v, 0, 255)^2 * w`: at most 65025 times 32767, which fits in int32 with
+almost nothing to spare, while a sum of a thousand such terms does not. The
+running total is therefore widened to int64 as it goes rather than accumulated
+in int32 and widened at the end.
+
+`TestNnueSimdKernels` compares every kernel against the scalar reference on
+int16 extremes, the values either side of the activation's clipping ceiling,
+and a saturated accumulator against the largest weights the format allows. The
+NEON, SSE2, and AVX2 paths were each confirmed exact at `-O0`, `-O2`, and `-O3`
+under both the Clang and GCC frontends.
 
 ---
 
