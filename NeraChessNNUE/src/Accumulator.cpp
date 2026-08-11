@@ -73,10 +73,15 @@ namespace NeraChessNNUE
         }
     }
 
+    AccumulatorStack::AccumulatorStack()
+        : m_Entries(std::make_unique<Entries>())
+    {
+    }
+
     void AccumulatorStack::Reset(const Network& network, const BoardState& state)
     {
         m_Top = 0;
-        m_Entries[m_Top].Refresh(network, state);
+        (*m_Entries)[m_Top].Refresh(network, state);
     }
 
     void AccumulatorStack::PushStale()
@@ -100,12 +105,12 @@ namespace NeraChessNNUE
         // above the search's MAX_PLY, so this is a guard, not a normal path.
         if (m_Top >= MaxAccumulatorPly || !network.IsLoaded())
         {
-            m_Entries[Slot()].computed = false;
+            (*m_Entries)[Slot()].computed = false;
             return;
         }
 
-        const Accumulator& parent = m_Entries[parentSlot];
-        Accumulator& child = m_Entries[m_Top];
+        const Accumulator& parent = (*m_Entries)[parentSlot];
+        Accumulator& child = (*m_Entries)[m_Top];
         if (!parent.computed)
         {
             child.computed = false;

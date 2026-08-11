@@ -10,6 +10,7 @@
 #include <array>
 #include <cstddef>
 #include <cstdint>
+#include <memory>
 
 namespace NeraChessNNUE
 {
@@ -74,12 +75,14 @@ namespace NeraChessNNUE
     class AccumulatorStack
     {
     public:
+        AccumulatorStack();
+
         // Refreshes the bottom entry from the root position and discards
         // everything above it.
         void Reset(const Network& network, const NeraChessEngine::BoardState& state);
 
-        Accumulator& Current() { return m_Entries[Slot()]; }
-        const Accumulator& Current() const { return m_Entries[Slot()]; }
+        Accumulator& Current() { return (*m_Entries)[Slot()]; }
+        const Accumulator& Current() const { return (*m_Entries)[Slot()]; }
 
         // Enters a child node, updating its accumulator from the parent's.
         //
@@ -105,7 +108,14 @@ namespace NeraChessNNUE
         size_t Slot() const { return m_Top < MaxAccumulatorPly ? m_Top : MaxAccumulatorPly - 1; }
 
     private:
-        std::array<Accumulator, MaxAccumulatorPly> m_Entries{};
+        using Entries = std::array<Accumulator, MaxAccumulatorPly>;
+
+        // Heap allocated, and not merely as a style preference: the entries
+        // come to roughly 330 KB, and a worker thread gets a 512 KB stack by
+        // default on macOS. Holding them inline makes any SearchEngine
+        // constructed on a thread's stack overflow it, which is a crash a
+        // caller has no way to anticipate from the class's interface.
+        std::unique_ptr<Entries> m_Entries;
         size_t m_Top = 0;
     };
 }

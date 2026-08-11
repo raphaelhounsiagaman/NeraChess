@@ -571,6 +571,26 @@ namespace
         using namespace NeraChessEngine;
         using namespace NeraChessSearch;
 
+        // Tools that generate data or run matches construct a SearchEngine
+        // inside each worker thread, and a thread gets a 512 KB stack by
+        // default on macOS. When the NNUE accumulator stack was held inline
+        // this crashed with SIGBUS on construction, before any search ran.
+        {
+            std::atomic<bool> constructed{ false };
+            std::jthread worker([&constructed]
+            {
+                SearchEngine onThreadStack(1);
+                SearchLimits limits;
+                limits.maxDepth = 1;
+                ChessBoard board;
+                constructed = ContainsMove(board.GetLegalMoves(),
+                    onThreadStack.Search(board, limits).bestMove);
+            });
+            worker.join();
+            Require(constructed,
+                "a SearchEngine could not be built and used on a worker thread's stack");
+        }
+
         SearchEngine search(32);
         search.SetThreadCount(4);
         Require(search.GetThreadCount() == 4, "search did not retain its thread count");

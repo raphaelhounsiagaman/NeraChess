@@ -153,4 +153,14 @@ namespace NeraChessSearch
         std::array<std::array<NeraChessEngine::Move, MAX_PLY>, MAX_PLY> m_PvTable{};
         std::array<int, MAX_PLY> m_PvLength{};
     };
+
+    // Callers routinely construct a SearchEngine inside a worker thread, and a
+    // thread gets a 512 KB stack by default on macOS. Anything that pushes this
+    // type past that overflows the stack on construction -- a crash with no
+    // obvious cause and nothing in the interface to warn about it. Large tables
+    // belong on the heap; the NNUE accumulator stack already is there for this
+    // reason.
+    static_assert(sizeof(SearchEngine) < 192 * 1024,
+        "SearchEngine has grown too large to sit on a worker thread's stack; "
+        "move the new storage to the heap");
 }
