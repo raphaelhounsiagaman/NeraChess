@@ -91,6 +91,33 @@ next run regenerates from scratch rather than trusting.
 
 Each generation leaves `genN.txt` and `genN.nnue` in the work directory.
 
+### Continuing from a network you already have
+
+`--generations` is the *last generation number to produce*, not a count, and
+`--start-generation` says where to begin. To carry on from the network the
+engine ships with:
+
+```sh
+cd NNUETraining && .venv/bin/python scripts/pipeline.py --workdir runs/next --start-generation 32 --generations 40 --seed-network ../NeraChessApp/Resources/NNUE/nera.nnue
+```
+
+That copies the network in as `gen31.nnue` and runs generations 32 through 40
+on top of it, skipping the material bootstrap entirely. Without
+`--start-generation` the pipeline begins at generation 0 and regenerates
+everything, which for an established run means hours of self-play to rediscover
+what you already had.
+
+If the work directory still contains `genN.nnue` from an earlier run, drop
+`--seed-network` — the pipeline finds it by name.
+
+The starting network is checked before anything expensive happens: a truncated
+file or one built for a different architecture fails in a second rather than
+after the first generation of games.
+
+Nothing carries over between generations except the network itself. There is no
+optimizer state to restore; each generation trains a fresh model on the games
+its parent played.
+
 ### A first run worth trying
 
 Start small enough to finish in an hour, so you see the whole loop before

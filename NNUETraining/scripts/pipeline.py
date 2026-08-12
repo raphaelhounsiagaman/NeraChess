@@ -27,6 +27,10 @@ import sys
 import time
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+
+from nnue_training import architecture, serialize  # noqa: E402
+
 REPO_ROOT = Path(__file__).resolve().parent.parent.parent
 DEFAULT_SELFPLAY = REPO_ROOT / "bin/Release/NeraChessSelfPlay/NeraChessSelfPlay"
 DEFAULT_UCI = REPO_ROOT / "bin/Release/NeraChessUCI/NeraChessUCI"
@@ -136,12 +140,58 @@ class Pipeline:
             f"verifying generation {generation}",
         )
 
-    def run_all(self) -> None:
-        self.generate_material()
-        self.train(0)
-        self.verify(0)
+    def prepare_resume(self, start: int) -> None:
+        """Checks that the network generation `start` will build on is usable.
 
-        for generation in range(1, self.args.generations + 1):
+        Failing here costs a second. Failing later, after hours of self-play,
+        costs the run.
+        """
+        previous = self.network(start - 1)
+
+        if not previous.exists() and self.args.seed_network:
+            source = Path(self.args.seed_network)
+            if not source.exists():
+                raise SystemExit(f"--seed-network {source} does not exist")
+            previous.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copyfile(source, previous)
+            print(f"seeded {previous} from {source}")
+
+        if not previous.exists():
+            raise SystemExit(
+                f"resuming at generation {start} needs {previous}.\n"
+                f"Either put the network there, or pass "
+                f"--seed-network <path to a .nnue> to copy one in."
+            )
+
+        # Reject a truncated or wrong-architecture network now rather than
+        # after the first generation of games has been played against it.
+        try:
+            header, _ = serialize.read(previous)
+        except Exception as error:  # noqa: BLE001 - surfaced verbatim below
+            raise SystemExit(f"{previous} is not a usable network: {error}") from error
+
+        print(f"resuming from {previous} ({architecture.describe()})")
+        assert header.architecture_hash == architecture.architecture_hash()
+
+    def run_all(self) -> None:
+        start = max(0, self.args.start_generation)
+
+        if self.args.generations < max(start, 1):
+            raise SystemExit(
+                f"--generations {self.args.generations} is below the starting "
+                f"generation {max(start, 1)}; nothing to do. --generations is the "
+                f"last generation number to produce, not a count."
+            )
+
+        if start == 0:
+            self.generate_material()
+            self.train(0)
+            self.verify(0)
+            start = 1
+        else:
+            self.prepare_resume(start)
+
+        for generation in range(start, self.args.generations + 1):
             self.generate_selfplay(generation)
             self.train(generation)
             self.verify(generation)
@@ -163,7 +213,13 @@ def parse_arguments(argv: list[str] | None = None) -> argparse.Namespace:
     )
     parser.add_argument("--workdir", type=Path, default=Path("runs/default"))
     parser.add_argument("--generations", type=int, default=3,
-                        help="self-play generations after the material bootstrap")
+                        help="last generation number to produce, not a count")
+    parser.add_argument("--start-generation", type=int, default=0,
+                        help="resume here instead of bootstrapping; needs the "
+                             "previous generation's network in the work directory")
+    parser.add_argument("--seed-network", type=Path,
+                        help="copy this network in as the starting point when "
+                             "resuming, e.g. an existing nera.nnue")
 
     parser.add_argument("--selfplay", type=Path, default=DEFAULT_SELFPLAY)
     parser.add_argument("--engine", type=Path, default=DEFAULT_UCI)
