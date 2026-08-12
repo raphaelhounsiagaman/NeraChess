@@ -9,7 +9,11 @@ namespace NeraChessNNUE::FeatureSet
     namespace
     {
         // 0 for the perspective's own pieces, 1 for the opponent's.
-        constexpr size_t RelativeColour(Perspective perspective, Piece piece)
+        //
+        // Not constexpr: Piece::IsWhite is a plain member function, so no call
+        // to this could ever be constant evaluated. That is ill-formed, and
+        // MSVC rejects it outright where Clang and GCC stay quiet.
+        inline size_t RelativeColour(Perspective perspective, Piece piece)
         {
             const bool pieceIsWhite = piece.IsWhite();
             const bool perspectiveIsWhite = perspective == Perspective::White;

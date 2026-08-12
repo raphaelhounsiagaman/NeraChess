@@ -6,6 +6,8 @@
 
 #include <fstream>
 #include <iterator>
+#include <system_error>
+#include <vector>
 
 namespace NeraChessNNUE
 {

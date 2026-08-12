@@ -1,5 +1,6 @@
 #include "SelfPlay.h"
 
+#include <algorithm>
 #include <charconv>
 #include <chrono>
 #include <exception>

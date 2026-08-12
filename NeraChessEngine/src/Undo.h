@@ -1,5 +1,7 @@
 #pragma once
 
+#include "Piece.h"
+
 #include <cstdint>
 #include <array>
 

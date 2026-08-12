@@ -24,6 +24,28 @@ jobs:
       - name: Generate Makefiles
         run: bash ./scripts/Setup-Linux.sh gmake
 
+      - name: Check that headers are self-contained
+        run: |
+          # A header that leans on another one's includes compiles on libc++ and
+          # fails on MSVC, which is a slow way to find out. Compiling each in
+          # isolation catches it here instead.
+          status=0
+          # The headless set only. NeraChessApp needs SDL headers this job does
+          # not install, and it is not built here.
+          for header in $(find NeraChessEngine/src NeraChessNNUE/src NeraChessSearch/src \
+                               NeraChessSelfPlay/src NeraChessUCI/src -name '*.h' | sort); do
+            printf '#include "%s"\nint main(){return 0;}\n' "$(basename "$header")" > /tmp/self_contained.cpp
+            if ! g++ -std=c++23 -fsyntax-only \
+                -I NeraChessEngine/src -I NeraChessNNUE/src \
+                -I NeraChessSearch/src -I NeraChessSelfPlay/src -I NeraChessUCI/src \
+                /tmp/self_contained.cpp 2>/tmp/self_contained.log; then
+              echo "::error file=$header::$header does not compile on its own"
+              head -5 /tmp/self_contained.log
+              status=1
+            fi
+          done
+          exit $status
+
       - name: Build headless Debug and Release
         run: |
           jobs="$(nproc)"
