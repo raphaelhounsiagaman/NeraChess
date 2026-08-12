@@ -38,6 +38,10 @@ project "NeraChessUCI"
   {
     '{MKDIR} "%{cfg.targetdir}/Resources/OpeningBook"',
     '{COPYFILE} "%{prj.location}/../NeraChessApp/Resources/OpeningBook/OpeningBook.txt" "%{cfg.targetdir}/Resources/OpeningBook/OpeningBook.txt"',
+    -- The evaluation network, so a built engine plays out of the box rather
+    -- than needing EvalFile set. Startup discovery looks here.
+    '{MKDIR} "%{cfg.targetdir}/Resources/NNUE"',
+    '{COPYFILE} "%{prj.location}/../NeraChessApp/Resources/NNUE/nera.nnue" "%{cfg.targetdir}/Resources/NNUE/nera.nnue"',
   }
 
   filter "system:windows"

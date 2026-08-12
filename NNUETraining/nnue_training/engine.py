@@ -146,15 +146,21 @@ class UciEngine:
     def search(
         self,
         fen: str | None = None,
+        moves: list[str] | None = None,
         depth: int | None = None,
         nodes: int | None = None,
         movetime_ms: int | None = None,
     ) -> SearchInfo:
-        """Searches one position and returns its best move and score."""
+        """Searches one position and returns its best move and score.
+
+        Sets the position itself, so pass `moves` here rather than calling
+        `set_position` beforehand -- an earlier call would be overwritten and
+        the engine would silently search the wrong position.
+        """
         if depth is None and nodes is None and movetime_ms is None:
             raise ValueError("a search needs a depth, node, or time limit")
 
-        self.set_position(fen)
+        self.set_position(fen, moves)
         command = "go"
         if depth is not None:
             command += f" depth {depth}"

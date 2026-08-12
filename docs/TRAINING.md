@@ -221,7 +221,23 @@ network fits its data, not that it plays better — and a generation trained on
 weak games can be worse than its parent. Test before promoting.
 
 Both networks run in the same binary, so an A/B match is one engine against
-itself with different `EvalFile` values. With `cutechess-cli`:
+itself with different `EvalFile` values. The repository has a runner for this:
+
+```bash
+cd NNUETraining && .venv/bin/pip install chess
+```
+
+```bash
+cd NNUETraining && .venv/bin/python scripts/match.py --a runs/first/gen30.nnue --b runs/first/gen31.nnue --games 200
+```
+
+It plays colour-reversed pairs from shared random openings with a fixed node
+budget per move, and reports the score with a confidence interval and an Elo
+estimate. Treat small samples with suspicion: an 8-game run of exactly the
+comparison above said one network was 191 Elo ahead; 200 games put it 31 Elo
+behind, with the interval still spanning zero.
+
+For a full tournament with SPRT, `cutechess-cli` does more:
 
 ```sh
 cutechess-cli -engine cmd=./bin/Release/NeraChessUCI/NeraChessUCI name=gen2 initstr="setoption name EvalFile value $PWD/runs/first/gen2.nnue" -engine cmd=./bin/Release/NeraChessUCI/NeraChessUCI name=gen1 initstr="setoption name EvalFile value $PWD/runs/first/gen1.nnue" -each proto=uci tc=10+0.1 option.OwnBook=false -games 2 -rounds 300 -repeat -openings file=openings.pgn order=random -sprt elo0=0 elo1=10 alpha=0.05 beta=0.05 -concurrency 8

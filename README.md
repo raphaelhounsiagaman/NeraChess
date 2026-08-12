@@ -10,12 +10,15 @@ NeraChess is a C++23 chess engine, UCI executable, and SDL2/Dear ImGui desktop a
 
 ![NeraChess desktop application](assets/screenshots/NeraChessUIStartingPosition.png)
 
-> **This branch is mid-migration to NNUE.** The hand-crafted evaluation has been
-> replaced by a trained network, and the self-play training loop works, but no
-> network is committed here — so a fresh checkout evaluates every position as
-> `0` and plays no better than its search alone until you train one. The
+> **This branch has migrated to NNUE.** The hand-crafted evaluation is gone,
+> replaced by a network trained entirely by self-play with no external engine
+> involved. A trained network ships in
+> `NeraChessApp/Resources/NNUE/nera.nnue`, so a fresh clone plays out of the
+> box. It is an early network — 31 self-play generations at shallow depth —
+> and is much weaker than the hand-crafted evaluation it replaced, so the
 > strength figures below describe `main`, not this branch. See
-> [docs/NNUE.md](docs/NNUE.md) for the architecture and the training loop.
+> [docs/NNUE.md](docs/NNUE.md) for the architecture and
+> [docs/TRAINING.md](docs/TRAINING.md) for training a stronger one.
 
 At engine commit `212e012`, a 300-game paired-opening tournament estimated
 NeraChess at **2627 Stockfish 18 UCI-Elo-equivalent** at `10+0.1`, with a
@@ -59,8 +62,8 @@ The search favors clear, testable engine techniques over platform-specific micro
 
 ### Evaluation
 
-Evaluation is being migrated from a hand-tuned function to a trained NNUE
-network:
+Evaluation is a trained NNUE network. The hand-tuned function it replaced has
+been removed.
 
 - `(768 -> 512)x2 -> 1` perspective network, int16-quantized
 - Self-describing `.nnue` format that rejects networks built for another shape
@@ -335,9 +338,10 @@ the result — and [docs/NNUE.md](docs/NNUE.md) for the architecture.
 
 ## Known Limitations
 
-- No trained NNUE network ships with the engine yet. The self-play training loop
-  works, but nobody has spent the hours needed to produce a network worth
-  shipping, so this branch plays far below the calibrated strength quoted above.
+- The shipped network is an early one and plays far below the calibrated
+  strength quoted above, which was measured with the hand-crafted evaluation
+  this branch removed. Training a stronger one is a matter of running more
+  generations at greater depth.
 - x86 builds use a vectorized accumulator but a scalar output layer unless AVX2
   is enabled at compile time.
 - Search performance and calibrated strength depend on hardware, thread count, and time control.

@@ -4,11 +4,12 @@ This document describes the NNUE evaluation being built on this branch: the
 architecture, the pieces that exist, the pieces that do not, and the order they
 should be built in.
 
-> **Status.** Inference and the self-play training loop both work end to end.
-> No network is committed to the repository, so a fresh checkout evaluates
-> every position as `0` and plays no better than its search alone until you
-> train one — see [Training by self-play](#training-by-self-play), which needs
-> no external engine.
+> **Status.** Inference and the self-play training loop both work end to end,
+> and a trained network ships at `NeraChessApp/Resources/NNUE/nera.nnue`, so a
+> fresh clone plays out of the box. It came from 31 self-play generations at
+> shallow depth and no external engine was involved at any point. It plays real
+> chess but is well short of the hand-crafted evaluation it replaced; see
+> [Training by self-play](#training-by-self-play) to train a stronger one.
 
 ---
 
@@ -137,9 +138,11 @@ directory first and says on the console what it found, or that it found
 nothing and will therefore play badly. The UCI `eval` command reports which
 network is loaded and which SIMD kernels are compiled in.
 
-Networks are gitignored, so dropping one at
-`NeraChessApp/Resources/NNUE/nera.nnue` equips both the desktop build and any
-packaged copy without committing a binary blob.
+`NeraChessApp/Resources/NNUE/nera.nnue` is the network the engine ships with,
+and it is tracked in git deliberately -- `.gitignore` excludes `*.nnue` and then
+un-excludes that one path. Both the desktop and the UCI builds copy it beside
+their executables, so a clone plays without any configuration. Replacing the
+shipped network means overwriting that file.
 
 ---
 
@@ -165,10 +168,17 @@ packaged copy without committing a binary blob.
 
 ### Not done
 
-1. **A network worth shipping.** The loop runs and produces stronger networks
-   each generation, but nobody has yet spent the hours needed to train one that
-   plays well.
-2. **Architecture growth** — king buckets, output buckets, a wider hidden layer
+1. **A network that is actually strong.** The one that ships plays legitimate
+   chess -- it opens with 1.e4 e5 2.Nc3 Nc6 3.Nf3 Nf6 4.d4, finds mates and free
+   material, and solves the kiwipete tactic -- but it misses the positional
+   benchmark in `TestSearchChoices`, which is why that test still skips itself.
+   More generations at greater depth is the whole answer.
+2. **Score calibration.** Self-play training against game results inflates the
+   scale: the shipped network calls a queen roughly +2800 rather than +900.
+   Move ordering only cares about the ordering, so play is unaffected, but the
+   scores a GUI displays are misleading and the search's centipawn-denominated
+   pruning margins are effectively tighter than intended.
+3. **Architecture growth** — king buckets, output buckets, a wider hidden layer
    — each worth A/B testing against the previous network rather than assuming.
 
 ---
@@ -404,6 +414,13 @@ refreshes over the same move tree:
 Run it on a Release build; Debug enables `NNUE_VERIFY_ACCUMULATOR`, whose
 refresh-per-evaluation makes the comparison meaningless.
 
-Tests that measure evaluation quality — `TestSearchChoices`, and the strength
-half of the strategic benchmarks — skip themselves while no network is loaded
-and print that they did. They come back automatically once one exists.
+Tests that measure evaluation quality — `TestSearchChoices` — skip themselves
+while no network is loaded and print that they did. The test binary does not
+load the shipped network, and the shipped network does not yet pass those
+benchmarks anyway; they are waiting on a stronger one.
+
+To compare two networks head to head:
+
+```bash
+cd NNUETraining && .venv/bin/python scripts/match.py --a runs/first/gen30.nnue --b runs/first/gen31.nnue --games 200
+```

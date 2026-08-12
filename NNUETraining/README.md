@@ -4,8 +4,9 @@ Training pipeline for the NeraChess NNUE evaluation network. The engine-side
 inference library lives in [`../NeraChessNNUE`](../NeraChessNNUE); this project
 owns everything that produces a `.nnue` file the engine can load.
 
-> **Status: working, untrained.** The loop runs end to end and needs no
-> external engine, but no network is committed to the repository. See
+> **Status: working.** The loop runs end to end with no external engine, and
+> the network it produced ships at
+> `../NeraChessApp/Resources/NNUE/nera.nnue`. See
 > [`../docs/NNUE.md`](../docs/NNUE.md) for how the bootstrapping works.
 
 ## Layout
@@ -22,6 +23,10 @@ owns everything that produces a `.nnue` file the engine can load.
 | `loss.py` | yes | The training objective |
 | `train.py` | yes | Training entry point |
 | `verify.py` | no | Checks the engine and the trainer agree on a network |
+| `scripts/match.py` | no* | Plays two networks head to head to see which is stronger |
+
+\* `match.py` needs `python-chess` for legal moves and game-over detection, but
+not PyTorch.
 
 Only the model, loss, and trainer need PyTorch. Everything required to read,
 write, and verify a network runs on the standard library, so the format stays
