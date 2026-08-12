@@ -6,7 +6,7 @@ should be built in.
 
 > **Status.** Inference and the self-play training loop both work end to end,
 > and a trained network ships at `NeraChessApp/Resources/NNUE/nera.nnue`, so a
-> fresh clone plays out of the box. It came from 31 self-play generations at
+> fresh clone plays out of the box. It came from 42 self-play generations at
 > shallow depth and no external engine was involved at any point. It plays real
 > chess but is well short of the hand-crafted evaluation it replaced; see
 > [Training by self-play](#training-by-self-play) to train a stronger one.

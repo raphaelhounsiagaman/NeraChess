@@ -14,7 +14,7 @@ NeraChess is a C++23 chess engine, UCI executable, and SDL2/Dear ImGui desktop a
 > replaced by a network trained entirely by self-play with no external engine
 > involved. A trained network ships in
 > `NeraChessApp/Resources/NNUE/nera.nnue`, so a fresh clone plays out of the
-> box. It is an early network — 31 self-play generations at shallow depth —
+> box. It is an early network — 42 self-play generations at shallow depth —
 > and is much weaker than the hand-crafted evaluation it replaced, so the
 > strength figures below describe `main`, not this branch. See
 > [docs/NNUE.md](docs/NNUE.md) for the architecture and

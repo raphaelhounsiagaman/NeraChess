@@ -98,10 +98,10 @@ Each generation leaves `genN.txt` and `genN.nnue` in the work directory.
 engine ships with:
 
 ```sh
-cd NNUETraining && .venv/bin/python scripts/pipeline.py --workdir runs/next --start-generation 32 --generations 40 --seed-network ../NeraChessApp/Resources/NNUE/nera.nnue
+cd NNUETraining && .venv/bin/python scripts/pipeline.py --workdir runs/next --start-generation 43 --generations 50 --seed-network ../NeraChessApp/Resources/NNUE/nera.nnue
 ```
 
-That copies the network in as `gen31.nnue` and runs generations 32 through 40
+That copies the network in as `gen42.nnue` and runs generations 43 through 50
 on top of it, skipping the material bootstrap entirely. Without
 `--start-generation` the pipeline begins at generation 0 and regenerates
 everything, which for an established run means hours of self-play to rediscover
