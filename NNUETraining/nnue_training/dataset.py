@@ -246,23 +246,41 @@ class FeatureCache:
         )
 
     def batches(
-        self, batch_size: int, shuffle_seed: int | None = None
+        self,
+        batch_size: int,
+        shuffle_seed: int | None = None,
+        indices: Sequence[int] | None = None,
     ) -> Iterator[Batch]:
-        """Yields batches, optionally in a shuffled order.
+        """Yields batches, optionally shuffled and optionally over a subset.
 
         Shuffling matters more than usual here: self-play samples arrive in
         game order, so an unshuffled batch is a few positions from the same
         handful of games and its gradient is badly correlated.
+
+        `indices` restricts iteration to a subset, which is how a training and
+        a validation split share one cache without copying it.
         """
         if batch_size < 1:
             raise ValueError("batch size must be positive")
 
-        order = list(range(len(self)))
+        order = list(range(len(self))) if indices is None else list(indices)
         if shuffle_seed is not None:
             random.Random(shuffle_seed).shuffle(order)
 
         for start in range(0, len(order), batch_size):
             yield self.batch(order[start : start + batch_size])
+
+    def split(self, validation_size: int, seed: int) -> tuple[list[int], list[int]]:
+        """Deterministically splits into (training, validation) index lists.
+
+        Shuffled before splitting, because samples arrive in game order and a
+        contiguous tail would be a handful of whole games rather than a sample
+        of the distribution.
+        """
+        order = list(range(len(self)))
+        random.Random(seed).shuffle(order)
+        validation_size = max(0, min(validation_size, len(order)))
+        return order[validation_size:], order[:validation_size]
 
 
 @dataclass

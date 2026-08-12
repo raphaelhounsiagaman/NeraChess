@@ -35,6 +35,13 @@ class TrainConfig:
     lambda_start: float = 1.0
     lambda_end: float = 0.7
 
+    #: Fraction held out to report a loss that is comparable across epochs.
+    #: The training loss is not: when lambda anneals, the objective itself
+    #: changes every epoch, so that number can rise while the network improves.
+    #: The validation loss is always measured at lambda_end.
+    validation_fraction: float = 0.02
+    max_validation_positions: int = 50_000
+
     device: str = "cpu"
     seed: int = 0
 
@@ -77,11 +84,54 @@ def train(config: TrainConfig) -> Path:
         raise SystemExit(f"{config.data_path} contains no samples")
     print(f"loaded {len(cache)} positions in {time.monotonic() - started:.1f}s")
 
+    validation_size = min(
+        int(len(cache) * config.validation_fraction), config.max_validation_positions
+    )
+    training_indices, validation_indices = cache.split(validation_size, config.seed)
+    if validation_indices:
+        print(
+            f"holding out {len(validation_indices)} positions to measure progress "
+            f"at a fixed lambda of {config.lambda_end}"
+        )
+
     model = NnueModel().to(device)
     optimizer = torch.optim.AdamW(
         model.parameters(), lr=config.learning_rate, weight_decay=config.weight_decay
     )
     loss_config = LossConfig(lambda_=config.lambda_start)
+
+    def to_tensors(batch: data.Batch):
+        return (
+            torch.tensor(batch.own_indices, dtype=torch.long, device=device),
+            torch.tensor(batch.own_offsets, dtype=torch.long, device=device),
+            torch.tensor(batch.their_indices, dtype=torch.long, device=device),
+            torch.tensor(batch.their_offsets, dtype=torch.long, device=device),
+            torch.tensor(batch.scores, dtype=torch.float32, device=device),
+            torch.tensor(batch.results, dtype=torch.float32, device=device),
+        )
+
+    # Always measured at lambda_end, so it means the same thing every epoch and
+    # can actually be compared. The training loss cannot be, because annealing
+    # changes the objective underneath it.
+    fixed_config = LossConfig(
+        lambda_=config.lambda_end, scaling=loss_config.scaling, power=loss_config.power
+    )
+
+    @torch.no_grad()
+    def validate() -> float | None:
+        if not validation_indices:
+            return None
+        model.eval()
+        total, count = 0.0, 0
+        for batch in cache.batches(config.batch_size, indices=validation_indices):
+            own, own_off, their, their_off, scores, results = to_tensors(batch)
+            predictions = model(own, own_off, their, their_off)
+            total += float(nnue_loss(predictions, scores, results, fixed_config).item())
+            count += 1
+        model.train()
+        return total / max(1, count)
+
+    best_validation_loss = float("inf")
 
     for epoch in range(config.epochs):
         epoch_lambda = anneal_lambda(
@@ -100,19 +150,14 @@ def train(config: TrainConfig) -> Path:
         # Self-play samples arrive in game order, so an unshuffled batch is a
         # few positions from the same handful of games and its gradient is
         # badly correlated. Reshuffle every epoch.
-        for batch in cache.batches(config.batch_size, shuffle_seed=config.seed + epoch):
-            own_indices = torch.tensor(batch.own_indices, dtype=torch.long, device=device)
-            own_offsets = torch.tensor(batch.own_offsets, dtype=torch.long, device=device)
-            their_indices = torch.tensor(
-                batch.their_indices, dtype=torch.long, device=device
-            )
-            their_offsets = torch.tensor(
-                batch.their_offsets, dtype=torch.long, device=device
-            )
-            scores = torch.tensor(batch.scores, dtype=torch.float32, device=device)
-            results = torch.tensor(batch.results, dtype=torch.float32, device=device)
+        for batch in cache.batches(
+            config.batch_size,
+            shuffle_seed=config.seed + epoch,
+            indices=training_indices,
+        ):
+            own, own_off, their, their_off, scores, results = to_tensors(batch)
 
-            predictions = model(own_indices, own_offsets, their_indices, their_offsets)
+            predictions = model(own, own_off, their, their_off)
             loss = nnue_loss(predictions, scores, results, epoch_config)
 
             optimizer.zero_grad(set_to_none=True)
@@ -123,13 +168,24 @@ def train(config: TrainConfig) -> Path:
             total_loss += float(loss.item())
             batch_count += 1
 
+        validation_loss = validate()
         elapsed = time.monotonic() - started
         average = total_loss / max(1, batch_count)
-        print(
+
+        # "train" moves with the annealing lambda and is not comparable between
+        # epochs; "val" is the one to watch.
+        line = (
             f"epoch {epoch + 1}/{config.epochs} "
-            f"loss {average:.6f} lambda {epoch_lambda:.3f} "
-            f"({elapsed:.1f}s, {batch_count} batches)"
+            f"train {average:.6f} (lambda {epoch_lambda:.3f})"
         )
+        if validation_loss is not None:
+            marker = ""
+            if validation_loss < best_validation_loss:
+                best_validation_loss = validation_loss
+                marker = " *best"
+            line += f"  val {validation_loss:.6f}{marker}"
+        line += f"  ({elapsed:.1f}s, {batch_count} batches)"
+        print(line, flush=True)
 
         if config.checkpoint_every_epoch:
             checkpoint = config.output_path.with_suffix(f".epoch{epoch + 1}.nnue")
@@ -153,6 +209,9 @@ def parse_arguments(argv: list[str] | None = None) -> TrainConfig:
     parser.add_argument("--weight-decay", type=float, default=0.0)
     parser.add_argument("--lambda-start", type=float, default=1.0)
     parser.add_argument("--lambda-end", type=float, default=0.7)
+    parser.add_argument("--validation-fraction", type=float, default=0.02,
+                        help="fraction held out to report a loss comparable "
+                             "across epochs; 0 disables it")
     parser.add_argument("--device", default="cpu", help="cpu, cuda, or mps")
     parser.add_argument("--seed", type=int, default=0)
     parser.add_argument(
@@ -169,6 +228,7 @@ def parse_arguments(argv: list[str] | None = None) -> TrainConfig:
         weight_decay=arguments.weight_decay,
         lambda_start=arguments.lambda_start,
         lambda_end=arguments.lambda_end,
+        validation_fraction=arguments.validation_fraction,
         device=arguments.device,
         seed=arguments.seed,
         checkpoint_every_epoch=not arguments.no_checkpoints,

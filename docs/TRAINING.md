@@ -327,9 +327,28 @@ implement the same network. This is a bug, not a tuning problem, and no amount
 of training will fix it. Check that `architecture.py` still matches
 `NetworkArchitecture.h`.
 
-**Training loss rises across epochs** — normal early on if `--lambda-end` is
-below `--lambda-start`, since the target is moving from pure evaluation toward
-game results. If it rises with a fixed lambda, lower the learning rate.
+**Training loss rises across epochs** — expected, and not a sign of trouble.
+With `--lambda-end` below `--lambda-start` the objective anneals from "predict
+the search score" toward "predict the game result", and game results are
+irreducibly noisy per position: a position scored +50 can come from a lost
+game, and nothing can predict that from the position alone. So the achievable
+loss climbs as lambda falls, and `train` climbs with it. Losses measured at
+different lambdas are not comparable.
+
+Watch the `val` column instead. It is measured on held-out positions at a fixed
+lambda every epoch, so it means the same thing throughout and is the number
+that tells you whether the network is improving. A typical healthy run looks
+like this — training loss rising, validation loss falling:
+
+```text
+epoch  3/10 train 0.000632 (lambda 0.933)  val 0.004650 *best
+epoch  6/10 train 0.000963 (lambda 0.833)  val 0.003290 *best
+epoch 10/10 train 0.001635 (lambda 0.700)  val 0.001680 *best
+```
+
+If `val` stops improving while `train` keeps falling, that is real overfitting:
+use more positions rather than more epochs. If `val` rises from the start, lower
+the learning rate. `--validation-fraction 0` turns the holdout off.
 
 **Self-play is slower than the table above** — check the kernel line the tool
 prints. `kernels sse2` on x86 means the output layer is scalar; rebuild with
