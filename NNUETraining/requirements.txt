@@ -7,3 +7,8 @@
 # Install a CUDA or ROCm build from https://pytorch.org/get-started/locally/ if
 # you intend to train on a GPU; the default wheel is CPU-only.
 torch>=2.2
+
+# PyTorch works without NumPy but warns loudly about its absence on every
+# import, which reads like a failure. Listing it explicitly keeps the training
+# output clean.
+numpy>=1.24
