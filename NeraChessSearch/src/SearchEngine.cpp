@@ -19,6 +19,39 @@ namespace NeraChessSearch
     namespace
     {
         constexpr std::array<int, 6> PieceValues = { 100, 320, 330, 500, 900, 0 };
+
+        // Late move reductions are accumulated in 1/1024 of a ply so that the base
+        // curve and the individual adjustments can stay fractional, and only the
+        // final sum is truncated to whole plies.
+        constexpr int REDUCTION_SCALE = 1024;
+        constexpr int MAX_REDUCTION_DEPTH = 64;
+        constexpr int MAX_REDUCTION_MOVES = 64;
+
+        // Base curve: 0.85 + ln(depth) * ln(moveIndex) / 2.35. The logarithmic shape
+        // keeps early moves at shallow depths almost unreduced while letting late
+        // moves at high depths be cut hard, which the previous fixed ladder (capped
+        // at three plies regardless of depth) could not express.
+        struct ReductionTable
+        {
+            std::array<std::array<int16_t, MAX_REDUCTION_MOVES>, MAX_REDUCTION_DEPTH> values{};
+
+            ReductionTable()
+            {
+                for (int depth = 1; depth < MAX_REDUCTION_DEPTH; ++depth)
+                {
+                    for (int moveIndex = 1; moveIndex < MAX_REDUCTION_MOVES; ++moveIndex)
+                    {
+                        const double reduction = 0.85 +
+                            std::log(static_cast<double>(depth)) *
+                            std::log(static_cast<double>(moveIndex)) / 2.35;
+                        values[depth][moveIndex] = static_cast<int16_t>(
+                            std::lround(reduction * REDUCTION_SCALE));
+                    }
+                }
+            }
+        };
+
+        const ReductionTable Reductions;
     }
 
     SearchEngine::SearchEngine(size_t hashMegabytes)
@@ -90,6 +123,7 @@ namespace NeraChessSearch
         m_CounterMoves = {};
         m_PvTable = {};
         m_PvLength = {};
+        m_StaticEvals.fill(SCORE_NONE);
     }
 
     SearchResult SearchEngine::Search(const ChessBoard& position, const SearchLimits& limits)
@@ -181,6 +215,7 @@ namespace NeraChessSearch
         m_UnflushedNodes = 0;
         m_SelectiveDepth = 0;
         m_PvLength.fill(0);
+        m_StaticEvals.fill(SCORE_NONE);
         for (auto& side : m_History)
         {
             for (auto& from : side)
@@ -317,15 +352,15 @@ namespace NeraChessSearch
             if (firstMove)
             {
                 score = -PrincipalVariationSearch(board, -beta, -alpha,
-                    depth - 1, 1, true, true, move);
+                    depth - 1, 1, true, true, move, false);
             }
             else
             {
                 score = -PrincipalVariationSearch(board, -alpha - 1, -alpha,
-                    depth - 1, 1, false, true, move);
+                    depth - 1, 1, false, true, move, true);
                 if (!m_Aborted && score > alpha && score < beta)
                     score = -PrincipalVariationSearch(board, -beta, -alpha,
-                        depth - 1, 1, true, true, move);
+                        depth - 1, 1, true, true, move, false);
             }
             board.UndoMove(move);
 
@@ -362,7 +397,7 @@ namespace NeraChessSearch
 
     Score SearchEngine::PrincipalVariationSearch(ChessBoard& board,
         Score alpha, Score beta, int depth, int ply, bool pvNode, bool allowNull,
-        Move previousMove)
+        Move previousMove, bool cutNode)
     {
         if (ShouldStop())
             return SCORE_DRAW;
@@ -410,9 +445,26 @@ namespace NeraChessSearch
         const bool canFutilityPrune = !pvNode && !inCheck && !mateBounds && depth <= 2;
         const bool canNullPrune = allowNull && !pvNode && !inCheck && !mateBounds &&
             depth >= 3 && HasNonPawnMaterial(board);
+        // The static evaluation is now kept for every non-check node so that the
+        // improving flag (this side is better than it was two plies ago) is available
+        // to late move reductions instead of only to the pruning heuristics.
         Score staticEval = SCORE_DRAW;
-        if (canReverseFutility || canFutilityPrune || canNullPrune)
+        bool improving = false;
+        if (inCheck)
+        {
+            m_StaticEvals[ply] = SCORE_NONE;
+        }
+        else
+        {
             staticEval = Evaluate(board);
+            m_StaticEvals[ply] = staticEval;
+            if (ply >= 2 && m_StaticEvals[ply - 2] != SCORE_NONE)
+                improving = staticEval > m_StaticEvals[ply - 2];
+            else if (ply >= 4 && m_StaticEvals[ply - 4] != SCORE_NONE)
+                improving = staticEval > m_StaticEvals[ply - 4];
+            else
+                improving = true;
+        }
 
         if (canReverseFutility && staticEval - 120 * depth >= beta)
             return staticEval;
@@ -423,7 +475,7 @@ namespace NeraChessSearch
             {
                 const int reduction = 2 + depth / 4;
                 const Score nullScore = -PrincipalVariationSearch(board, -beta, -beta + 1,
-                    depth - 1 - reduction, ply + 1, false, false, 0);
+                    depth - 1 - reduction, ply + 1, false, false, 0, !cutNode);
                 board.UndoNullMove();
 
                 if (m_Aborted)
@@ -470,28 +522,39 @@ namespace NeraChessSearch
             Score score;
             if (firstMove)
             {
+                // The first child of a principal variation node is itself a
+                // principal variation node; elsewhere cut and all nodes alternate.
                 score = -PrincipalVariationSearch(board, -beta, -alpha,
-                    depth - 1, ply + 1, pvNode, true, move);
+                    depth - 1, ply + 1, pvNode, true, move, pvNode ? false : !cutNode);
             }
             else
             {
                 int reduction = 0;
-                if (depth >= 3 && moveIndex >= 3 && quiet && !killer && !counter &&
+                // Killers and countermoves are no longer exempt: their history is
+                // already high, so the history term inside LateMoveReduction gives
+                // them a smaller reduction instead of none at all. Reductions now
+                // start one move earlier outside the principal variation.
+                if (depth >= 3 && moveIndex >= (pvNode ? 3 : 2) && quiet &&
                     !inCheck && !givesCheck)
                 {
-                    reduction = LateMoveReduction(depth, moveIndex, pvNode);
+                    int32_t historyScore =
+                        m_History[side][move.GetStartSquare()][move.GetTargetSquare()];
+                    if (killer || counter)
+                        historyScore = std::max(historyScore, MAX_HISTORY / 2);
+                    reduction = LateMoveReduction(depth, moveIndex, pvNode, improving,
+                        cutNode, ttMove != 0, historyScore);
                 }
 
                 score = -PrincipalVariationSearch(board, -alpha - 1, -alpha,
-                    depth - 1 - reduction, ply + 1, false, true, move);
+                    depth - 1 - reduction, ply + 1, false, true, move, true);
                 if (!m_Aborted && reduction > 0 && score > alpha)
                 {
                     score = -PrincipalVariationSearch(board, -alpha - 1, -alpha,
-                        depth - 1, ply + 1, false, true, move);
+                        depth - 1, ply + 1, false, true, move, !cutNode);
                 }
                 if (!m_Aborted && pvNode && score > alpha && score < beta)
                     score = -PrincipalVariationSearch(board, -beta, -alpha,
-                        depth - 1, ply + 1, true, true, move);
+                        depth - 1, ply + 1, true, true, move, false);
             }
             board.UndoMove(move);
 
@@ -857,15 +920,37 @@ namespace NeraChessSearch
         return true;
     }
 
-    int SearchEngine::LateMoveReduction(int depth, int moveIndex, bool pvNode)
+    int SearchEngine::LateMoveReduction(int depth, int moveIndex, bool pvNode, bool improving,
+        bool cutNode, bool ttMove, int32_t historyScore)
     {
-        int reduction = 1;
-        if (depth >= 6)
-            ++reduction;
-        if (moveIndex >= 8)
-            ++reduction;
+        const int tableDepth = std::clamp(depth, 1, MAX_REDUCTION_DEPTH - 1);
+        const int tableMove = std::clamp(moveIndex, 1, MAX_REDUCTION_MOVES - 1);
+        int reduction = Reductions.values[tableDepth][tableMove];
+
+        // Principal variation nodes carry the game continuation, so keep them shallow.
         if (pvNode)
-            --reduction;
+            reduction -= REDUCTION_SCALE;
+        // Expected fail-high nodes are the cheapest place to be aggressive.
+        if (cutNode)
+            reduction += 3 * REDUCTION_SCALE / 2;
+        // A rising static evaluation means the line is worth another look.
+        if (improving)
+            reduction -= REDUCTION_SCALE;
+        // A transposition-table move means the node was searched before and its
+        // ordering is trustworthy, so the tail of the move list is more likely junk.
+        if (ttMove)
+            reduction += REDUCTION_SCALE / 2;
+
+        // History steers the reduction continuously instead of relying only on the
+        // killer/countermove exemptions: quiets that repeatedly cut are reduced up
+        // to two plies less, quiets that repeatedly fail are reduced up to two more.
+        reduction -= std::clamp(historyScore, -MAX_HISTORY, MAX_HISTORY) *
+            (2 * REDUCTION_SCALE) / MAX_HISTORY;
+
+        reduction /= REDUCTION_SCALE;
+
+        // Never reduce into quiescence: the re-search that verifies a raised alpha
+        // has to be strictly deeper than the reduced search for LMR to stay sound.
         return std::clamp(reduction, 0, depth - 2);
     }
 
@@ -895,9 +980,8 @@ namespace NeraChessSearch
 
     void SearchEngine::UpdateHistoryScore(int32_t& score, int bonus)
     {
-        constexpr int MaxHistory = 16'384;
-        bonus = std::clamp(bonus, -MaxHistory, MaxHistory);
-        score += bonus - score * std::abs(bonus) / MaxHistory;
+        bonus = std::clamp(bonus, -MAX_HISTORY, MAX_HISTORY);
+        score += bonus - score * std::abs(bonus) / MAX_HISTORY;
     }
 
     Score SearchEngine::Evaluate(const ChessBoard& board)
