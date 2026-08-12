@@ -1070,6 +1070,16 @@ namespace NeraChessEngine
 
 	}
 
+	Bitboard MoveGenerator::LookupRookAttacks(Square square, Bitboard occupancy)
+	{
+		return GetSlidingAttacks(square, occupancy, true);
+	}
+
+	Bitboard MoveGenerator::LookupBishopAttacks(Square square, Bitboard occupancy)
+	{
+		return GetSlidingAttacks(square, occupancy, false);
+	}
+
 	Bitboard MoveGenerator::GetSlidingAttacks(Square square, Bitboard blockers, bool orthogonal)
 	{
 		if (square >= 64)

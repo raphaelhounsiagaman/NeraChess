@@ -978,5 +978,105 @@ namespace NeraChessEngine
 		return m_MoveGenerator.InCheck();
 	}
 
+	bool ChessBoard::GivesCheck(Move move) const
+	{
+		const Piece movePiece = move.GetMovePiece();
+		const bool whitesMove = movePiece.IsWhite();
+		const uint8_t offset = whitesMove ? 0 : 6;
+		const uint8_t enemyOffset = whitesMove ? 6 : 0;
+
+		const Bitboard enemyKing = m_BoardState.pieceBitboards[enemyOffset + PieceType::WHITE_KING];
+		if (!enemyKing)
+			return false;
+		const uint8_t enemyKingSquare = BitUtil::GetLSBIndex(enemyKing);
+
+		const uint8_t startSquare = move.GetStartSquare();
+		const uint8_t targetSquare = move.GetTargetSquare();
+		const uint8_t moveFlags = move.GetMoveFlags();
+
+		Bitboard occupancy = 0;
+		for (const Bitboard pieceSet : m_BoardState.pieceBitboards)
+			occupancy |= pieceSet;
+
+		// Replay the move on local copies of only the boards that can change: the
+		// occupancy, the friendly attackers, and the castling rook.
+		Bitboard pawns = m_BoardState.pieceBitboards[offset + PieceType::WHITE_PAWN];
+		Bitboard knights = m_BoardState.pieceBitboards[offset + PieceType::WHITE_KNIGHT];
+		Bitboard bishops = m_BoardState.pieceBitboards[offset + PieceType::WHITE_BISHOP];
+		Bitboard rooks = m_BoardState.pieceBitboards[offset + PieceType::WHITE_ROOK];
+		Bitboard queens = m_BoardState.pieceBitboards[offset + PieceType::WHITE_QUEEN];
+
+		const Bitboard startBitboard = s_SquareBitboard[startSquare];
+		const Bitboard targetBitboard = s_SquareBitboard[targetSquare];
+		occupancy &= ~startBitboard;
+		occupancy |= targetBitboard;
+
+		if (moveFlags & MoveFlags::IS_EN_PASSANT)
+		{
+			const uint8_t capturedSquare = whitesMove
+				? static_cast<uint8_t>(targetSquare - 8)
+				: static_cast<uint8_t>(targetSquare + 8);
+			occupancy &= ~s_SquareBitboard[capturedSquare];
+		}
+		else if (moveFlags & MoveFlags::IS_CASTLES)
+		{
+			const bool queenSide = Square(targetSquare).GetFile() == 2;
+			const uint8_t rookFrom = whitesMove ? (queenSide ? 0 : 7) : (queenSide ? 56 : 63);
+			const uint8_t rookTo = whitesMove ? (queenSide ? 3 : 5) : (queenSide ? 59 : 61);
+			occupancy &= ~s_SquareBitboard[rookFrom];
+			occupancy |= s_SquareBitboard[rookTo];
+			rooks &= ~s_SquareBitboard[rookFrom];
+			rooks |= s_SquareBitboard[rookTo];
+		}
+
+		const auto relocate = [&](Bitboard& board) { board &= ~startBitboard; };
+		relocate(pawns);
+		relocate(knights);
+		relocate(bishops);
+		relocate(rooks);
+		relocate(queens);
+
+		const uint8_t landedType = (moveFlags & MoveFlags::IS_PROMOTION)
+			? static_cast<uint8_t>(move.GetPromoPiece() % 6)
+			: static_cast<uint8_t>(movePiece % 6);
+		switch (landedType)
+		{
+		case PieceType::WHITE_PAWN:
+			pawns |= targetBitboard;
+			break;
+		case PieceType::WHITE_KNIGHT:
+			knights |= targetBitboard;
+			break;
+		case PieceType::WHITE_BISHOP:
+			bishops |= targetBitboard;
+			break;
+		case PieceType::WHITE_ROOK:
+			rooks |= targetBitboard;
+			break;
+		case PieceType::WHITE_QUEEN:
+			queens |= targetBitboard;
+			break;
+		default:
+			// A king can never give check itself, but it still blocks and unblocks rays,
+			// which the shared occupancy above already accounts for.
+			break;
+		}
+
+		// Testing attacks outward from the enemy king covers direct checks and
+		// discovered checks in the same pass.
+		const Bitboard pawnCheckers = whitesMove
+			? MoveGenerator::s_BlackPawnAttackMasks[enemyKingSquare]
+			: MoveGenerator::s_WhitePawnAttackMasks[enemyKingSquare];
+		if (pawnCheckers & pawns)
+			return true;
+		if (MoveGenerator::s_KnightMoveMask[enemyKingSquare] & knights)
+			return true;
+		if (MoveGenerator::LookupBishopAttacks(enemyKingSquare, occupancy) & (bishops | queens))
+			return true;
+		if (MoveGenerator::LookupRookAttacks(enemyKingSquare, occupancy) & (rooks | queens))
+			return true;
+		return false;
+	}
+
 
 } // namespace NeraChessEngine

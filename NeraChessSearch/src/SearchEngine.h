@@ -18,8 +18,8 @@ namespace NeraChessSearch
     inline constexpr Score SCORE_INF = 32'000;
     inline constexpr Score SCORE_MATE = 30'000;
     inline constexpr Score SCORE_DRAW = 0;
-    // Sentinel for "no static evaluation is available at this ply", used by the
-    // improving heuristic when a node was searched while in check.
+    // Marks a ply whose static evaluation is unavailable because the side to move is
+    // in check. Kept outside the usable score range so it can never compare as a score.
     inline constexpr Score SCORE_NONE = 32'001;
     inline constexpr int MAX_PLY = 128;
     inline constexpr int MAX_HISTORY = 16'384;
@@ -106,8 +106,9 @@ namespace NeraChessSearch
         static int PieceValue(NeraChessEngine::Piece piece);
         static bool IsQuiet(NeraChessEngine::Move move);
         static bool IsFutilityPrunable(NeraChessEngine::Move move);
-        static int LateMoveReduction(int depth, int moveIndex, bool pvNode, bool improving,
-            bool cutNode, bool ttMove, int32_t historyScore);
+        static int LateMoveReduction(int depth, int moveIndex, bool pvNode, bool cutNode,
+            bool improving, bool orderedQuiet, int32_t historyScore);
+        static int LateMoveCountLimit(int depth, bool improving);
         static bool HasNonPawnMaterial(const NeraChessEngine::ChessBoard& board);
         bool IsRootMoveAllowed(NeraChessEngine::Move move) const;
         NeraChessEngine::Move GetCounterMove(NeraChessEngine::Move previousMove) const;
@@ -129,11 +130,11 @@ namespace NeraChessSearch
         uint64_t m_UnflushedNodes = 0;
         int m_SelectiveDepth = 0;
 
+        std::array<Score, MAX_PLY> m_StaticEval{};
         std::array<std::array<NeraChessEngine::Move, 2>, MAX_PLY> m_KillerMoves{};
         std::array<std::array<std::array<int32_t, 64>, 64>, 2> m_History{};
         std::array<std::array<NeraChessEngine::Move, 64>, 12> m_CounterMoves{};
         std::array<std::array<NeraChessEngine::Move, MAX_PLY>, MAX_PLY> m_PvTable{};
         std::array<int, MAX_PLY> m_PvLength{};
-        std::array<Score, MAX_PLY> m_StaticEvals{};
     };
 }
