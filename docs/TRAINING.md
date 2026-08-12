@@ -82,8 +82,12 @@ cd NNUETraining && .venv/bin/python scripts/pipeline.py --workdir runs/first --g
 ```
 
 That runs, for generation 0 and then each self-play generation: generate data,
-train, and verify. Files already present are reused, so an interrupted run
-picks up where it stopped. Add `--force` to redo everything.
+train, and verify. Completed stages are reused, so an interrupted run picks up
+where it stopped. Add `--force` to redo everything.
+
+Resuming is safe because a stage's output only takes its real name once that
+stage finishes: an interrupted generation leaves `genN.txt.partial`, which the
+next run regenerates from scratch rather than trusting.
 
 Each generation leaves `genN.txt` and `genN.nnue` in the work directory.
 
@@ -297,6 +301,17 @@ if you want it shipped.
 
 **`Self-play needs a network`** — self-play mode was run without `--network`, or
 the path is wrong. Generation 0 comes from `--mode material`, which needs none.
+
+**An interrupted run** — Ctrl-C, a killed job, a full disk — leaves a
+`genN.txt.partial` file and no `genN.txt`. That is deliberate: the output is
+only renamed into place once the run completes, so a resume regenerates the
+stage instead of training on a fraction of it. Delete the `.partial` file, or
+ignore it; the next run truncates it. Nothing needs cleaning up by hand.
+
+If you have a truncated `genN.txt` from before this behaviour existed, the
+trainer will read it, warn about the torn final line, and train on whatever is
+there. That is usually not what you want when the file is a small fraction of
+the requested size — delete it and regenerate.
 
 **Nearly every game is a draw** — adjudication is off or too lenient. Check
 `--win-score` and `--win-plies`. A healthy generation-0 run is around 70-75%

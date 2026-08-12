@@ -34,6 +34,48 @@ class ParsingTest(unittest.TestCase):
         with self.assertRaises(ValueError):
             data.parse_line(f"{START} | 25 | 1.5", 1, "test")
 
+    def test_tolerates_a_truncated_final_line(self) -> None:
+        # A generator killed mid-flush leaves a torn last line. Losing millions
+        # of good positions to it would be absurd, so it warns and skips.
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "truncated.txt"
+            path.write_text(
+                f"{START} | 25 | 1.0\n{ENDGAME} | -40 | 0.0\n8/2p5/3p4/KP5r/1R3p",
+                encoding="utf-8",
+            )
+            with self.assertWarns(UserWarning):
+                samples = data.load_text_samples(path)
+
+        self.assertEqual(len(samples), 2)
+        self.assertEqual(samples[0].score, 25.0)
+
+    def test_a_malformed_line_in_the_middle_is_still_fatal(self) -> None:
+        # Corruption anywhere but the end means the data is wrong, not merely
+        # short, and silently training on it would be worse than failing.
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "corrupt.txt"
+            path.write_text(
+                f"{START} | 25 | 1.0\ngarbage without separators\n{ENDGAME} | -40 | 0.0\n",
+                encoding="utf-8",
+            )
+            with self.assertRaises(ValueError):
+                data.load_text_samples(path)
+
+    def test_a_complete_final_line_is_kept(self) -> None:
+        # The deferred-by-one parsing must not drop the last sample of a file
+        # that ends properly, with or without a trailing newline.
+        for ending in ("\n", ""):
+            with self.subTest(trailing_newline=bool(ending)):
+                with tempfile.TemporaryDirectory() as directory:
+                    path = Path(directory) / "complete.txt"
+                    path.write_text(
+                        f"{START} | 25 | 1.0\n{ENDGAME} | -40 | 0.0{ending}",
+                        encoding="utf-8",
+                    )
+                    samples = data.load_text_samples(path)
+                self.assertEqual(len(samples), 2)
+                self.assertEqual(samples[-1].score, -40.0)
+
     def test_reads_a_file(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "samples.txt"

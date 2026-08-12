@@ -8,9 +8,10 @@ Sample format (plain text, one per line, ``#`` comments allowed)::
 ``result``  Game result from the side-to-move point of view: 1.0 win,
             0.5 draw, 0.0 loss.
 
-Text is the interchange format because it is trivial to inspect and diff. It
-is also slow and roughly six times larger than it needs to be, so a packed
-binary format is the intended follow-up -- see :class:`PackedSampleReader`.
+Text is the interchange format because it is trivial to inspect, diff, and
+concatenate across machines. Parsing it is slow enough to matter at a few
+million positions, so :class:`FeatureCache` extracts the features once and can
+persist them in a packed binary form.
 """
 
 from __future__ import annotations
@@ -18,6 +19,7 @@ from __future__ import annotations
 import random
 import struct
 import sys
+import warnings
 from array import array
 from dataclasses import dataclass
 from pathlib import Path
@@ -66,11 +68,38 @@ def parse_line(line: str, line_number: int, source: str) -> Sample | None:
 
 
 def read_text_samples(path: str | Path) -> Iterator[Sample]:
-    """Streams samples from a text file without holding the file in memory."""
+    """Streams samples from a text file without holding the file in memory.
+
+    A malformed line is fatal, with one exception: the *last* line of a file may
+    be a torn write. That is what a generator killed mid-flush leaves behind,
+    and refusing to read millions of good positions because of it helps nobody.
+    It is warned about and skipped. A malformed line anywhere else still raises,
+    because that means the data is corrupt rather than merely truncated.
+
+    Parsing is deferred by one line so the reader can tell which line is last.
+    """
     source = str(path)
     with Path(path).open("r", encoding="utf-8") as handle:
+        held: tuple[str, int] | None = None
+
         for line_number, line in enumerate(handle, start=1):
-            sample = parse_line(line, line_number, source)
+            if held is not None:
+                sample = parse_line(held[0], held[1], source)
+                if sample is not None:
+                    yield sample
+            held = (line, line_number)
+
+        if held is not None:
+            try:
+                sample = parse_line(held[0], held[1], source)
+            except ValueError as error:
+                warnings.warn(
+                    f"ignoring a truncated final line in {source}: {error}. "
+                    "This is what an interrupted generator leaves behind; the "
+                    "file is short by however much that run had left to write.",
+                    stacklevel=2,
+                )
+                return
             if sample is not None:
                 yield sample
 

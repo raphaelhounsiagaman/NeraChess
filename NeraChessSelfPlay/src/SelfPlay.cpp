@@ -89,21 +89,53 @@ namespace NeraChessSelfPlay
         };
 
         // Serializes writes and stops every worker once the target is reached.
+        //
+        // A run that does not finish -- interrupted from the terminal, killed
+        // by the scheduler, out of disk -- must not leave a half-written file
+        // under the output name, because the next run would find it, assume it
+        // is complete, and train on a truncated dataset. So the samples go to a
+        // sibling ".partial" file that is renamed into place only once every
+        // worker has stopped and the stream has flushed cleanly.
+        //
+        // Append mode cannot work that way, since it is adding to a file that
+        // already matters. There an interrupted run can leave a torn final
+        // line, which the trainer's reader tolerates.
         class SampleWriter
         {
         public:
             SampleWriter(const std::filesystem::path& path, bool append, uint64_t target)
-                : m_Target(target)
+                : m_FinalPath(path), m_Target(target)
             {
                 std::error_code error;
                 if (path.has_parent_path())
                     std::filesystem::create_directories(path.parent_path(), error);
-                m_Stream.open(path, append
+
+                m_WritePath = append ? path : std::filesystem::path(path.string() + ".partial");
+                m_Stream.open(m_WritePath, append
                     ? (std::ios::out | std::ios::app)
                     : (std::ios::out | std::ios::trunc));
             }
 
             bool IsOpen() const { return m_Stream.is_open(); }
+
+            const std::filesystem::path& WritePath() const { return m_WritePath; }
+
+            // Flushes and moves the finished file into place. Call once, after
+            // every worker has been joined.
+            bool Commit()
+            {
+                m_Stream.flush();
+                if (!m_Stream)
+                    return false;
+                m_Stream.close();
+
+                if (m_WritePath == m_FinalPath)
+                    return true;
+
+                std::error_code error;
+                std::filesystem::rename(m_WritePath, m_FinalPath, error);
+                return !error;
+            }
 
             void WriteHeader(const std::string& line)
             {
@@ -143,6 +175,8 @@ namespace NeraChessSelfPlay
         private:
             mutable std::mutex m_Mutex;
             std::ofstream m_Stream;
+            std::filesystem::path m_FinalPath;
+            std::filesystem::path m_WritePath;
             uint64_t m_Written = 0;
             const uint64_t m_Target;
         };
@@ -440,7 +474,7 @@ namespace NeraChessSelfPlay
         SampleWriter writer(config.outputPath, config.append, config.targetPositions);
         if (!writer.IsOpen())
         {
-            log << "error: could not open " << config.outputPath << " for writing\n";
+            log << "error: could not open " << writer.WritePath() << " for writing\n";
             return 1;
         }
         writer.WriteHeader(config.mode == Mode::Material
@@ -515,7 +549,16 @@ namespace NeraChessSelfPlay
 
         if (writer.Failed())
         {
-            log << "error: writing " << config.outputPath << " failed\n";
+            log << "error: writing " << writer.WritePath() << " failed\n";
+            return 1;
+        }
+
+        // Only now does the output appear under its real name, so a run that
+        // died before this point leaves nothing for the next one to mistake
+        // for a finished dataset.
+        if (!writer.Commit())
+        {
+            log << "error: could not finalize " << config.outputPath << '\n';
             return 1;
         }
         return 0;
