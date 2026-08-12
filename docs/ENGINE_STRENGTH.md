@@ -145,7 +145,10 @@ start position, rejected when the pre-change engine evaluates them beyond ±150 
 each is played twice with colors reversed. Intervals are bootstrapped over opening pairs
 rather than over individual games.
 
-Head to head against the previous search:
+Head to head against the previous search, meaning the search at commit `322a50a`.
+This branch also supersedes the log-based late move reductions merged separately in
+#4, which are not in either build below and have not been measured against this
+pruning layer.
 
 | Games | W-D-L | Score | Elo | 95% interval |
 | ---: | ---: | ---: | ---: | --- |
