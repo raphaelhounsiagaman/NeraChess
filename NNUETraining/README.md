@@ -79,17 +79,32 @@ it.
 
 ## Training
 
-Install the extras first:
+Training needs PyTorch, which goes in a virtual environment. A system-wide
+install is not an option on macOS or on most current Linux distributions:
+Homebrew's Python and Debian's are both marked externally-managed (PEP 668) and
+refuse it.
 
 ```bash
-pip install -r requirements.txt
+python3 -m venv .venv && .venv/bin/pip install -r requirements.txt
 ```
 
-Then train from a sample file:
+On Linux, prefer the CPU-only wheel -- it is a fraction of the size and the
+trainer sees no benefit from a GPU:
 
 ```bash
-python3 -m nnue_training.train --data data/positions.txt --output nera.nnue
+python3 -m venv .venv && .venv/bin/pip install torch --index-url https://download.pytorch.org/whl/cpu
 ```
+
+Then train from a sample file, using the environment's interpreter rather than
+the system one:
+
+```bash
+.venv/bin/python -m nnue_training.train --data data/positions.txt --output nera.nnue
+```
+
+Note that `pip` and `python` are usually not on PATH on macOS; Homebrew installs
+`pip3` and `python3`. Calling `.venv/bin/python` directly sidesteps that and
+avoids needing to activate anything.
 
 Samples are plain text, one position per line:
 
@@ -117,7 +132,7 @@ games.
 The whole loop is one command:
 
 ```bash
-python3 scripts/pipeline.py --workdir runs/first --generations 5
+.venv/bin/python scripts/pipeline.py --workdir runs/first --generations 5
 ```
 
 Generation is written in C++ rather than here, because it needs legal move
