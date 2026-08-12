@@ -124,3 +124,7 @@ Generation is written in C++ rather than here, because it needs legal move
 generation, game-over detection, and a search per move — all of which the
 engine already has, at roughly a hundred times the throughput a Python driver
 plus a UCI round-trip per move would manage.
+
+[`../docs/TRAINING.md`](../docs/TRAINING.md) is the full walkthrough: running on
+a Linux server, choosing parameters, checking whether a generation actually
+improved, and installing the network so the engine plays with it.

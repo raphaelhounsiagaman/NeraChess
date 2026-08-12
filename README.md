@@ -327,8 +327,9 @@ each generation:
 python3 NNUETraining/scripts/pipeline.py --workdir runs/first --generations 5
 ```
 
-See [docs/NNUE.md](docs/NNUE.md) for how the bootstrapping works, what each
-knob does, and what it costs.
+See [docs/TRAINING.md](docs/TRAINING.md) for the full walkthrough — running on
+a Linux server, choosing parameters, A/B testing a generation, and installing
+the result — and [docs/NNUE.md](docs/NNUE.md) for the architecture.
 
 ---
 

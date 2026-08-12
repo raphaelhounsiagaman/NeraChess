@@ -261,18 +261,28 @@ The stages can be run individually:
 
 Measured on an 8-core Apple M-series:
 
-| Stage | Rate | For one generation |
+| Stage | Rate | For 2M positions |
 | --- | --- | --- |
-| Material labelling | ~850k positions/s | 1M positions in ~2s |
-| Self-play at depth 6 | ~120 positions/s | 2M positions in ~4.5 hours |
-| Training (CPU) | ~4.5s per 200k positions per epoch | 2M positions, 20 epochs, ~1.5 hours |
+| Material labelling | ~850k positions/s | 2 seconds |
+| Self-play, `--depth 4` | ~1600 positions/s | 21 minutes |
+| Self-play, `--nodes 5000` | ~1235 positions/s | 27 minutes |
+| Self-play, `--depth 6` | ~120 positions/s | 4.6 hours |
+| Training, 20 epochs | ~1.5s per 200k per epoch | 5 minutes |
 
-Self-play dominates, and it is evaluation-bound rather than move-generation
-bound, so it scales with cores. Use `--nodes` instead of `--depth` for a fixed
-budget per move, and lower the depth for the early generations — position
-variety matters more than label precision when the network is still weak.
+Self-play dominates completely — training is minutes against hours. Depth is
+the expensive knob: two extra plies cost 13x. Prefer `--nodes` for a
+predictable budget per move, and keep the depth low for early generations,
+because position variety matters more than label precision while the network is
+still weak.
 
-Every generation is `--seed` reproducible.
+Training is bound by batch collation in Python rather than by the gradient
+step, so a GPU buys almost nothing at this network size — measured within 15%
+of CPU on Apple MPS. Spend the hardware on self-play cores instead.
+
+Every stage is `--seed` reproducible.
+
+See [TRAINING.md](TRAINING.md) for the full walkthrough, including running on a
+Linux server and installing the result.
 
 ---
 
