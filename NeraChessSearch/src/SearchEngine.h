@@ -20,7 +20,11 @@ namespace NeraChessSearch
     inline constexpr Score SCORE_INF = 32'000;
     inline constexpr Score SCORE_MATE = 30'000;
     inline constexpr Score SCORE_DRAW = 0;
+    // Marks a ply whose static evaluation is unavailable because the side to move is
+    // in check. Kept outside the usable score range so it can never compare as a score.
+    inline constexpr Score SCORE_NONE = 32'001;
     inline constexpr int MAX_PLY = 128;
+    inline constexpr int MAX_HISTORY = 16'384;
 
     struct SearchResult
     {
@@ -88,7 +92,7 @@ namespace NeraChessSearch
         RootResult SearchRoot(NeraChessEngine::ChessBoard& board, int depth, Score alpha, Score beta);
         Score PrincipalVariationSearch(NeraChessEngine::ChessBoard& board,
             Score alpha, Score beta, int depth, int ply, bool pvNode, bool allowNull,
-            NeraChessEngine::Move previousMove);
+            NeraChessEngine::Move previousMove, bool cutNode);
         Score QuiescenceSearch(NeraChessEngine::ChessBoard& board, Score alpha, Score beta, int ply);
 
         void SortMoves(const NeraChessEngine::ChessBoard& board,
@@ -117,7 +121,9 @@ namespace NeraChessSearch
         static int PieceValue(NeraChessEngine::Piece piece);
         static bool IsQuiet(NeraChessEngine::Move move);
         static bool IsFutilityPrunable(NeraChessEngine::Move move);
-        static int LateMoveReduction(int depth, int moveIndex, bool pvNode);
+        static int LateMoveReduction(int depth, int moveIndex, bool pvNode, bool cutNode,
+            bool improving, bool orderedQuiet, int32_t historyScore);
+        static int LateMoveCountLimit(int depth, bool improving);
         static bool HasNonPawnMaterial(const NeraChessEngine::ChessBoard& board);
         bool IsRootMoveAllowed(NeraChessEngine::Move move) const;
         NeraChessEngine::Move GetCounterMove(NeraChessEngine::Move previousMove) const;
@@ -147,6 +153,7 @@ namespace NeraChessSearch
         // path does not re-resolve it. Immutable while a search runs.
         const NeraChessNNUE::Network* m_Network = nullptr;
 
+        std::array<Score, MAX_PLY> m_StaticEval{};
         std::array<std::array<NeraChessEngine::Move, 2>, MAX_PLY> m_KillerMoves{};
         std::array<std::array<std::array<int32_t, 64>, 64>, 2> m_History{};
         std::array<std::array<NeraChessEngine::Move, 64>, 12> m_CounterMoves{};

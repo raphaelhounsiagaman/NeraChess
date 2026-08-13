@@ -38,8 +38,12 @@ namespace NeraChessSearch::MoveOrdering
             const Bitboard pawnAttackers = white
                 ? MoveGenerator::s_BlackPawnAttackMasks[target]
                 : MoveGenerator::s_WhitePawnAttackMasks[target];
-            const Bitboard diagonalAttacks = MoveGenerator::CalculatePossibleBishopMoves(target, occupancy);
-            const Bitboard straightAttacks = MoveGenerator::CalculatePossibleRookMoves(target, occupancy);
+            // The magic tables are built from CalculatePossible*Moves over every blocker
+            // subset, so these lookups return the same sets without walking the rays.
+            // Static exchange evaluation calls this once per attacker per capture, which
+            // makes it one of the hottest functions in move ordering.
+            const Bitboard diagonalAttacks = MoveGenerator::LookupBishopAttacks(target, occupancy);
+            const Bitboard straightAttacks = MoveGenerator::LookupRookAttacks(target, occupancy);
 
             return (pawnAttackers & pieces[offset + PieceType::WHITE_PAWN]) |
                 (MoveGenerator::s_KnightMoveMask[target] & pieces[offset + PieceType::WHITE_KNIGHT]) |

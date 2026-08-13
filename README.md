@@ -49,8 +49,12 @@ The public [NeraChess Lichess bot](https://lichess.org/@/NeraChess) provides a s
 - Aspiration windows and mate-distance pruning
 - Alpha-Beta Pruning
 - Clustered transposition table with configurable size
-- Late Move Reductions (LMR)
-- Null-move, futility, delta, and static-exchange pruning
+- Logarithmic Late Move Reductions, scaled by history score, cut-node state, and
+  whether the position is improving
+- Null-move, reverse futility, futility, late-move-count, delta, and
+  static-exchange pruning
+- Internal iterative reduction on nodes with no stored move
+- Static-evaluation stack driving an "improving" signal for every margin
 - Quiescence Search
 - Killer Moves
 - Side-aware history, killer, and countermove heuristics

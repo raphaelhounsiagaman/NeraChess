@@ -62,6 +62,13 @@ namespace NeraChessEngine
 
         Piece GetPiece(const uint8_t square) const;
         bool IsInCheck() const;
+
+	    // Reports whether a legal move would check the opponent, without making it.
+	    // Making the move and calling IsInCheck() answers the same question but forces
+	    // a full legal-move generation for the child position, which is wasted work for
+	    // a move the search is about to discard.
+	    bool GivesCheck(Move move) const;
+
         uint16_t GetGameOver(bool gameCheck = true) const;
 
         uint64_t GetZobristKey() const;
