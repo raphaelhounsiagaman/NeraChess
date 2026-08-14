@@ -30,6 +30,9 @@ Unless a row says otherwise:
 | 2026-08-15 | gen42 | `81bbd70` | main (classical) | `0afdd77` | 500 | 212-176-112 (0.536) | +25.1 | ±26.9 | 96.7% |
 | 2026-08-15 | gen42 | `81bbd70` | main (classical) | `0afdd77` | **1000** | **415-341-244 (0.537)** | **+25.8** | **±18.8** | **99.65%** |
 
+<!-- AUTOMATED-ROWS: control/evaluate.py inserts verification rows directly
+     above this line. Keep it here and keep it last in the table. -->
+
 The third row is the first two combined, not a third match: two independent
 500-game runs under identical conditions with different opening seeds
 (`-srand 20260814` and `-srand 20260815`). They agree closely (+26.5 and
