@@ -26,7 +26,14 @@ Unless a row says otherwise:
 
 | Date | Net | Commit (net) | Opponent | Commit (opp) | Games | Score | Elo | 95% CI | LOS |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| 2026-08-14 | gen42 | `81bbd70` | main (classical) | `0afdd77` | 500 | 203-165-132 (0.538) | +26.5 | ±26.2 | 97.6% |
+| 2026-08-14 | gen42 | `81bbd70` | main (classical) | `0afdd77` | 500 | 203-165-132 (0.538) | +26.5 | ±26.2 | 97.7% |
+| 2026-08-15 | gen42 | `81bbd70` | main (classical) | `0afdd77` | 500 | 212-176-112 (0.536) | +25.1 | ±26.9 | 96.7% |
+| 2026-08-15 | gen42 | `81bbd70` | main (classical) | `0afdd77` | **1000** | **415-341-244 (0.537)** | **+25.8** | **±18.8** | **99.65%** |
+
+The third row is the first two combined, not a third match: two independent
+500-game runs under identical conditions with different opening seeds
+(`-srand 20260814` and `-srand 20260815`). They agree closely (+26.5 and
++25.1), which is the main reason to trust the pooled figure.
 
 ## Notes
 
@@ -45,15 +52,27 @@ written around bootstrapping a weaker NNUE from `main`'s classical evaluation;
 in fact the network already beats it, by a small but significant margin. The
 interval excludes zero, though only just.
 
-Two cautions against reading too much into the margin:
+The gen43-gen46 gate failures recorded in the training loop's history are
+NNUE-versus-NNUE regressions. They say nothing about NNUE versus classical, and
+they were produced by the pre-merge search.
 
-- +26.5 Elo with an interval reaching down to +0.3 is a real but slim lead.
-  The 1000-game threshold in the parity gate has not been met yet.
-- The gen43-gen46 gate failures recorded in the training loop's history are
-  NNUE-versus-NNUE regressions. They say nothing about NNUE versus classical,
-  and they were produced by the pre-merge search.
+### 2026-08-15 — the parity gate is met
 
-Time forfeits were 3 in 500 games (0.6%), evenly split, so time management did
-not distort the result.
+A second 500 games under identical conditions returned +25.1, close enough to
+the first run's +26.5 that the two pool cleanly. Over the combined 1000 games
+the network is +25.8 Elo with a 95% interval of [+7.1, +44.6].
 
-Raw match output and games: `/srv/nera-nnue/matches/phase0-baseline/`.
+That satisfies the parity gate as written: a network at or above `main` over
+1000 games at 10+0.1 with an interval excluding zero. The gate was expected to
+take a long bootstrapping programme to reach. It was in fact already met once
+the search was equalised — the branch had been carrying an evaluation lead and
+a search deficit at the same time, and only the second one was visible.
+
+The gate is a trigger for a decision, not for an automatic merge, and the
+decision is the maintainer's. Nothing here has been merged or promoted.
+
+Time forfeits were 4 in 1000 games (0.4%), split between both engines, so time
+management did not distort the result.
+
+Raw match output and games: `/srv/nera-nnue/matches/phase0-baseline/` and
+`/srv/nera-nnue/matches/phase0-confirm/`.
