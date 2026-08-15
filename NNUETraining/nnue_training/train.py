@@ -12,6 +12,7 @@ after making a network that plays chess at all.
 from __future__ import annotations
 
 import argparse
+import copy
 import time
 from dataclasses import dataclass
 from pathlib import Path
@@ -132,6 +133,14 @@ def train(config: TrainConfig) -> Path:
         return total / max(1, count)
 
     best_validation_loss = float("inf")
+    # Weights of the best epoch by validation loss. Without this the exported
+    # network is whatever the last epoch happened to produce, so a run that
+    # trains past its best silently ships the overfitted end of the curve --
+    # and nothing downstream would notice, because the gate blames the network
+    # rather than the schedule. While validation is still improving every epoch
+    # this is a no-op: the best epoch is the last one.
+    best_state: dict | None = None
+    best_epoch = 0
 
     for epoch in range(config.epochs):
         epoch_lambda = anneal_lambda(
@@ -183,6 +192,8 @@ def train(config: TrainConfig) -> Path:
             if validation_loss < best_validation_loss:
                 best_validation_loss = validation_loss
                 marker = " *best"
+                best_state = copy.deepcopy(model.state_dict())
+                best_epoch = epoch + 1
             line += f"  val {validation_loss:.6f}{marker}"
         line += f"  ({elapsed:.1f}s, {batch_count} batches)"
         print(line, flush=True)
@@ -190,6 +201,14 @@ def train(config: TrainConfig) -> Path:
         if config.checkpoint_every_epoch:
             checkpoint = config.output_path.with_suffix(f".epoch{epoch + 1}.nnue")
             export(model, checkpoint)
+
+    if best_state is not None and best_epoch != config.epochs:
+        print(
+            f"exporting epoch {best_epoch} (val {best_validation_loss:.6f}) rather "
+            f"than epoch {config.epochs}: validation stopped improving",
+            flush=True,
+        )
+        model.load_state_dict(best_state)
 
     return export(model, config.output_path)
 
