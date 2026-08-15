@@ -32,6 +32,8 @@ Unless a row says otherwise:
 
 | 2026-08-15 | gen48 | `verified` | previous verified net | `verified` | 500 | 267-95-138 (0.672) | +124.6 | [+98.4, +152.3] | 100.0% |
 
+| 2026-08-15 | gen52 | `verified` | previous verified net | `verified` | 400 | 195-84-121 (0.6387) | +99.0 | [+70.5, +128.8] | 100.0% |
+
 <!-- AUTOMATED-ROWS: control/evaluate.py inserts verification rows directly
      above this line. Keep it here and keep it last in the table. -->
 
