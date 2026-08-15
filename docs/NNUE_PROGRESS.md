@@ -5,7 +5,7 @@ One row per match. Nothing is promoted on validation loss; only a match result
 with a confidence interval that excludes zero counts as a gain.
 
 Every row records both commits, because a strength number means nothing without
-knowing which search produced it. Until commit `fdbae29` the `NNUE` branch was
+knowing which search produced it. Until commit `23645a8` the `NNUE` branch was
 missing `main`'s selectivity work (late-move-count pruning, internal iterative
 reduction, the improving stack), so any comparison made before that date was
 measuring search and evaluation together.
@@ -26,9 +26,9 @@ Unless a row says otherwise:
 
 | Date | Net | Commit (net) | Opponent | Commit (opp) | Games | Score | Elo | 95% CI | LOS |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| 2026-08-14 | gen42 | `fdbae29` | main (classical) | `0afdd77` | 500 | 203-165-132 (0.538) | +26.5 | ±26.2 | 97.7% |
-| 2026-08-15 | gen42 | `fdbae29` | main (classical) | `0afdd77` | 500 | 212-176-112 (0.536) | +25.1 | ±26.9 | 96.7% |
-| 2026-08-15 | gen42 | `fdbae29` | main (classical) | `0afdd77` | **1000** | **415-341-244 (0.537)** | **+25.8** | **±18.8** | **99.65%** |
+| 2026-08-14 | gen42 | `23645a8` | main (classical) | `96c0d15` | 500 | 203-165-132 (0.538) | +26.5 | ±26.2 | 97.7% |
+| 2026-08-15 | gen42 | `23645a8` | main (classical) | `96c0d15` | 500 | 212-176-112 (0.536) | +25.1 | ±26.9 | 96.7% |
+| 2026-08-15 | gen42 | `23645a8` | main (classical) | `96c0d15` | **1000** | **415-341-244 (0.537)** | **+25.8** | **±18.8** | **99.65%** |
 
 <!-- AUTOMATED-ROWS: control/evaluate.py inserts verification rows directly
      above this line. Keep it here and keep it last in the table. -->
@@ -43,7 +43,7 @@ The third row is the first two combined, not a third match: two independent
 ### 2026-08-14 — first measurement with the search equalised
 
 This is the first comparison in which the two branches differ *only* in
-evaluation. The difference between `0afdd77` and `fdbae29` outside the NNUE
+evaluation. The difference between `96c0d15` and `23645a8` outside the NNUE
 module is confined to evaluation plumbing: the accumulator stack, the
 `Evaluate` to `EvaluateNode` substitutions, and the make/unmake pairing that
 keeps the accumulator aligned with the board. `MoveOrdering.cpp` is identical,
