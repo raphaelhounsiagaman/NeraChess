@@ -10,19 +10,24 @@ NeraChess is a C++23 chess engine, UCI executable, and SDL2/Dear ImGui desktop a
 
 ![NeraChess desktop application](assets/screenshots/NeraChessUIStartingPosition.png)
 
-> **This branch has migrated to NNUE.** The hand-crafted evaluation is gone,
-> replaced by a network trained entirely by self-play with no external engine
-> involved. A trained network ships in
+> **NeraChess has migrated to NNUE.** The hand-crafted evaluation is gone,
+> replaced by a trained network. NeraChess trains only on data it produced
+> itself — its own search and its own evaluation — and never on another
+> engine's games or evaluations. A trained network ships in
 > `NeraChessApp/Resources/NNUE/nera.nnue`, so a fresh clone plays out of the
-> box. It is an early network — 42 self-play generations at shallow depth —
-> and is much weaker than the hand-crafted evaluation it replaced, so the
-> strength figures below describe `main`, not this branch. See
+> box. Over 1000 games at `10+0.1` with the search held identical on both
+> sides, the network measured **+25.8 Elo** against the hand-crafted
+> evaluation it replaced (95% interval [+7.1, +44.6]); see
+> [docs/NNUE_PROGRESS.md](docs/NNUE_PROGRESS.md). See
 > [docs/NNUE.md](docs/NNUE.md) for the architecture and
 > [docs/TRAINING.md](docs/TRAINING.md) for training a stronger one.
 
 At engine commit `212e012`, a 300-game paired-opening tournament estimated
 NeraChess at **2627 Stockfish 18 UCI-Elo-equivalent** at `10+0.1`, with a
-paired-bootstrap 95% confidence interval of 2587--2664. This is a
+paired-bootstrap 95% confidence interval of 2587--2664. That measurement was
+taken with the hand-crafted evaluation, before the NNUE migration, and has not
+been repeated since; the +25.8 Elo above is measured against that evaluation
+rather than on this scale. This is a
 hardware- and test-pool-specific engine benchmark, not a FIDE, online-platform,
 or universal Elo rating. See the [strength calibration report](docs/ENGINE_STRENGTH.md)
 for the results, method, and limitations.
@@ -79,9 +84,9 @@ been removed.
   UCI engine and the desktop bot
 - PyTorch training pipeline in [`NNUETraining`](NNUETraining/README.md), checked
   against the engine position by position
-- Self-play training that uses no external engine: generation 0 learns material
-  from random play, and every generation after it trains on the previous one's
-  games
+- Training on NeraChess's own data only — never another engine's games or
+  evaluations: generation 0 learns material from random play, and every
+  generation after it trains on games the engine played itself
 
 The classical terms — tapered piece-square tables, pawn structure, mobility, and
 king safety — were removed in favour of the network, which recovers them from
@@ -326,7 +331,8 @@ engine pick it up at startup.
 
 ## Training a network
 
-Networks are trained by self-play, with no external engine involved. One command
+Networks are trained only on data NeraChess produced itself — its own search and
+its own evaluation — never on another engine's games or evaluations. One command
 runs the whole loop -- material bootstrap, then generate, train, and verify for
 each generation:
 

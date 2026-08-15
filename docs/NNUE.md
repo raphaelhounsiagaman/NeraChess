@@ -6,9 +6,11 @@ should be built in.
 
 > **Status.** Inference and the self-play training loop both work end to end,
 > and a trained network ships at `NeraChessApp/Resources/NNUE/nera.nnue`, so a
-> fresh clone plays out of the box. It came from 42 self-play generations at
-> shallow depth and no external engine was involved at any point. It plays real
-> chess but is well short of the hand-crafted evaluation it replaced; see
+> fresh clone plays out of the box. It came from 42 generations trained only on
+> data NeraChess produced itself — its own search and its own evaluation, never
+> another engine's games or evaluations. With the search held identical on both
+> sides it measured +25.8 Elo over 1000 games against the hand-crafted
+> evaluation it replaced; see [NNUE_PROGRESS.md](NNUE_PROGRESS.md). See
 > [Training by self-play](#training-by-self-play) to train a stronger one.
 
 ---
@@ -96,9 +98,10 @@ and `test_mirrored_positions_produce_mirrored_features` in the Python one.
 
 ### `NeraChessSelfPlay` — training data
 
-Generates training data without any external engine. `--mode material` labels
-random play with material balance to bootstrap generation 0; the default mode
-plays games with a network and labels them with search scores and results.
+Generates training data from NeraChess's own play only, never another engine's.
+`--mode material` labels random play with material balance to bootstrap
+generation 0; the default mode plays games with a network and labels them with
+search scores and results.
 
 ### `NNUETraining` — training
 
