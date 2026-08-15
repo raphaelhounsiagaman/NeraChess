@@ -17,7 +17,8 @@ class UciSession
 {
 public:
     UciSession(std::istream& input, std::ostream& output,
-        std::filesystem::path openingBookPath = {});
+        std::filesystem::path openingBookPath = {},
+        std::filesystem::path executableDirectory = {});
     ~UciSession();
 
     int Run();
@@ -42,6 +43,8 @@ private:
     NeraChessEngine::ChessBoard m_Board;
     NeraChessSearch::SearchEngine m_SearchEngine{ 64 };
     std::filesystem::path m_OpeningBookPath;
+    std::filesystem::path m_ExecutableDirectory;
+    std::filesystem::path m_NetworkPath;
     NeraChessSearch::OpeningBook m_OpeningBook;
     bool m_OwnBook = true;
     bool m_PonderEnabled = false;

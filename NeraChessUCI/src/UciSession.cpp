@@ -1,5 +1,7 @@
 #include "UciSession.h"
 
+#include "Evaluation.h"
+#include "NnueEvaluator.h"
 #include "TimeManagement.h"
 
 #include <algorithm>
@@ -61,11 +63,19 @@ namespace
 }
 
 UciSession::UciSession(std::istream& input, std::ostream& output,
-    std::filesystem::path openingBookPath)
+    std::filesystem::path openingBookPath, std::filesystem::path executableDirectory)
     : m_Input(input), m_Output(output),
       m_OpeningBookPath(std::move(openingBookPath)),
+      m_ExecutableDirectory(std::move(executableDirectory)),
       m_OpeningBook(m_OpeningBookPath)
 {
+    // Pick up a network sitting beside the executable so a packaged build
+    // needs no configuration. A source build normally has none, which is not
+    // an error at this stage of the NNUE work; the "uci" handshake reports the
+    // outcome either way.
+    NeraChessSearch::Evaluation::LoadDefaultNetwork(m_ExecutableDirectory);
+    if (NeraChessSearch::Evaluation::IsNetworkLoaded())
+        m_NetworkPath = NeraChessNNUE::Evaluator::LoadedPath();
 }
 
 UciSession::~UciSession()
@@ -97,6 +107,7 @@ bool UciSession::HandleCommand(const std::string& line)
         Print("option name OwnBook type check default true");
         Print("option name BookFile type string default " + m_OpeningBookPath.string());
         Print("option name Ponder type check default false");
+        Print("option name EvalFile type string default " + m_NetworkPath.string());
         if (m_OpeningBook.IsAvailable())
         {
             Print("info string opening book loaded with " +
@@ -105,6 +116,12 @@ bool UciSession::HandleCommand(const std::string& line)
         else
         {
             Print("info string opening book unavailable; searches will use the engine");
+        }
+        Print("info string " + NeraChessSearch::Evaluation::StatusText());
+        if (!NeraChessSearch::Evaluation::IsNetworkLoaded())
+        {
+            Print("info string this build has no trained network; "
+                "set EvalFile before expecting reasonable play");
         }
         Print("uciok");
     }
@@ -144,6 +161,7 @@ bool UciSession::HandleCommand(const std::string& line)
     }
     else if (line == "eval")
     {
+        Print("info string " + NeraChessSearch::Evaluation::StatusText());
         Print("info string evaluation " +
             std::to_string(NeraChessSearch::SearchEngine::Evaluate(m_Board)) + " cp");
     }
@@ -208,6 +226,27 @@ void UciSession::SetOption(std::string_view command)
     else if (name == "Ponder")
     {
         m_PonderEnabled = value == "true" || value == "1";
+    }
+    else if (name == "EvalFile")
+    {
+        // Safe to swap the network here: StopSearch above guarantees no worker
+        // is reading it.
+        std::string message;
+        if (value.empty())
+        {
+            NeraChessNNUE::Evaluator::Unload();
+            m_NetworkPath.clear();
+            message = NeraChessSearch::Evaluation::StatusText();
+        }
+        else if (NeraChessSearch::Evaluation::LoadNetwork(value, message))
+        {
+            m_NetworkPath = value;
+        }
+        else
+        {
+            m_NetworkPath.clear();
+        }
+        Print("info string " + message);
     }
 }
 

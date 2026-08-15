@@ -24,16 +24,42 @@ jobs:
       - name: Generate Makefiles
         run: bash ./scripts/Setup-Linux.sh gmake
 
+      - name: Check that headers are self-contained
+        run: |
+          # A header that leans on another one's includes compiles on libc++ and
+          # fails on MSVC, which is a slow way to find out. Compiling each in
+          # isolation catches it here instead.
+          status=0
+          # The headless set only. NeraChessApp needs SDL headers this job does
+          # not install, and it is not built here.
+          for header in $(find NeraChessEngine/src NeraChessNNUE/src NeraChessSearch/src \
+                               NeraChessSelfPlay/src NeraChessUCI/src -name '*.h' | sort); do
+            printf '#include "%s"\nint main(){return 0;}\n' "$(basename "$header")" > /tmp/self_contained.cpp
+            if ! g++ -std=c++23 -fsyntax-only \
+                -I NeraChessEngine/src -I NeraChessNNUE/src \
+                -I NeraChessSearch/src -I NeraChessSelfPlay/src -I NeraChessUCI/src \
+                /tmp/self_contained.cpp 2>/tmp/self_contained.log; then
+              echo "::error file=$header::$header does not compile on its own"
+              head -5 /tmp/self_contained.log
+              status=1
+            fi
+          done
+          exit $status
+
       - name: Build headless Debug and Release
         run: |
           jobs="$(nproc)"
           make -C NeraChessEngine config=debug -j"$jobs"
+          make -C NeraChessNNUE config=debug -j"$jobs"
           make -C NeraChessSearch config=debug -j"$jobs"
           make -C NeraChessUCI config=debug -j"$jobs"
+          make -C NeraChessSelfPlay config=debug -j"$jobs"
           make -C NeraChessTests config=debug -j"$jobs"
           make -C NeraChessEngine config=release -j"$jobs"
+          make -C NeraChessNNUE config=release -j"$jobs"
           make -C NeraChessSearch config=release -j"$jobs"
           make -C NeraChessUCI config=release -j"$jobs"
+          make -C NeraChessSelfPlay config=release -j"$jobs"
           make -C NeraChessTests config=release -j"$jobs"
 
       - name: Run release regressions and UCI smoke test
@@ -46,11 +72,67 @@ jobs:
           grep -q '^bestmove e2e4$' <<< "$uci_output"
           python3 scripts/Test-UciPonder.py ./bin/Release/NeraChessUCI/NeraChessUCI
 
+      - name: Run NNUE training tests
+        run: |
+          cd NNUETraining
+          python3 -m unittest discover -s tests -t .
+
+      - name: Verify the engine and trainer agree on a network
+        run: |
+          cd NNUETraining
+          python3 scripts/make_random_network.py --output "${RUNNER_TEMP}/random.nnue"
+          python3 -m nnue_training.verify \
+            --network "${RUNNER_TEMP}/random.nnue" \
+            --engine ../bin/Release/NeraChessUCI/NeraChessUCI
+
+      - name: Generate self-play training data
+        run: |
+          # The whole training pipeline in miniature: material labels need no
+          # network, self-play needs one, and both must produce samples the
+          # trainer can parse.
+          ./bin/Release/NeraChessTests/NeraChessTests --write-random-network "${RUNNER_TEMP}/smoke.nnue"
+          ./bin/Release/NeraChessSelfPlay/NeraChessSelfPlay \
+            --mode material --output "${RUNNER_TEMP}/material.txt" \
+            --positions 2000 --threads 2 --seed 1 --quiet
+          ./bin/Release/NeraChessSelfPlay/NeraChessSelfPlay \
+            --network "${RUNNER_TEMP}/smoke.nnue" --output "${RUNNER_TEMP}/selfplay.txt" \
+            --positions 500 --depth 4 --threads 2 --seed 1 --quiet
+          cd NNUETraining
+          python3 - "${RUNNER_TEMP}/material.txt" "${RUNNER_TEMP}/selfplay.txt" <<'PY'
+          import sys
+          from nnue_training import dataset
+
+          for path, minimum in zip(sys.argv[1:], (2000, 500)):
+              cache = dataset.FeatureCache.from_text(path)
+              assert len(cache) >= minimum, f"{path} has only {len(cache)} samples"
+              batch = cache.batch(range(min(64, len(cache))))
+              assert len(batch.own_indices) > 0, f"{path} produced no features"
+              assert all(0.0 <= r <= 1.0 for r in batch.results), f"{path} has a bad result"
+              print(f"{path}: {len(cache)} samples parsed")
+          PY
+
+      - name: Build and test the AVX2 NNUE kernels
+        run: |
+          if ! grep -q avx2 /proc/cpuinfo; then
+            echo "This runner has no AVX2; the default build uses the SSE2 kernels."
+            exit 0
+          fi
+          jobs="$(nproc)"
+          # The default x86 build selects SSE2, so the AVX2 kernels are only
+          # exercised by a build that asks for them. TestNnueSimdKernels checks
+          # them against the scalar reference.
+          make -C NeraChessEngine config=release -B -j"$jobs" CXXFLAGS="-mavx2"
+          make -C NeraChessNNUE config=release -B -j"$jobs" CXXFLAGS="-mavx2"
+          make -C NeraChessSearch config=release -B -j"$jobs" CXXFLAGS="-mavx2"
+          make -C NeraChessTests config=release -B -j"$jobs" CXXFLAGS="-mavx2"
+          ./bin/Release/NeraChessTests/NeraChessTests
+
       - name: Build and run sanitized regressions
         run: |
           jobs="$(nproc)"
           sanitizer_flags='-fsanitize=address,undefined -fno-omit-frame-pointer'
           make -C NeraChessEngine config=debug -B -j"$jobs" CXXFLAGS="$sanitizer_flags"
+          make -C NeraChessNNUE config=debug -B -j"$jobs" CXXFLAGS="$sanitizer_flags"
           make -C NeraChessSearch config=debug -B -j"$jobs" CXXFLAGS="$sanitizer_flags"
           make -C NeraChessTests config=debug -B -j"$jobs" CXXFLAGS="$sanitizer_flags" LDFLAGS='-fsanitize=address,undefined'
           ./bin/Debug/NeraChessTests/NeraChessTests
@@ -60,6 +142,7 @@ jobs:
           jobs="$(nproc)"
           sanitizer_flags='-fsanitize=thread -fno-omit-frame-pointer -O1 -g'
           make -C NeraChessEngine config=debug -B -j"$jobs" CXXFLAGS="$sanitizer_flags"
+          make -C NeraChessNNUE config=debug -B -j"$jobs" CXXFLAGS="$sanitizer_flags"
           make -C NeraChessSearch config=debug -B -j"$jobs" CXXFLAGS="$sanitizer_flags"
           make -C NeraChessUCI config=debug -B -j"$jobs" CXXFLAGS="$sanitizer_flags" LDFLAGS='-fsanitize=thread'
           make -C NeraChessTests config=debug -B -j"$jobs" CXXFLAGS="$sanitizer_flags" LDFLAGS='-fsanitize=thread'

@@ -3,9 +3,11 @@
 #include "ChessUtil.h"
 #include "Evaluation.h"
 #include "MoveOrdering.h"
+#include "NnueEvaluator.h"
 
 #include <algorithm>
 #include <array>
+#include <cassert>
 #include <cmath>
 #include <exception>
 #include <system_error>
@@ -232,6 +234,9 @@ namespace NeraChessSearch
         }
 
         ChessBoard board = position;
+        m_Network = &NeraChessNNUE::Evaluator::GetNetwork();
+        m_Accumulators.Reset(*m_Network, board.GetBoardState());
+
         SearchResult result;
         Score rootTerminalScore;
         if (IsDrawOrTerminal(board, rootTerminalScore, 0))
@@ -314,6 +319,14 @@ namespace NeraChessSearch
                 break;
         }
 
+        // Every MakeMove in the search must be matched by an accumulator push
+        // and every UndoMove by a pop, or the accumulator stops describing the
+        // board it is evaluated against. That is harmless while entries are
+        // refreshed on demand and silently wrong the moment incremental
+        // updates land, so catch the imbalance now rather than then.
+        assert(m_Accumulators.Depth() == 0 &&
+            "accumulator stack did not unwind; a make/unmake pair is missing its push/pop");
+
         FlushNodeCount();
         result.nodes = AggregateNodeCount();
         result.selectiveDepth = m_SelectiveDepth;
@@ -351,12 +364,14 @@ namespace NeraChessSearch
 
         m_PvLength[0] = 0;
         // Seed the static-evaluation stack so the "improving" test is meaningful from
-        // ply 2 onwards instead of silently disabled for the first two plies.
-        m_StaticEval[0] = board.IsInCheck() ? SCORE_NONE : Evaluate(board);
+        // ply 2 onwards instead of silently disabled for the first two plies. The
+        // accumulator was reset for this search before the root was entered, so the
+        // NNUE evaluation is the right one to seed with (see EvaluateNode).
+        m_StaticEval[0] = board.IsInCheck() ? SCORE_NONE : EvaluateNode(board);
         bool firstMove = true;
         for (const Move move : moves)
         {
-            board.MakeMove(move);
+            MakeSearchMove(board, move);
             Score score;
             if (firstMove)
             {
@@ -371,7 +386,7 @@ namespace NeraChessSearch
                     score = -PrincipalVariationSearch(board, -beta, -alpha,
                         depth - 1, 1, true, true, move, false);
             }
-            board.UndoMove(move);
+            UndoSearchMove(board, move);
 
             if (m_Aborted)
                 return result;
@@ -419,7 +434,7 @@ namespace NeraChessSearch
         if (IsDrawOrTerminal(board, terminalScore, ply))
             return terminalScore;
         if (ply >= MAX_PLY - 1)
-            return Evaluate(board);
+            return EvaluateNode(board);
 
         alpha = std::max(alpha, -SCORE_MATE + ply);
         beta = std::min(beta, SCORE_MATE - ply - 1);
@@ -455,7 +470,12 @@ namespace NeraChessSearch
         // side is improving relative to two plies ago. Pruning margins and reductions
         // are all conditioned on it: a position that is getting worse deserves a wider,
         // more careful search than one that is getting better.
-        const Score staticEval = inCheck ? SCORE_NONE : Evaluate(board);
+        //
+        // EvaluateNode, not Evaluate: the former reads this worker's NNUE accumulator
+        // for the current ply, the latter is the hand-crafted evaluation. Using the
+        // wrong one here would quietly make the branch part-NNUE and invalidate any
+        // NNUE-vs-classical comparison.
+        const Score staticEval = inCheck ? SCORE_NONE : EvaluateNode(board);
         m_StaticEval[ply] = staticEval;
         const bool improving = !inCheck && ply >= 2 &&
             m_StaticEval[ply - 2] != SCORE_NONE && staticEval > m_StaticEval[ply - 2];
@@ -469,6 +489,9 @@ namespace NeraChessSearch
             return staticEval;
         }
 
+        // A null move leaves every piece where it is, so the accumulator stays valid
+        // and needs no push. Only the side to move changes, and the output layer
+        // reads that from the board state.
         if (allowNull && canPrune && depth >= 3 && HasNonPawnMaterial(board) &&
             staticEval >= beta && board.MakeNullMove())
         {
@@ -544,7 +567,9 @@ namespace NeraChessSearch
                 }
             }
 
-            board.MakeMove(move);
+            // MakeSearchMove, not board.MakeMove: this branch keeps a per-ply NNUE
+            // accumulator that has to be pushed with the move and popped with it.
+            MakeSearchMove(board, move);
             givesCheck = board.IsInCheck();
             Score score;
             if (firstMove)
@@ -571,7 +596,7 @@ namespace NeraChessSearch
                     score = -PrincipalVariationSearch(board, -beta, -alpha,
                         depth - 1, ply + 1, true, true, move, false);
             }
-            board.UndoMove(move);
+            UndoSearchMove(board, move);
 
             if (m_Aborted)
                 return SCORE_DRAW;
@@ -645,7 +670,7 @@ namespace NeraChessSearch
         if (IsDrawOrTerminal(board, terminalScore, ply))
             return terminalScore;
         if (ply >= MAX_PLY - 1)
-            return Evaluate(board);
+            return EvaluateNode(board);
 
         alpha = std::max(alpha, -SCORE_MATE + ply);
         beta = std::min(beta, SCORE_MATE - ply - 1);
@@ -678,7 +703,7 @@ namespace NeraChessSearch
         Score standPat = -SCORE_INF;
         if (!inCheck)
         {
-            standPat = Evaluate(board);
+            standPat = EvaluateNode(board);
             bestScore = standPat;
             if (bestScore >= beta)
             {
@@ -714,14 +739,14 @@ namespace NeraChessSearch
                 seePrunable = MoveOrdering::StaticExchangeEvaluation(board, move) < -50;
             }
 
-            board.MakeMove(move);
+            MakeSearchMove(board, move);
             if (!inCheck && !board.IsInCheck() && (deltaPrunable || seePrunable))
             {
-                board.UndoMove(move);
+                UndoSearchMove(board, move);
                 continue;
             }
             const Score score = -QuiescenceSearch(board, -beta, -alpha, ply + 1);
-            board.UndoMove(move);
+            UndoSearchMove(board, move);
 
             if (m_Aborted)
                 return SCORE_DRAW;
@@ -998,5 +1023,36 @@ namespace NeraChessSearch
     Score SearchEngine::Evaluate(const ChessBoard& board)
     {
         return Evaluation::Evaluate(board);
+    }
+
+    Score SearchEngine::EvaluateNode(const ChessBoard& board)
+    {
+        // Reads this worker's accumulator for the current ply, which
+        // MakeSearchMove and UndoSearchMove keep aligned with the board.
+        return Evaluation::Evaluate(board.GetBoardState(), m_Accumulators.Current());
+    }
+
+    void SearchEngine::MakeSearchMove(ChessBoard& board, Move move)
+    {
+        if (m_Network == nullptr || !m_Network->IsLoaded())
+        {
+            // Nothing to update, and reading the captured piece off the board
+            // would be pure overhead.
+            board.MakeMove(move);
+            m_Accumulators.PushStale();
+            return;
+        }
+
+        // The captured piece has to be read before the move is made; the move
+        // encoding does not carry it.
+        const NeraChessNNUE::DirtyPieces dirty = NeraChessNNUE::DescribeMove(board, move);
+        board.MakeMove(move);
+        m_Accumulators.Push(*m_Network, board.GetBoardState(), dirty);
+    }
+
+    void SearchEngine::UndoSearchMove(ChessBoard& board, Move move)
+    {
+        board.UndoMove(move);
+        m_Accumulators.Pop();
     }
 }

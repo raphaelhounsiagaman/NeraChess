@@ -10,6 +10,16 @@ NeraChess is a C++23 chess engine, UCI executable, and SDL2/Dear ImGui desktop a
 
 ![NeraChess desktop application](assets/screenshots/NeraChessUIStartingPosition.png)
 
+> **This branch has migrated to NNUE.** The hand-crafted evaluation is gone,
+> replaced by a network trained entirely by self-play with no external engine
+> involved. A trained network ships in
+> `NeraChessApp/Resources/NNUE/nera.nnue`, so a fresh clone plays out of the
+> box. It is an early network — 42 self-play generations at shallow depth —
+> and is much weaker than the hand-crafted evaluation it replaced, so the
+> strength figures below describe `main`, not this branch. See
+> [docs/NNUE.md](docs/NNUE.md) for the architecture and
+> [docs/TRAINING.md](docs/TRAINING.md) for training a stronger one.
+
 At engine commit `212e012`, a 300-game paired-opening tournament estimated
 NeraChess at **2627 Stockfish 18 UCI-Elo-equivalent** at `10+0.1`, with a
 paired-bootstrap 95% confidence interval of 2587--2664. This is a
@@ -48,12 +58,36 @@ The public [NeraChess Lichess bot](https://lichess.org/@/NeraChess) provides a s
 - Quiescence Search
 - Killer Moves
 - Side-aware history, killer, and countermove heuristics
-- Tapered piece-square, pawn-structure, mobility, and king-safety evaluation
 - Indexed opening book with transposition-aware lookup
 - Clock-aware time management
 - UCI protocol support, including opponent-time pondering
 
 The search favors clear, testable engine techniques over platform-specific micro-optimization.
+
+### Evaluation
+
+Evaluation is a trained NNUE network. The hand-tuned function it replaced has
+been removed.
+
+- `(768 -> 512)x2 -> 1` perspective network, int16-quantized
+- Self-describing `.nnue` format that rejects networks built for another shape
+- Per-ply accumulator stack updated incrementally as the search makes and
+  unmakes moves, verified against full refreshes in Debug builds
+- NEON, SSE2, and AVX2 kernels, each required to match the scalar reference
+  bit for bit so multithreaded search stays deterministic
+- `EvalFile` UCI option, plus automatic discovery of `nera.nnue` for both the
+  UCI engine and the desktop bot
+- PyTorch training pipeline in [`NNUETraining`](NNUETraining/README.md), checked
+  against the engine position by position
+- Self-play training that uses no external engine: generation 0 learns material
+  from random play, and every generation after it trains on the previous one's
+  games
+
+The classical terms — tapered piece-square tables, pawn structure, mobility, and
+king safety — were removed in favour of the network, which recovers them from
+self-play instead: after one generation the network already values a centralized
+knight over a rim knight and an advanced pawn over a home one, with no such term
+written anywhere. See [docs/NNUE.md](docs/NNUE.md).
 
 ---
 
@@ -64,10 +98,16 @@ NeraChess follows a layered architecture inspired by the application structure s
 The goal of this structure is separation of concerns rather than extreme abstraction. The project is divided into logical layers with clear responsibilities:
 
 - `NeraChessEngine`: board state, legal move generation, hashing, clocks, and rules
-- `NeraChessSearch`: evaluation, search, transposition table, time management, and opening book
+- `NeraChessNNUE`: NNUE network format, feature indexing, accumulator, and inference
+- `NeraChessSearch`: search, transposition table, time management, opening book, and the evaluation facade
 - `NeraChessUCI`: headless asynchronous UCI protocol adapter
 - `NeraChessApp`: SDL/ImGui desktop application and chess-player adapters
-- `NeraChessTests`: headless perft, state, search, tactical, book, and benchmark coverage
+- `NeraChessSelfPlay`: self-play generator that produces NNUE training data
+- `NeraChessTests`: headless perft, state, search, NNUE, book, and benchmark coverage
+- `NNUETraining`: Python and PyTorch pipeline that produces the network the engine loads
+
+`NeraChessSearch` reaches the network through a small facade, so search code
+never includes NNUE headers directly.
 
 ---
 
@@ -130,8 +170,17 @@ UCI-compatible chess GUI:
 
 It supports standard position setup, `go` depth/node/time limits,
 `searchmoves`, asynchronous `stop`, `ponder`/`ponderhit`, hash sizing and
-clearing, configurable `Threads`, `OwnBook`, `BookFile`, and `Ponder` options,
-bundled opening-book play, and iterative `info` output.
+clearing, configurable `Threads`, `OwnBook`, `BookFile`, `Ponder`, and
+`EvalFile` options, bundled opening-book play, and iterative `info` output.
+
+Point `EvalFile` at an NNUE network to give the engine an evaluation:
+
+```text
+setoption name EvalFile value /path/to/nera.nnue
+```
+
+The engine also loads `nera.nnue` from its own directory at startup when one is
+present. The `eval` command reports which network is loaded, or why none is.
 
 NeraChess defaults to one UCI search thread for reproducible engine matches.
 Configure additional workers with the standard option, for example:
@@ -203,8 +252,10 @@ UCI target, and regression suite without SDL:
 ```sh
 bash ./scripts/Setup-Linux.sh gmake
 make -C NeraChessEngine config=release
+make -C NeraChessNNUE config=release
 make -C NeraChessSearch config=release
 make -C NeraChessUCI config=release
+make -C NeraChessSelfPlay config=release
 make -C NeraChessTests config=release
 ./bin/Release/NeraChessTests/NeraChessTests
 ./bin/Release/NeraChessUCI/NeraChessUCI
@@ -226,11 +277,20 @@ without entering the application loop, run a built executable with:
 
 The normal regression suite includes 17 reference perft positions, make/undo
 and hash invariants, draw rules, FEN validation, transposition-table behavior,
-evaluation symmetry, tactical search choices, time management, and the full
-opening-book index:
+NNUE format and accumulator invariants, tactical search choices, time
+management, and the full opening-book index:
 
 ```sh
 ./bin/Release/NeraChessTests/NeraChessTests
+```
+
+Tests that measure evaluation quality skip themselves while no network is
+loaded, and say so.
+
+The NNUE training pipeline has its own suite, which needs no dependencies:
+
+```sh
+cd NNUETraining && python3 -m unittest discover -s tests -t .
 ```
 
 Deterministic perft/search benchmarks and a fixed-time thread-scaling benchmark
@@ -245,11 +305,49 @@ are also available:
 `--thread-bench` is a quick, scheduling-sensitive scaling diagnostic rather
 than a reproducible Elo measurement.
 
+The NNUE accumulator has its own benchmark, comparing incremental updates
+against full refreshes over the same move tree:
+
+```sh
+./bin/Release/NeraChessTests/NeraChessTests --nnue-bench
+```
+
+To try the network paths before any training exists, write one with random
+weights and point the engine at it:
+
+```sh
+./bin/Release/NeraChessTests/NeraChessTests --write-random-network /tmp/random.nnue
+```
+
+Its evaluations are nonsense, but it exercises loading, the feature
+transformer, incremental updates, and the output layer. Drop one at
+`NeraChessApp/Resources/NNUE/nera.nnue` and both the desktop bot and the UCI
+engine pick it up at startup.
+
+## Training a network
+
+Networks are trained by self-play, with no external engine involved. One command
+runs the whole loop -- material bootstrap, then generate, train, and verify for
+each generation:
+
+```sh
+python3 NNUETraining/scripts/pipeline.py --workdir runs/first --generations 5
+```
+
+See [docs/TRAINING.md](docs/TRAINING.md) for the full walkthrough — running on
+a Linux server, choosing parameters, A/B testing a generation, and installing
+the result — and [docs/NNUE.md](docs/NNUE.md) for the architecture.
+
 ---
 
 ## Known Limitations
 
-- Evaluation parameters are hand-tuned rather than trained from games.
+- The shipped network is an early one and plays far below the calibrated
+  strength quoted above, which was measured with the hand-crafted evaluation
+  this branch removed. Training a stronger one is a matter of running more
+  generations at greater depth.
+- x86 builds use a vectorized accumulator but a scalar output layer unless AVX2
+  is enabled at compile time.
 - Search performance and calibrated strength depend on hardware, thread count, and time control.
 
 ---

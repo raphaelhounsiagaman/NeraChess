@@ -1,6 +1,8 @@
 #pragma once
 
+#include "Accumulator.h"
 #include "ChessBoard.h"
+#include "Network.h"
 #include "TranspositionTable.h"
 
 #include <array>
@@ -62,6 +64,9 @@ namespace NeraChessSearch
         void SetThreadCount(size_t threadCount);
         size_t GetThreadCount() const { return m_ThreadCount; }
 
+        // Standalone evaluation for callers outside a search, such as the UCI
+        // "eval" command and the regression tests. Refreshes a scratch
+        // accumulator rather than using the search's stack.
         static Score Evaluate(const NeraChessEngine::ChessBoard& board);
 
     private:
@@ -93,6 +98,16 @@ namespace NeraChessSearch
         void SortMoves(const NeraChessEngine::ChessBoard& board,
             NeraChessEngine::MoveList<218>& moves, int ply, NeraChessEngine::Move ttMove,
             NeraChessEngine::Move previousMove = 0);
+        // Evaluation of the node the search is standing on, using this
+        // worker's accumulator stack.
+        Score EvaluateNode(const NeraChessEngine::ChessBoard& board);
+
+        // Make and unmake, paired with the accumulator stack. Every move the
+        // search plays goes through these two so the accumulator cannot drift
+        // out of step with the board.
+        void MakeSearchMove(NeraChessEngine::ChessBoard& board, NeraChessEngine::Move move);
+        void UndoSearchMove(NeraChessEngine::ChessBoard& board, NeraChessEngine::Move move);
+
         void UpdatePrincipalVariation(int ply, NeraChessEngine::Move move);
         void ResetHeuristics();
         void CountNode();
@@ -130,6 +145,14 @@ namespace NeraChessSearch
         uint64_t m_UnflushedNodes = 0;
         int m_SelectiveDepth = 0;
 
+        // One NNUE accumulator per ply, private to this worker, updated
+        // incrementally as the search makes and unmakes moves.
+        NeraChessNNUE::AccumulatorStack m_Accumulators{};
+
+        // The network in use for the current search, cached so the per-move
+        // path does not re-resolve it. Immutable while a search runs.
+        const NeraChessNNUE::Network* m_Network = nullptr;
+
         std::array<Score, MAX_PLY> m_StaticEval{};
         std::array<std::array<NeraChessEngine::Move, 2>, MAX_PLY> m_KillerMoves{};
         std::array<std::array<std::array<int32_t, 64>, 64>, 2> m_History{};
@@ -137,4 +160,14 @@ namespace NeraChessSearch
         std::array<std::array<NeraChessEngine::Move, MAX_PLY>, MAX_PLY> m_PvTable{};
         std::array<int, MAX_PLY> m_PvLength{};
     };
+
+    // Callers routinely construct a SearchEngine inside a worker thread, and a
+    // thread gets a 512 KB stack by default on macOS. Anything that pushes this
+    // type past that overflows the stack on construction -- a crash with no
+    // obvious cause and nothing in the interface to warn about it. Large tables
+    // belong on the heap; the NNUE accumulator stack already is there for this
+    // reason.
+    static_assert(sizeof(SearchEngine) < 192 * 1024,
+        "SearchEngine has grown too large to sit on a worker thread's stack; "
+        "move the new storage to the heap");
 }

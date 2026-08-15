@@ -24,3 +24,17 @@ coverage/
 Makefile
 *.make
 imgui.ini
+
+# NNUE
+# Trained networks are build output, not source -- except the one the engine
+# ships with, which is tracked deliberately so a clone plays out of the box.
+*.nnue
+!NeraChessApp/Resources/NNUE/nera.nnue
+NNUETraining/data/
+NNUETraining/runs/
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+*.egg-info/
+.ruff_cache/

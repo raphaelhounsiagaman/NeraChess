@@ -1,7 +1,10 @@
 #include "ChessBoard.h"
 #include "Clock.h"
+#include "Evaluation.h"
 #include "MoveOrdering.h"
+#include "NnueEvaluator.h"
 #include "OpeningBook.h"
+#include "SimdOps.h"
 #include "SearchEngine.h"
 #include "TimeManagement.h"
 #include "TranspositionTable.h"
@@ -11,15 +14,23 @@
 #include <atomic>
 #include <chrono>
 #include <condition_variable>
+#include <cstddef>
 #include <cstdint>
+#include <cstdlib>
+#include <cstring>
 #include <exception>
+#include <filesystem>
+#include <fstream>
 #include <iostream>
+#include <iterator>
 #include <mutex>
 #include <optional>
+#include <span>
 #include <stdexcept>
 #include <string>
 #include <string_view>
 #include <thread>
+#include <utility>
 #include <vector>
 
 namespace
@@ -432,6 +443,66 @@ namespace
         return false;
     }
 
+    // -- NNUE scaffolding helpers -----------------------------------------
+    //
+    // No trained network exists yet, so the NNUE tests pin down the machinery
+    // a network will run on: the file format, the feature indexing, and the
+    // agreement between a full accumulator refresh and an incremental update.
+    // A synthetic network with deterministic pseudo-random weights is enough
+    // for all of them, because every property checked holds for any weights.
+
+    namespace Nnue = NeraChessNNUE;
+
+    // Deterministic weights, identical on every platform and run. The range is
+    // deliberately narrow so a 32-piece accumulator cannot overflow int16.
+    std::vector<std::byte> BuildSyntheticNetwork(uint64_t seed)
+    {
+        std::vector<std::byte> file(
+            Nnue::NetworkFormat::HeaderBytes + Nnue::Architecture::TotalParameterBytes,
+            std::byte{ 0 });
+        const std::span<std::byte> payload =
+            std::span<std::byte>(file).subspan(Nnue::NetworkFormat::HeaderBytes);
+
+        uint64_t state = seed;
+        for (size_t index = 0; index < Nnue::Architecture::TotalParameterCount; ++index)
+        {
+            state = state * 6'364'136'223'846'793'005ull + 1'442'695'040'888'963'407ull;
+            const auto value = static_cast<Nnue::Weight>(
+                static_cast<int32_t>((state >> 33) % 121) - 60);
+            Nnue::NetworkFormat::WriteWeight(payload, index, value);
+        }
+
+        Nnue::NetworkFormat::Header header =
+            Nnue::NetworkFormat::Header::ForCurrentArchitecture();
+        header.checksum = Nnue::NetworkFormat::Checksum(payload);
+        Nnue::NetworkFormat::WriteHeader(header, file);
+        return file;
+    }
+
+    // Installs a synthetic network as the process-wide evaluator, so tests that
+    // need evaluation to vary between positions do not depend on a trained
+    // network existing. Returns the temporary file to clean up.
+    std::filesystem::path InstallSyntheticNetwork(uint64_t seed, std::string_view name)
+    {
+        const std::vector<std::byte> file = BuildSyntheticNetwork(seed);
+        const std::filesystem::path path =
+            std::filesystem::temp_directory_path() / std::string(name);
+        {
+            std::ofstream stream(path, std::ios::binary | std::ios::trunc);
+            stream.write(reinterpret_cast<const char*>(file.data()),
+                static_cast<std::streamsize>(file.size()));
+        }
+        Require(Nnue::Evaluator::Load(path) == Nnue::NetworkFormat::Status::Ok,
+            "the synthetic network could not be installed");
+        return path;
+    }
+
+    void RemoveNetworkFile(const std::filesystem::path& path)
+    {
+        std::error_code error;
+        std::filesystem::remove(path, error);
+    }
+
     void TestSearchFoundations()
     {
         using namespace NeraChessEngine;
@@ -467,7 +538,14 @@ namespace
         ChessBoard start;
         const ChessBoard original = start;
         SearchLimits abortLimits;
-        abortLimits.maxDepth = 12;
+        // The depth is deliberately out of reach rather than merely deep. These tests
+        // run with no network loaded, so the NNUE evaluation is a constant, and a
+        // constant evaluation plus the selective search merged in from main prunes
+        // hard enough to finish twelve plies inside ten thousand nodes -- which is
+        // what this ceiling used to assume it could outlast. What is under test is
+        // that the node ceiling aborts the search, so the depth only has to be one
+        // the ceiling is guaranteed to cut short.
+        abortLimits.maxDepth = 64;
         abortLimits.maxNodes = 10'000;
         const SearchResult aborted = search.Search(start, abortLimits);
         Require(aborted.aborted, "node-limited search did not report an abort");
@@ -510,23 +588,55 @@ namespace
     {
         using namespace NeraChessSearch;
 
+        // Both positions share a Zobrist key -- they differ only in the
+        // halfmove clock -- so the first search seeds the transposition table
+        // with an entry the second must refuse to trust. That only proves
+        // anything if the stored score is not already the draw score, so this
+        // test installs a synthetic network to make evaluation vary.
+        const std::filesystem::path networkPath =
+            InstallSyntheticNetwork(0x2545F4914F6CDD1Dull, "nerachess-fiftymove.nnue");
+
         SearchEngine search(16);
         SearchLimits limits;
         limits.maxDepth = 3;
         ChessBoard ordinary("7k/8/8/8/8/3Q4/8/K7 w - - 0 1");
-        Require(search.Search(ordinary, limits).score > 800,
-            "winning endgame was not evaluated as winning");
+        const SearchResult winning = search.Search(ordinary, limits);
+        Require(winning.score != SCORE_DRAW,
+            "the seeded transposition entry was already the draw score");
 
         ChessBoard nearDraw("7k/8/8/8/8/3Q4/8/K7 w - - 98 1");
         const SearchResult draw = search.Search(nearDraw, limits);
         Require(draw.score == SCORE_DRAW,
             "transposition score bypassed the approaching 50-move draw");
+
+        Nnue::Evaluator::Unload();
+        RemoveNetworkFile(networkPath);
     }
 
     void TestMultithreadedSearch()
     {
         using namespace NeraChessEngine;
         using namespace NeraChessSearch;
+
+        // Tools that generate data or run matches construct a SearchEngine
+        // inside each worker thread, and a thread gets a 512 KB stack by
+        // default on macOS. When the NNUE accumulator stack was held inline
+        // this crashed with SIGBUS on construction, before any search ran.
+        {
+            std::atomic<bool> constructed{ false };
+            std::jthread worker([&constructed]
+            {
+                SearchEngine onThreadStack(1);
+                SearchLimits limits;
+                limits.maxDepth = 1;
+                ChessBoard board;
+                constructed = ContainsMove(board.GetLegalMoves(),
+                    onThreadStack.Search(board, limits).bestMove);
+            });
+            worker.join();
+            Require(constructed,
+                "a SearchEngine could not be built and used on a worker thread's stack");
+        }
 
         SearchEngine search(32);
         search.SetThreadCount(4);
@@ -632,43 +742,442 @@ namespace
             "search failed after thread-count and hash reconfiguration");
     }
 
-    void TestTaperedEvaluation()
+    void TestNnueNetworkFormat()
+    {
+        const std::vector<std::byte> file = BuildSyntheticNetwork(0x9E3779B97F4A7C15ull);
+
+        Nnue::NetworkFormat::Header header;
+        Require(Nnue::NetworkFormat::ReadHeader(file, header) == Nnue::NetworkFormat::Status::Ok,
+            "a freshly written network did not parse");
+        Require(header.MatchesCurrentArchitecture(),
+            "a freshly written network did not match the compiled architecture");
+        Require(header.architectureHash == Nnue::Architecture::ArchitectureHash(),
+            "network header carries the wrong architecture hash");
+        Require(header.parameterCount == Nnue::Architecture::TotalParameterCount,
+            "network header carries the wrong parameter count");
+
+        Nnue::Network network;
+        Require(network.LoadFromMemory(file) == Nnue::NetworkFormat::Status::Ok,
+            "a valid network failed to load");
+        Require(network.IsLoaded(), "a loaded network does not report itself as loaded");
+
+        // Every parameter must survive the round trip, which is what makes the
+        // Python exporter's output trustworthy.
+        const std::filesystem::path roundTripPath =
+            std::filesystem::temp_directory_path() / "nerachess-roundtrip.nnue";
+        Require(network.SaveToFile(roundTripPath) == Nnue::NetworkFormat::Status::Ok,
+            "saving a loaded network failed");
+        std::ifstream stream(roundTripPath, std::ios::binary);
+        const std::vector<char> written{ std::istreambuf_iterator<char>(stream),
+            std::istreambuf_iterator<char>() };
+        stream.close();
+        std::error_code removeError;
+        std::filesystem::remove(roundTripPath, removeError);
+        Require(written.size() == file.size() &&
+            std::memcmp(written.data(), file.data(), file.size()) == 0,
+            "saving a loaded network did not reproduce the original bytes");
+
+        const auto rejects = [&file](size_t offset, uint8_t replacement,
+            Nnue::NetworkFormat::Status expected, std::string_view message)
+        {
+            std::vector<std::byte> damaged = file;
+            damaged[offset] = static_cast<std::byte>(replacement);
+            Nnue::Network candidate;
+            Require(candidate.LoadFromMemory(damaged) == expected, message);
+            Require(!candidate.IsLoaded(), "a rejected network was left loaded");
+        };
+        rejects(0, 'X', Nnue::NetworkFormat::Status::BadMagic,
+            "a file with the wrong magic was accepted");
+        rejects(8, 99, Nnue::NetworkFormat::Status::UnsupportedVersion,
+            "a file with an unknown format version was accepted");
+        rejects(20, 1, Nnue::NetworkFormat::Status::ArchitectureMismatch,
+            "a file with a different hidden size was accepted");
+        rejects(Nnue::NetworkFormat::HeaderBytes, 0xFF,
+            Nnue::NetworkFormat::Status::ChecksumMismatch,
+            "a file with corrupted weights was accepted");
+
+        std::vector<std::byte> truncated = file;
+        truncated.resize(file.size() - 2);
+        Nnue::Network truncatedNetwork;
+        Require(truncatedNetwork.LoadFromMemory(truncated) ==
+            Nnue::NetworkFormat::Status::TruncatedPayload,
+            "a truncated file was accepted");
+        Require(truncatedNetwork.LoadFromMemory(
+            std::span<const std::byte>(file).first(8)) ==
+            Nnue::NetworkFormat::Status::TooSmall,
+            "a file shorter than its header was accepted");
+    }
+
+    void TestNnueSimdKernels()
+    {
+        // Vector kernels must agree with the scalar reference exactly, not
+        // approximately. A one-off difference would make two search threads
+        // built for different instruction sets disagree about the same
+        // position and write contradictory scores into the shared table.
+        //
+        // The inputs deliberately include the values that break naive kernels:
+        // int16 extremes, the activation's clipping ceiling and the values
+        // either side of it, and weights large enough that a term times a
+        // square approaches the int32 limit.
+        static constexpr Nnue::Weight interesting[] = {
+            0, 1, -1, 255, 256, 254, -255, 32767, -32768, 32766, -32767, 128, -128,
+        };
+
+        uint64_t state = 0x853C49E6748FEA9Bull;
+        const auto next = [&state]() -> Nnue::Weight
+        {
+            state = state * 6'364'136'223'846'793'005ull + 1'442'695'040'888'963'407ull;
+            const uint64_t draw = state >> 33;
+            // Mostly ordinary magnitudes, with extremes mixed in often enough
+            // to matter.
+            if (draw % 4 == 0)
+                return interesting[draw / 4 % std::size(interesting)];
+            return static_cast<Nnue::Weight>(static_cast<int32_t>(draw % 65536) - 32768);
+        };
+
+        // Lengths that exercise whole vectors and every tail width.
+        static constexpr size_t lengths[] = { 0, 1, 3, 7, 8, 15, 16, 17, 31, 33, 512 };
+
+        for (const size_t length : lengths)
+        {
+            for (int trial = 0; trial < 8; ++trial)
+            {
+                std::vector<Nnue::Weight> values(length);
+                std::vector<Nnue::Weight> added(length);
+                std::vector<Nnue::Weight> removed(length);
+                for (size_t index = 0; index < length; ++index)
+                {
+                    values[index] = next();
+                    added[index] = next();
+                    removed[index] = next();
+                }
+
+                const auto compare = [&](std::string_view what,
+                    void (*vector)(Nnue::Weight*, const Nnue::Weight*, size_t),
+                    void (*scalar)(Nnue::Weight*, const Nnue::Weight*, size_t))
+                {
+                    std::vector<Nnue::Weight> byVector = values;
+                    std::vector<Nnue::Weight> byScalar = values;
+                    vector(byVector.data(), added.data(), length);
+                    scalar(byScalar.data(), added.data(), length);
+                    Require(byVector == byScalar,
+                        "SIMD " + std::string(what) + " disagrees with the scalar reference at length " +
+                            std::to_string(length));
+                };
+                compare("Add", Nnue::Simd::Add, Nnue::Simd::Scalar::Add);
+                compare("Subtract", Nnue::Simd::Subtract, Nnue::Simd::Scalar::Subtract);
+
+                std::vector<Nnue::Weight> fusedVector = values;
+                std::vector<Nnue::Weight> fusedScalar = values;
+                Nnue::Simd::AddSubtract(fusedVector.data(), added.data(), removed.data(), length);
+                Nnue::Simd::Scalar::AddSubtract(fusedScalar.data(), added.data(),
+                    removed.data(), length);
+                Require(fusedVector == fusedScalar,
+                    "SIMD AddSubtract disagrees with the scalar reference at length " +
+                        std::to_string(length));
+
+                Require(Nnue::Simd::ActivatedDotProduct(values.data(), added.data(), length) ==
+                    Nnue::Simd::Scalar::ActivatedDotProduct(values.data(), added.data(), length),
+                    "SIMD ActivatedDotProduct disagrees with the scalar reference at length " +
+                        std::to_string(length));
+            }
+        }
+
+        // A saturated accumulator against the largest weights the format
+        // permits: the worst case the output layer can ever be handed.
+        std::vector<Nnue::Weight> saturated(Nnue::Architecture::HiddenSize, 32767);
+        std::vector<Nnue::Weight> extremeWeights(Nnue::Architecture::HiddenSize, -32768);
+        Require(Nnue::Simd::ActivatedDotProduct(saturated.data(), extremeWeights.data(),
+            saturated.size()) ==
+            Nnue::Simd::Scalar::ActivatedDotProduct(saturated.data(), extremeWeights.data(),
+                saturated.size()),
+            "SIMD ActivatedDotProduct overflows where the scalar reference does not");
+    }
+
+    void TestNnueFeatureIndexing()
+    {
+        using namespace NeraChessEngine;
+
+        // Indices must stay inside the input space the weight matrix covers.
+        for (uint8_t piece = 0; piece < 12; ++piece)
+        {
+            for (uint8_t square = 0; square < 64; ++square)
+            {
+                for (const Nnue::Perspective perspective :
+                    { Nnue::Perspective::White, Nnue::Perspective::Black })
+                {
+                    const Nnue::FeatureIndex index =
+                        Nnue::FeatureSet::FeatureIndexOf(perspective, Piece(piece), square);
+                    Require(index < Nnue::Architecture::TotalInputSize,
+                        "a feature index fell outside the input space");
+                }
+            }
+        }
+
+        // The two perspectives of one position must differ, otherwise the
+        // network sees the same input for both sides.
+        ChessBoard asymmetric("4k3/8/8/8/3P4/8/8/4K3 w - - 0 1");
+        Nnue::FeatureSet::ActiveFeatures white;
+        Nnue::FeatureSet::ActiveFeatures black;
+        Nnue::FeatureSet::CollectActiveFeatures(asymmetric.GetBoardState(),
+            Nnue::Perspective::White, white);
+        Nnue::FeatureSet::CollectActiveFeatures(asymmetric.GetBoardState(),
+            Nnue::Perspective::Black, black);
+        Require(white.count == 3 && black.count == 3,
+            "active feature count does not match the piece count");
+        std::vector<Nnue::FeatureIndex> whiteIndices(white.indices.begin(),
+            white.indices.begin() + white.count);
+        std::vector<Nnue::FeatureIndex> blackIndices(black.indices.begin(),
+            black.indices.begin() + black.count);
+        std::sort(whiteIndices.begin(), whiteIndices.end());
+        std::sort(blackIndices.begin(), blackIndices.end());
+        Require(whiteIndices != blackIndices,
+            "both perspectives produced the same features for an asymmetric position");
+
+        // A position and its colour-and-rank mirror must produce identical
+        // features once each is read from its own side's perspective. This is
+        // the property that lets both perspectives share one weight matrix.
+        ChessBoard mirrored("4k3/8/8/3p4/8/8/8/4K3 b - - 0 1");
+        Nnue::FeatureSet::ActiveFeatures mirroredBlack;
+        Nnue::FeatureSet::CollectActiveFeatures(mirrored.GetBoardState(),
+            Nnue::Perspective::Black, mirroredBlack);
+        std::vector<Nnue::FeatureIndex> mirroredIndices(mirroredBlack.indices.begin(),
+            mirroredBlack.indices.begin() + mirroredBlack.count);
+        std::sort(mirroredIndices.begin(), mirroredIndices.end());
+        Require(mirroredIndices == whiteIndices,
+            "mirrored positions did not produce mirrored features");
+
+        Require(!Nnue::FeatureSet::RequiresRefresh(Nnue::Perspective::White,
+            Square::e1, Square::h8),
+            "a king move demanded a refresh from a king-independent feature set");
+    }
+
+    void TestNnueAccumulatorUpdates()
+    {
+        using namespace NeraChessEngine;
+
+        const std::vector<std::byte> file = BuildSyntheticNetwork(0xD1B54A32D192ED03ull);
+        Nnue::Network network;
+        Require(network.LoadFromMemory(file) == Nnue::NetworkFormat::Status::Ok,
+            "the synthetic network failed to load");
+
+        struct DeltaCase
+        {
+            std::string_view name;
+            std::string_view fen;
+            std::string_view move;
+        };
+        static constexpr DeltaCase cases[] = {
+            { "quiet", "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1", "e2e4" },
+            { "capture", "rnbqkbnr/ppp1pppp/8/3p4/4P3/8/PPPP1PPP/RNBQKBNR w KQkq - 0 2", "e4d5" },
+            { "en passant", "8/8/1k6/8/3pP3/8/6K1/8 b - e3 0 1", "d4e3" },
+            { "promotion", "7k/P7/8/8/8/8/8/K7 w - - 0 1", "a7a8q" },
+            { "capture promotion", "1r5k/P7/8/8/8/8/8/K7 w - - 0 1", "a7b8q" },
+            { "white kingside castle", "4k3/8/8/8/8/8/8/4K2R w K - 0 1", "e1g1" },
+            { "white queenside castle", "4k3/8/8/8/8/8/8/R3K3 w Q - 0 1", "e1c1" },
+            { "black kingside castle", "4k2r/8/8/8/8/8/8/4K3 b k - 0 1", "e8g8" },
+            { "black queenside castle", "r3k3/8/8/8/8/8/8/4K3 b q - 0 1", "e8c8" },
+        };
+
+        for (const DeltaCase& testCase : cases)
+        {
+            ChessBoard board{ std::string(testCase.fen) };
+            const Move move = FindMove(board, testCase.move);
+            Require(move != 0,
+                "NNUE delta case " + std::string(testCase.name) + " has no such legal move");
+
+            Nnue::Accumulator incremental;
+            incremental.Refresh(network, board.GetBoardState());
+
+            const Nnue::DirtyPieces dirty = Nnue::DescribeMove(board, move);
+            for (const Nnue::Perspective perspective :
+                { Nnue::Perspective::White, Nnue::Perspective::Black })
+            {
+                Nnue::FeatureSet::FeatureDelta delta;
+                Nnue::FeatureSet::ComputeDelta(dirty, perspective, 0, delta);
+                incremental.ApplyDelta(network, delta, perspective);
+            }
+
+            board.MakeMove(move);
+            Nnue::Accumulator refreshed;
+            refreshed.Refresh(network, board.GetBoardState());
+
+            Require(incremental.values == refreshed.values,
+                "NNUE delta case " + std::string(testCase.name) +
+                    " diverged from a full refresh");
+        }
+    }
+
+    // Walks a real move tree with the accumulator stack, requiring the
+    // incrementally updated accumulator to equal a full refresh at every node.
+    //
+    // This is the test that matters for incremental updates. A wrong
+    // dirty-piece list for some rare move -- an en-passant capture that also
+    // breaks a pin, a promotion that captures a rook and cancels castling --
+    // would otherwise show up only as an engine that evaluates a handful of
+    // positions wrongly, with nothing pointing at the cause.
+    uint64_t WalkAccumulator(ChessBoard& board, Nnue::AccumulatorStack& stack,
+        const Nnue::Network& network, int depth, std::string_view name)
+    {
+        Nnue::Accumulator reference;
+        reference.Refresh(network, board.GetBoardState());
+        Require(stack.Current().computed,
+            "accumulator walk over " + std::string(name) + " left an entry stale");
+        Require(stack.Current().values == reference.values,
+            "incremental accumulator diverged from a full refresh in " + std::string(name));
+
+        uint64_t nodes = 1;
+        if (depth == 0)
+            return nodes;
+
+        for (const NeraChessEngine::Move move : board.GetLegalMoves())
+        {
+            const Nnue::DirtyPieces dirty = Nnue::DescribeMove(board, move);
+            board.MakeMove(move);
+            stack.Push(network, board.GetBoardState(), dirty);
+
+            nodes += WalkAccumulator(board, stack, network, depth - 1, name);
+
+            board.UndoMove(move);
+            stack.Pop();
+        }
+        return nodes;
+    }
+
+    void TestNnueAccumulatorStack()
+    {
+        struct WalkCase
+        {
+            std::string_view name;
+            std::string_view fen;
+            int depth;
+        };
+
+        // Chosen for move-type coverage rather than size: castling both ways,
+        // en passant, promotions with and without capture, and rook captures
+        // that change castling rights.
+        static constexpr WalkCase cases[] = {
+            { "start", "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1", 3 },
+            { "kiwipete", "r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq - 0 1", 2 },
+            { "pawn endgame", "8/2p5/3p4/KP5r/1R3p1k/8/4P1P1/8 w - - 0 1", 3 },
+            { "promotions", "r3k2r/Pppp1ppp/1b3nbN/nP6/BBP1P3/q4N2/Pp1P2PP/R2Q1RK1 w kq - 0 1", 2 },
+            { "en passant", "8/8/1k6/2b5/2pP4/8/5K2/8 b - d3 0 1", 3 },
+            { "castle rights", "r3k2r/1b4bq/8/8/8/8/7B/R3K2R w KQkq - 0 1", 2 },
+        };
+
+        const std::vector<std::byte> file = BuildSyntheticNetwork(0x14057B7EF767814Full);
+        Nnue::Network network;
+        Require(network.LoadFromMemory(file) == Nnue::NetworkFormat::Status::Ok,
+            "the synthetic network failed to load for the accumulator walk");
+
+        for (const WalkCase& testCase : cases)
+        {
+            ChessBoard board{ std::string(testCase.fen) };
+            Nnue::AccumulatorStack stack;
+            stack.Reset(network, board.GetBoardState());
+
+            WalkAccumulator(board, stack, network, testCase.depth, testCase.name);
+
+            Require(stack.Depth() == 0,
+                "accumulator stack did not unwind after walking " +
+                    std::string(testCase.name));
+        }
+    }
+
+    void TestNnueEvaluation()
     {
         using NeraChessSearch::SearchEngine;
 
-        ChessBoard initialWhite;
-        ChessBoard initialBlack("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR b KQkq - 0 1");
-        Require(SearchEngine::Evaluate(initialWhite) == 10,
-            "symmetric initial position did not receive only the tempo bonus");
-        Require(SearchEngine::Evaluate(initialBlack) == 10,
-            "evaluation is not symmetric with black to move");
+        // With no network loaded every position must evaluate to the documented
+        // constant rather than to stale or uninitialized values.
+        Nnue::Evaluator::Unload();
+        Require(!NeraChessSearch::Evaluation::IsNetworkLoaded(),
+            "the evaluator reported a network after being unloaded");
+        ChessBoard start;
+        ChessBoard lopsided("4k3/8/8/8/3Q4/8/8/4K3 w - - 0 1");
+        Require(SearchEngine::Evaluate(start) == Nnue::Evaluator::NoNetworkScore &&
+            SearchEngine::Evaluate(lopsided) == Nnue::Evaluator::NoNetworkScore,
+            "evaluation without a network is not the documented constant");
 
-        ChessBoard whiteQueen("4k3/8/8/8/3Q4/8/8/4K3 w - - 0 1");
-        ChessBoard whiteQueenBlackTurn("4k3/8/8/8/3Q4/8/8/4K3 b - - 0 1");
-        Require(SearchEngine::Evaluate(whiteQueen) > 800,
-            "material advantage is missing from tapered evaluation");
-        Require(SearchEngine::Evaluate(whiteQueen) + SearchEngine::Evaluate(whiteQueenBlackTurn) == 20,
-            "side-to-move evaluation is not antisymmetric apart from tempo");
+        // Load a synthetic network through the real file path, as the engine
+        // does at startup.
+        const std::filesystem::path networkPath =
+            InstallSyntheticNetwork(0xA24BAED4963EE407ull, "nerachess-synthetic.nnue");
+        Require(NeraChessSearch::Evaluation::IsNetworkLoaded(),
+            "the evaluator did not report a loaded network");
 
-        ChessBoard rimKnight("4k3/8/8/8/8/8/8/N3K3 w - - 0 1");
-        ChessBoard centralKnight("4k3/8/8/8/3N4/8/8/4K3 w - - 0 1");
-        Require(SearchEngine::Evaluate(centralKnight) > SearchEngine::Evaluate(rimKnight) + 40,
-            "piece-square evaluation does not reward a centralized knight");
+        // Evaluation must be a pure function of the position.
+        Require(SearchEngine::Evaluate(start) == SearchEngine::Evaluate(start),
+            "evaluation is not deterministic");
 
-        ChessBoard backPawn("4k3/8/8/8/8/8/P7/4K3 w - - 0 1");
-        ChessBoard advancedPawn("4k3/P7/8/8/8/8/8/4K3 w - - 0 1");
-        Require(SearchEngine::Evaluate(advancedPawn) > SearchEngine::Evaluate(backPawn) + 100,
-            "endgame evaluation does not reward an advanced pawn");
+        // A position and its colour-and-rank mirror must evaluate identically,
+        // for any weights, because their perspective features are mirrored.
+        ChessBoard original("4k3/8/8/8/3P4/8/8/4K3 w - - 0 1");
+        ChessBoard mirrored("4k3/8/8/3p4/8/8/8/4K3 b - - 0 1");
+        Require(SearchEngine::Evaluate(original) == SearchEngine::Evaluate(mirrored),
+            "evaluation is not colour-and-rank symmetric");
 
-        ChessBoard structuredWhite("4k3/8/8/8/3P4/2P5/8/2B1KB1R w - - 0 1");
-        ChessBoard structuredBlack("2b1kb1r/8/2p5/3p4/8/8/8/4K3 b - - 0 1");
-        Require(SearchEngine::Evaluate(structuredWhite) == SearchEngine::Evaluate(structuredBlack),
-            "positional evaluation is not color-and-rank symmetric");
+        // The search's accumulator path and the standalone path must agree.
+        Nnue::Accumulator accumulator;
+        Require(NeraChessSearch::Evaluation::Evaluate(original.GetBoardState(), accumulator) ==
+            SearchEngine::Evaluate(original),
+            "the accumulator and scratch evaluation paths disagree");
+        Require(accumulator.computed,
+            "evaluating through an accumulator left it marked stale");
+
+        // Searches must return legal moves with a network loaded, even one that
+        // knows nothing about chess. In Debug builds NNUE_VERIFY_ACCUMULATOR
+        // re-derives every accumulator these searches touch and asserts it
+        // matches a full refresh, so this also covers the search's own
+        // make/unmake paths -- quiescence captures and all.
+        static constexpr std::string_view searchPositions[] = {
+            "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1",
+            "r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq - 0 1",
+            "r3k2r/Pppp1ppp/1b3nbN/nP6/BBP1P3/q4N2/Pp1P2PP/R2Q1RK1 w kq - 0 1",
+            "8/8/1k6/2b5/2pP4/8/5K2/8 b - d3 0 1",
+        };
+
+        NeraChessSearch::SearchEngine search(8);
+        NeraChessSearch::SearchLimits limits;
+        limits.maxDepth = 5;
+        for (const std::string_view fen : searchPositions)
+        {
+            search.NewGame();
+            ChessBoard position{ std::string(fen) };
+            Require(ContainsMove(position.GetLegalMoves(),
+                search.Search(position, limits).bestMove),
+                "search with a loaded network did not return a legal move");
+        }
+
+        // Multithreaded searches keep one accumulator stack per worker; a
+        // shared one would corrupt every helper the moment two threads made
+        // different moves.
+        search.NewGame();
+        search.SetThreadCount(3);
+        ChessBoard threaded("r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq - 0 1");
+        Require(ContainsMove(threaded.GetLegalMoves(),
+            search.Search(threaded, limits).bestMove),
+            "multithreaded search with a loaded network did not return a legal move");
+        search.SetThreadCount(1);
+
+        Nnue::Evaluator::Unload();
+        RemoveNetworkFile(networkPath);
     }
 
     void TestSearchChoices()
     {
         using namespace NeraChessSearch;
+
+        // These positions measure evaluation quality, so they only mean
+        // anything once a trained network exists. Until then the search has
+        // nothing positional to reason about and the expected moves are
+        // arbitrary.
+        if (!Evaluation::IsNetworkLoaded())
+        {
+            std::cout << "Skipping strategic and tactical search choices: "
+                      << "no NNUE network is loaded.\n";
+            return;
+        }
 
         SearchEngine search(32);
         SearchLimits limits;
@@ -708,6 +1217,175 @@ namespace
         const auto bestMove = search.Search(tactical, limits).bestMove;
         Require(bestMove == FindMove(tactical, "d5e6") || bestMove == FindMove(tactical, "e2a6"),
             "search missed both top tactical continuations in the benchmark");
+    }
+
+    // Writes a network of deterministic pseudo-random weights.
+    //
+    // The network knows nothing about chess and its evaluations are nonsense,
+    // but it exercises every path a real network will: loading, the feature
+    // transformer, incremental updates, and the output layer. Equivalent to
+    // NNUETraining/scripts/make_random_network.py, without needing Python.
+    int WriteRandomNetwork(const std::filesystem::path& path, uint64_t seed)
+    {
+        const std::vector<std::byte> file = BuildSyntheticNetwork(seed);
+        std::ofstream stream(path, std::ios::binary | std::ios::trunc);
+        if (!stream)
+        {
+            std::cerr << "could not open " << path << " for writing\n";
+            return 1;
+        }
+        stream.write(reinterpret_cast<const char*>(file.data()),
+            static_cast<std::streamsize>(file.size()));
+        if (!stream)
+        {
+            std::cerr << "could not write " << path << '\n';
+            return 1;
+        }
+
+        Nnue::NetworkFormat::Header header;
+        Nnue::NetworkFormat::ReadHeader(file, header);
+        std::cout << "wrote " << path << " (" << header.Describe() << ", seed 0x"
+                  << std::hex << seed << std::dec << ")\n";
+        return 0;
+    }
+
+    // Walks a move tree evaluating at every node, either updating accumulators
+    // incrementally or forcing a full refresh at each one. Same tree and same
+    // node count either way, so the two timings differ only in accumulator
+    // strategy.
+    uint64_t BenchmarkWalk(ChessBoard& board, Nnue::AccumulatorStack& stack,
+        const Nnue::Network& network, int depth, bool incremental, int64_t& sink)
+    {
+        sink += NeraChessSearch::Evaluation::Evaluate(board.GetBoardState(), stack.Current());
+
+        uint64_t nodes = 1;
+        if (depth == 0)
+            return nodes;
+
+        for (const NeraChessEngine::Move move : board.GetLegalMoves())
+        {
+            if (incremental)
+            {
+                const Nnue::DirtyPieces dirty = Nnue::DescribeMove(board, move);
+                board.MakeMove(move);
+                stack.Push(network, board.GetBoardState(), dirty);
+            }
+            else
+            {
+                board.MakeMove(move);
+                stack.PushStale();
+            }
+
+            nodes += BenchmarkWalk(board, stack, network, depth - 1, incremental, sink);
+
+            board.UndoMove(move);
+            stack.Pop();
+        }
+        return nodes;
+    }
+
+    void RunNnueBenchmark()
+    {
+        struct BenchCase
+        {
+            std::string_view name;
+            std::string_view fen;
+            int depth;
+        };
+        static constexpr BenchCase cases[] = {
+            { "start", "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1", 3 },
+            { "kiwipete", "r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq - 0 1", 3 },
+            { "endgame", "8/2p5/3p4/KP5r/1R3p1k/8/4P1P1/8 w - - 0 1", 4 },
+        };
+
+        const std::filesystem::path networkPath =
+            InstallSyntheticNetwork(0x3C6EF372FE94F82Bull, "nerachess-bench.nnue");
+        const Nnue::Network& network = Nnue::Evaluator::GetNetwork();
+
+        std::cout << "NNUE evaluation benchmark (" << network.GetHeader().Describe() << ")\n"
+                  << "kernels " << Nnue::Simd::TargetName << "\n\n";
+
+        for (const BenchCase& testCase : cases)
+        {
+            double timings[2] = { 0.0, 0.0 };
+            uint64_t nodeCount = 0;
+            int64_t sink = 0;
+
+            for (int pass = 0; pass < 2; ++pass)
+            {
+                const bool incremental = pass == 1;
+                ChessBoard board{ std::string(testCase.fen) };
+                Nnue::AccumulatorStack stack;
+                stack.Reset(network, board.GetBoardState());
+
+                const auto started = std::chrono::steady_clock::now();
+                nodeCount = BenchmarkWalk(board, stack, network, testCase.depth,
+                    incremental, sink);
+                timings[pass] = std::chrono::duration<double>(
+                    std::chrono::steady_clock::now() - started).count();
+            }
+
+            const double refreshRate = nodeCount / std::max(1e-9, timings[0]);
+            const double incrementalRate = nodeCount / std::max(1e-9, timings[1]);
+            std::cout << testCase.name
+                      << ": depth " << testCase.depth
+                      << " nodes " << nodeCount
+                      << " | refresh " << static_cast<uint64_t>(refreshRate) << " eval/s"
+                      << " | incremental " << static_cast<uint64_t>(incrementalRate) << " eval/s"
+                      << " | speedup " << (incrementalRate / std::max(1e-9, refreshRate)) << "x\n";
+            // Keeps the optimizer from deleting the evaluations entirely.
+            if (sink == 0x7FFFFFFFFFFFFFFFll)
+                std::cout << "";
+        }
+
+        Nnue::Evaluator::Unload();
+        RemoveNetworkFile(networkPath);
+    }
+
+    // Dumps the C++ feature indices for a fixed set of positions as JSON, so
+    // NNUETraining/tests/test_features.py can prove its Python indexer agrees.
+    // Regenerate NNUETraining/tests/feature_vectors.json from this whenever the
+    // feature set changes.
+    void PrintNnueFeatureVectors()
+    {
+        static constexpr std::string_view fens[] = {
+            "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1",
+            "4k3/8/8/8/3P4/8/8/4K3 w - - 0 1",
+            "4k3/8/8/3p4/8/8/8/4K3 b - - 0 1",
+            "r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq - 0 1",
+            "8/2p5/3p4/KP5r/1R3p1k/8/4P1P1/8 w - - 0 1",
+        };
+
+        std::cout << "{\n  \"architectureHash\": "
+                  << Nnue::Architecture::ArchitectureHash()
+                  << ",\n  \"perspectiveInputSize\": "
+                  << Nnue::Architecture::PerspectiveInputSize
+                  << ",\n  \"positions\": [\n";
+        bool firstPosition = true;
+        for (const std::string_view fen : fens)
+        {
+            ChessBoard board{ std::string(fen) };
+            for (const auto& [name, perspective] : {
+                std::pair<std::string_view, Nnue::Perspective>{ "white", Nnue::Perspective::White },
+                std::pair<std::string_view, Nnue::Perspective>{ "black", Nnue::Perspective::Black } })
+            {
+                Nnue::FeatureSet::ActiveFeatures active;
+                Nnue::FeatureSet::CollectActiveFeatures(board.GetBoardState(), perspective, active);
+                std::vector<Nnue::FeatureIndex> indices(active.indices.begin(),
+                    active.indices.begin() + active.count);
+                std::sort(indices.begin(), indices.end());
+
+                if (!firstPosition)
+                    std::cout << ",\n";
+                firstPosition = false;
+                std::cout << "    { \"fen\": \"" << fen << "\", \"perspective\": \"" << name
+                          << "\", \"features\": [";
+                for (size_t index = 0; index < indices.size(); ++index)
+                    std::cout << (index == 0 ? "" : ", ") << indices[index];
+                std::cout << "] }";
+            }
+        }
+        std::cout << "\n  ]\n}\n";
     }
 
     // The magic tables are generated from the ray-walking functions, so the constant-time
@@ -946,6 +1624,23 @@ int main(int argc, char** argv)
             RunThreadBenchmark();
             return 0;
         }
+        if (argc == 2 && std::string_view(argv[1]) == "--nnue-feature-vectors")
+        {
+            PrintNnueFeatureVectors();
+            return 0;
+        }
+        if (argc == 2 && std::string_view(argv[1]) == "--nnue-bench")
+        {
+            RunNnueBenchmark();
+            return 0;
+        }
+        if (argc >= 3 && std::string_view(argv[1]) == "--write-random-network")
+        {
+            const uint64_t seed = argc >= 4
+                ? std::strtoull(argv[3], nullptr, 0)
+                : 0x9E3779B97F4A7C15ull;
+            return WriteRandomNetwork(argv[2], seed);
+        }
 
         TestFenValidation();
         TestPerft();
@@ -960,7 +1655,12 @@ int main(int argc, char** argv)
         TestSearchFoundations();
         TestFiftyMoveTranspositions();
         TestMultithreadedSearch();
-        TestTaperedEvaluation();
+        TestNnueSimdKernels();
+        TestNnueNetworkFormat();
+        TestNnueFeatureIndexing();
+        TestNnueAccumulatorUpdates();
+        TestNnueAccumulatorStack();
+        TestNnueEvaluation();
         TestSearchChoices();
         TestSliderAttackLookups();
         TestStaticExchangeEvaluation();

@@ -30,16 +30,21 @@ project "NeraChessApp"
     "src",
 
     "../NeraChessEngine/src",
+    "../NeraChessNNUE/src",
     "../NeraChessSearch/src",
 
     "../ApplicationCore/src",
     "../ApplicationCore/vendor/DearImGUI",
   }
 
+  -- Order matters: GNU ld resolves static archives left to right, so each
+  -- library must come before the ones it depends on. Getting this backwards
+  -- links fine on macOS and fails on Linux.
   links
   {
-    "NeraChessEngine",
     "NeraChessSearch",
+    "NeraChessNNUE",
+    "NeraChessEngine",
     "ApplicationCore",
   }
 

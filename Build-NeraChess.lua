@@ -25,9 +25,13 @@ workspace "NeraChess"
 
 include "NeraChessEngine/Build-NeraChessEngine.lua"
 
+include "NeraChessNNUE/Build-NeraChessNNUE.lua"
+
 include "NeraChessSearch/Build-NeraChessSearch.lua"
 
 include "NeraChessUCI/Build-NeraChessUCI.lua"
+
+include "NeraChessSelfPlay/Build-NeraChessSelfPlay.lua"
 
 include "NeraChessTests/Build-NeraChessTests.lua"
 
