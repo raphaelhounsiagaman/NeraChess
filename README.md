@@ -11,9 +11,11 @@ NeraChess is a C++23 chess engine, UCI executable, and SDL2/Dear ImGui desktop a
 ![NeraChess desktop application](assets/screenshots/NeraChessUIStartingPosition.png)
 
 > **NeraChess has migrated to NNUE.** The hand-crafted evaluation is gone,
-> replaced by a trained network. NeraChess trains only on data it produced
-> itself — its own search and its own evaluation — and never on another
-> engine's games or evaluations. A trained network ships in
+> replaced by a trained network. Positions come from NeraChess's own play; the
+> evaluations they are labelled with come from Stockfish. No engine code is
+> copied, derived from, or linked against — Stockfish is run as a separate
+> program and asked for a number, the way a human analyst would. A trained
+> network ships in
 > `NeraChessApp/Resources/NNUE/nera.nnue`, so a fresh clone plays out of the
 > box. Over 1000 games at `10+0.1` with the search held identical on both
 > sides, the network measured **+25.8 Elo** against the hand-crafted
@@ -84,15 +86,16 @@ been removed.
   UCI engine and the desktop bot
 - PyTorch training pipeline in [`NNUETraining`](NNUETraining/README.md), checked
   against the engine position by position
-- Training on NeraChess's own data only — never another engine's games or
-  evaluations: generation 0 learns material from random play, and every
-  generation after it trains on games the engine played itself
+- Positions from NeraChess's own play, labelled with Stockfish evaluations.
+  No engine code is copied or linked; Stockfish is an external process that is
+  asked for a score
 
 The classical terms — tapered piece-square tables, pawn structure, mobility, and
-king safety — were removed in favour of the network, which recovers them from
-self-play instead: after one generation the network already values a centralized
-knight over a rim knight and an advanced pawn over a home one, with no such term
-written anywhere. See [docs/NNUE.md](docs/NNUE.md).
+king safety — were removed in favour of the network, which learns them from
+labelled positions instead: after a single generation of pure self-play the
+network already valued a centralized knight over a rim knight and an advanced
+pawn over a home one, with no such term written anywhere.
+See [docs/NNUE.md](docs/NNUE.md).
 
 ---
 
@@ -331,8 +334,8 @@ engine pick it up at startup.
 
 ## Training a network
 
-Networks are trained only on data NeraChess produced itself — its own search and
-its own evaluation — never on another engine's games or evaluations. One command
+Networks are trained on positions from NeraChess's own play, labelled with
+Stockfish evaluations. No engine code is copied or linked against. One command
 runs the whole loop -- material bootstrap, then generate, train, and verify for
 each generation:
 

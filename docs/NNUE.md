@@ -6,9 +6,10 @@ should be built in.
 
 > **Status.** Inference and the self-play training loop both work end to end,
 > and a trained network ships at `NeraChessApp/Resources/NNUE/nera.nnue`, so a
-> fresh clone plays out of the box. It came from 42 generations trained only on
-> data NeraChess produced itself — its own search and its own evaluation, never
-> another engine's games or evaluations. With the search held identical on both
+> fresh clone plays out of the box. Positions come from NeraChess's own play;
+> the evaluations they are labelled with come from Stockfish, run as a separate
+> program. No engine code is copied, derived from, or linked against. With the
+> search held identical on both
 > sides it measured +25.8 Elo over 1000 games against the hand-crafted
 > evaluation it replaced; see [NNUE_PROGRESS.md](NNUE_PROGRESS.md). See
 > [Training by self-play](#training-by-self-play) to train a stronger one.
@@ -98,7 +99,9 @@ and `test_mirrored_positions_produce_mirrored_features` in the Python one.
 
 ### `NeraChessSelfPlay` — training data
 
-Generates training data from NeraChess's own play only, never another engine's.
+Generates the positions used for training, by playing games against itself.
+The evaluations those positions are labelled with may come from this search or
+from Stockfish; see `experiments/sflabel.py` for the latter.
 `--mode material` labels random play with material balance to bootstrap
 generation 0; the default mode plays games with a network and labels them with
 search scores and results.
@@ -188,9 +191,16 @@ shipped network means overwriting that file.
 
 ## Training by self-play
 
-NeraChess never labels positions with another engine's evaluations. That leaves
-a bootstrapping problem, because training needs search scores, search needs an
-evaluation, and the evaluation is the network being trained.
+Self-play alone has a bootstrapping problem: training needs search scores,
+search needs an evaluation, and the evaluation is the network being trained. A
+network trained on its own search can only ever chase itself, and in practice
+it stops improving once it has caught up -- which is what happened here around
+generation 42.
+
+Labelling with a stronger external engine removes the ceiling, and is now how
+the shipped network is trained. The self-play bootstrap below is kept because
+it is how the first networks were made, and because it still generates the
+positions; only the scores attached to them changed.
 
 The circle is broken with exactly one piece of injected knowledge — piece
 values, the same ones the move ordering already uses for static exchange
