@@ -43,6 +43,12 @@ class TrainConfig:
     validation_fraction: float = 0.02
     max_validation_positions: int = 50_000
 
+    #: Weights to start from instead of a random initialization. With an
+    #: identical architecture this is exact -- the run begins at the source
+    #: network's strength and can only refine it -- so it is the honest way to
+    #: ask whether new data improves a champion rather than replaces it.
+    init_from: Path | None = None
+
     device: str = "cpu"
     seed: int = 0
 
@@ -96,6 +102,9 @@ def train(config: TrainConfig) -> Path:
         )
 
     model = NnueModel().to(device)
+    if config.init_from is not None:
+        model.load_state_dict(torch.load(config.init_from, map_location=device))
+        print(f"initialised from {config.init_from}", flush=True)
     optimizer = torch.optim.AdamW(
         model.parameters(), lr=config.learning_rate, weight_decay=config.weight_decay
     )
@@ -236,6 +245,10 @@ def parse_arguments(argv: list[str] | None = None) -> TrainConfig:
     parser.add_argument(
         "--no-checkpoints", action="store_true", help="only write the final network"
     )
+    parser.add_argument(
+        "--init-from", type=Path, default=None,
+        help="start from these weights instead of a random initialization"
+    )
 
     arguments = parser.parse_args(argv)
     return TrainConfig(
@@ -251,6 +264,7 @@ def parse_arguments(argv: list[str] | None = None) -> TrainConfig:
         device=arguments.device,
         seed=arguments.seed,
         checkpoint_every_epoch=not arguments.no_checkpoints,
+        init_from=arguments.init_from,
     )
 
 
