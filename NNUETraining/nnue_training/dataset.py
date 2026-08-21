@@ -339,3 +339,234 @@ def batched(samples: Iterable[Sample], batch_size: int) -> Iterator[Batch]:
             pending = []
     if pending:
         yield collate(pending)
+
+# -- reading a pack without loading it -------------------------------------
+
+#: Samples read contiguously before the next seek. Random access across a
+#: thirty-gigabyte file would seek per sample and spend the epoch waiting on
+#: the disk; reading in blocks keeps the access pattern close to sequential.
+SHUFFLE_BLOCK = 1 << 16
+
+#: Blocks held together and shuffled as one. Sixteen blocks is about a million
+#: samples, which decorrelates a batch just as well as a global shuffle for
+#: data that is already in no particular order, at a fraction of the seeking.
+SHUFFLE_WINDOW = 16
+
+
+class _AllExcept:
+    """Every index below ``total`` except a small held-out set.
+
+    Materialising the training indices as a list costs 1.4GB at three hundred
+    million positions, which would undo the point of not loading the samples
+    themselves. Only iteration and length are ever asked of it.
+    """
+
+    def __init__(self, total: int, excluded: Iterable[int]):
+        self._total = total
+        self._excluded = frozenset(excluded)
+
+    def __len__(self) -> int:
+        return self._total - len(self._excluded)
+
+    def __bool__(self) -> bool:
+        return len(self) > 0
+
+    def __iter__(self) -> Iterator[int]:
+        excluded = self._excluded
+        for index in range(self._total):
+            if index not in excluded:
+                yield index
+
+    @property
+    def total(self) -> int:
+        return self._total
+
+    @property
+    def excluded(self) -> frozenset:
+        return self._excluded
+
+
+class MemmapFeatureCache:
+    """A packed dataset read off disk instead of into memory.
+
+    :meth:`FeatureCache.load` allocates every array up front. That is fine at
+    twenty-three million positions -- 2.7GB -- and impossible at three hundred
+    and forty million, which is 30GB on a machine with seven and a Lichess bot
+    that must not be disturbed. The packed layout is a header followed by
+    contiguous fixed-width arrays, so each one is mapped where it lies and the
+    operating system pages in only what a batch touches.
+
+    Presents the same interface as :class:`FeatureCache`, so the trainer does
+    not know which one it has.
+    """
+
+    _DTYPES = {"H": "<u2", "I": "<u4", "f": "<f4", "B": "<u1"}
+
+    def __init__(self, path: str | Path):
+        import numpy as np
+
+        self._path = Path(path)
+        with self._path.open("rb") as handle:
+            if handle.read(len(PACK_MAGIC)) != PACK_MAGIC:
+                raise ValueError(f"{path} is not a packed NeraChess dataset")
+            (version,) = struct.unpack("<I", handle.read(4))
+            if version != PACK_VERSION:
+                raise ValueError(
+                    f"{path} uses pack version {version}, expected {PACK_VERSION}"
+                )
+            (self._length,) = struct.unpack("<Q", handle.read(8))
+            counts = [
+                struct.unpack("<Q", handle.read(8))[0]
+                for _ in FeatureCache._ARRAYS
+            ]
+            offset = handle.tell()
+
+        expected = self._path.stat().st_size
+        self._arrays = {}
+        for (name, typecode), count in zip(FeatureCache._ARRAYS, counts):
+            dtype = np.dtype(self._DTYPES[typecode])
+            end = offset + count * dtype.itemsize
+            if end > expected:
+                raise ValueError(f"{path} is truncated inside {name}")
+            self._arrays[name] = np.memmap(
+                self._path, dtype=dtype, mode="r", offset=offset, shape=(count,)
+            )
+            offset = end
+        if offset != expected:
+            raise ValueError(
+                f"{path} has {expected - offset} trailing bytes; the header and "
+                "the file disagree about its contents"
+            )
+
+        for name in self._arrays:
+            setattr(self, name, self._arrays[name])
+
+    def __len__(self) -> int:
+        return self._length
+
+    def split(self, validation_size: int, seed: int):
+        """Held-out indices, and everything else as a lazy view."""
+        validation_size = max(0, min(validation_size, self._length))
+        rng = random.Random(seed)
+        held = array("i", sorted(rng.sample(range(self._length), validation_size)))
+        return _AllExcept(self._length, held), held
+
+    def batch(self, order: Sequence[int]) -> "Batch":
+        import numpy as np
+
+        order = np.asarray(order, dtype=np.int64)
+        pieces = []
+        offsets = []
+        for name, offname in (("own_indices", "own_offsets"),
+                              ("their_indices", "their_offsets")):
+            bounds = self._arrays[offname]
+            starts = bounds[order].astype(np.int64)
+            ends = bounds[order + 1].astype(np.int64)
+            lengths = ends - starts
+            source = self._arrays[name]
+            flat = np.concatenate(
+                [source[s:e] for s, e in zip(starts, ends)]
+            ) if len(order) else np.empty(0, dtype=source.dtype)
+            starts_out = np.zeros(len(order), dtype=np.int64)
+            if len(order):
+                starts_out[1:] = np.cumsum(lengths)[:-1]
+            pieces.append(flat)
+            offsets.append(starts_out)
+
+        extra = {}
+        if "output_buckets" in self._arrays:
+            extra["output_buckets"] = self._arrays["output_buckets"][order].tolist()
+
+        return Batch(
+            own_indices=pieces[0].tolist(),
+            own_offsets=offsets[0].tolist(),
+            their_indices=pieces[1].tolist(),
+            their_offsets=offsets[1].tolist(),
+            scores=self._arrays["scores"][order].tolist(),
+            results=self._arrays["results"][order].tolist(),
+            **extra,
+        )
+
+    def batches(
+        self,
+        batch_size: int,
+        shuffle_seed: int | None = None,
+        indices: Sequence[int] | None = None,
+    ) -> Iterator["Batch"]:
+        if batch_size < 1:
+            raise ValueError("batch size must be positive")
+        if indices is None:
+            indices = _AllExcept(self._length, ())
+
+        pending: list[int] = []
+
+        def drain(final: bool):
+            while len(pending) >= batch_size:
+                yield self.batch(pending[:batch_size])
+                del pending[:batch_size]
+            if final and pending:
+                yield self.batch(list(pending))
+                pending.clear()
+
+        if shuffle_seed is None:
+            for index in indices:
+                pending.append(index)
+                if len(pending) >= batch_size:
+                    yield from drain(False)
+            yield from drain(True)
+            return
+
+        rng = random.Random(shuffle_seed)
+        window: list[int] = []
+        for block in self._blocks(indices, rng):
+            window.extend(block)
+            if len(window) >= SHUFFLE_BLOCK * SHUFFLE_WINDOW:
+                rng.shuffle(window)
+                pending.extend(window)
+                window.clear()
+                yield from drain(False)
+        if window:
+            rng.shuffle(window)
+            pending.extend(window)
+        yield from drain(True)
+
+    def _blocks(self, indices, rng) -> Iterator[list[int]]:
+        """Contiguous runs of indices, in shuffled order.
+
+        Built one at a time: holding them all would be the index list this
+        class exists to avoid.
+        """
+        if isinstance(indices, _AllExcept):
+            starts = list(range(0, indices.total, SHUFFLE_BLOCK))
+            rng.shuffle(starts)
+            excluded = indices.excluded
+            for start in starts:
+                stop = min(start + SHUFFLE_BLOCK, indices.total)
+                yield [i for i in range(start, stop) if i not in excluded]
+        else:
+            materialised = list(indices)
+            starts = list(range(0, len(materialised), SHUFFLE_BLOCK))
+            rng.shuffle(starts)
+            for start in starts:
+                yield materialised[start:start + SHUFFLE_BLOCK]
+
+
+#: Packs larger than this are mapped rather than read into memory.
+MEMMAP_THRESHOLD_BYTES = 3 * 1024 ** 3
+
+
+def open_pack(path: str | Path, memmap: bool | None = None):
+    """Open a packed dataset, mapping it when loading it would not fit.
+
+    The choice is reported rather than silent, because it changes the memory
+    the run needs by an order of magnitude and that is worth seeing in a log.
+    """
+    path = Path(path)
+    size = path.stat().st_size
+    if memmap is None:
+        memmap = size > MEMMAP_THRESHOLD_BYTES
+    if memmap:
+        print(f"mapping {path.name} ({size / 1e9:.2f} GB) from disk", flush=True)
+        return MemmapFeatureCache(path)
+    print(f"loading {path.name} ({size / 1e9:.2f} GB) into memory", flush=True)
+    return FeatureCache.load(path)

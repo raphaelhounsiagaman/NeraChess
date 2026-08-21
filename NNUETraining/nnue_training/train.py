@@ -49,6 +49,11 @@ class TrainConfig:
     #: ask whether new data improves a champion rather than replaces it.
     init_from: Path | None = None
 
+    #: Read the pack off disk instead of into memory. None decides by size:
+    #: a pack that would not comfortably fit is mapped. Loading 340M positions
+    #: would need 30GB on a machine with seven.
+    memmap: bool | None = None
+
     device: str = "cpu"
     seed: int = 0
 
@@ -84,7 +89,7 @@ def train(config: TrainConfig) -> Path:
     print(f"loading samples from {config.data_path}")
     started = time.monotonic()
     if config.data_path.suffix == ".pack":
-        cache = data.FeatureCache.load(config.data_path)
+        cache = data.open_pack(config.data_path, memmap=config.memmap)
     else:
         cache = data.FeatureCache.from_text(config.data_path)
     if len(cache) == 0:
@@ -249,6 +254,14 @@ def parse_arguments(argv: list[str] | None = None) -> TrainConfig:
         "--init-from", type=Path, default=None,
         help="start from these weights instead of a random initialization"
     )
+    parser.add_argument(
+        "--memmap", dest="memmap", action="store_true", default=None,
+        help="read the pack from disk rather than loading it into memory"
+    )
+    parser.add_argument(
+        "--no-memmap", dest="memmap", action="store_false",
+        help="force loading the whole pack into memory"
+    )
 
     arguments = parser.parse_args(argv)
     return TrainConfig(
@@ -265,6 +278,7 @@ def parse_arguments(argv: list[str] | None = None) -> TrainConfig:
         seed=arguments.seed,
         checkpoint_every_epoch=not arguments.no_checkpoints,
         init_from=arguments.init_from,
+        memmap=arguments.memmap,
     )
 
 
