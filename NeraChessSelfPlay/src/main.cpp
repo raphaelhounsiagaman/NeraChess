@@ -23,6 +23,73 @@ namespace
         return value;
     }
 
+    // A malformed number is an operator mistake, not a request for the default.
+    // Silently substituting one produces a run whose settings are not the ones
+    // that were asked for, which is worse than refusing to start.
+    template<typename T>
+    T RequireNumber(std::string_view option, std::string_view text)
+    {
+        if (const auto value = ParseNumber<T>(text))
+            return *value;
+        throw std::runtime_error(
+            std::string(option) + " expects a number, got '" + std::string(text) + "'");
+    }
+
+    template<typename T>
+    void RequireAtLeast(std::string_view option, T value, T minimum)
+    {
+        if (value < minimum)
+            throw std::runtime_error(std::string(option) + " must be at least " +
+                std::to_string(minimum) + ", got " + std::to_string(value));
+    }
+
+    template<typename T>
+    void RequireInRange(std::string_view option, T value, T minimum, T maximum)
+    {
+        if (value < minimum || value > maximum)
+            throw std::runtime_error(std::string(option) + " must be between " +
+                std::to_string(minimum) + " and " + std::to_string(maximum) +
+                ", got " + std::to_string(value));
+    }
+
+    // Checked before the output file is opened, so a rejected run leaves no
+    // truncated file behind.
+    void ValidateConfig(const NeraChessSelfPlay::Config& config)
+    {
+        RequireAtLeast<uint64_t>("--positions", config.targetPositions, 1);
+
+        // A search needs one of the two budgets. --nodes overrides --depth, so
+        // a zero depth is only fatal when no node budget replaces it.
+        if (config.mode == NeraChessSelfPlay::Mode::SelfPlay && config.nodes == 0)
+            RequireAtLeast("--depth", config.depth, 1);
+
+        RequireAtLeast<size_t>("--threads", config.threads, 1);
+        RequireAtLeast<size_t>("--hash", config.hashMegabytes, 1);
+        RequireAtLeast("--random-plies", config.randomOpeningPlies, 0);
+
+        // Zero plies means every game yields no samples, so the worker loop
+        // would never reach the target and never stop.
+        RequireAtLeast("--max-plies", config.maxGamePlies, 1);
+
+        RequireAtLeast("--max-score", config.maxAbsoluteScore, 1);
+        RequireAtLeast("--win-score", config.winAdjudicationScore, 1);
+        RequireAtLeast("--win-plies", config.winAdjudicationPlies, 1);
+        RequireAtLeast("--draw-score", config.drawAdjudicationScore, 0);
+        RequireAtLeast("--draw-plies", config.drawAdjudicationPlies, 1);
+        RequireAtLeast("--draw-after", config.drawAdjudicationMinPly, 0);
+
+        // The filter allocates 2^bits slots. Anything past 32 asks for an
+        // allocation no machine will satisfy, and a negative shift is
+        // undefined behaviour.
+        RequireInRange("--dedup-bits", config.deduplicationBits, 0, 32);
+
+        if (config.mode == NeraChessSelfPlay::Mode::SelfPlay && config.networkPath.empty())
+            throw std::runtime_error("--network is required for selfplay mode");
+
+        if (config.outputPath.empty())
+            throw std::runtime_error("--output must not be empty");
+    }
+
     void PrintUsage()
     {
         std::cout <<
@@ -102,21 +169,21 @@ int main(int argc, char** argv)
             }
             else if (option == "--output") config.outputPath = value();
             else if (option == "--network") config.networkPath = value();
-            else if (option == "--positions") config.targetPositions = ParseNumber<uint64_t>(value()).value_or(config.targetPositions);
-            else if (option == "--depth") config.depth = ParseNumber<int>(value()).value_or(config.depth);
-            else if (option == "--nodes") config.nodes = ParseNumber<uint64_t>(value()).value_or(config.nodes);
-            else if (option == "--threads") config.threads = ParseNumber<size_t>(value()).value_or(config.threads);
-            else if (option == "--hash") config.hashMegabytes = ParseNumber<size_t>(value()).value_or(config.hashMegabytes);
-            else if (option == "--seed") config.seed = ParseNumber<uint64_t>(value()).value_or(config.seed);
-            else if (option == "--random-plies") config.randomOpeningPlies = ParseNumber<int>(value()).value_or(config.randomOpeningPlies);
-            else if (option == "--max-plies") config.maxGamePlies = ParseNumber<int>(value()).value_or(config.maxGamePlies);
-            else if (option == "--max-score") config.maxAbsoluteScore = ParseNumber<int>(value()).value_or(config.maxAbsoluteScore);
-            else if (option == "--win-score") config.winAdjudicationScore = ParseNumber<int>(value()).value_or(config.winAdjudicationScore);
-            else if (option == "--win-plies") config.winAdjudicationPlies = ParseNumber<int>(value()).value_or(config.winAdjudicationPlies);
-            else if (option == "--draw-score") config.drawAdjudicationScore = ParseNumber<int>(value()).value_or(config.drawAdjudicationScore);
-            else if (option == "--draw-plies") config.drawAdjudicationPlies = ParseNumber<int>(value()).value_or(config.drawAdjudicationPlies);
-            else if (option == "--draw-after") config.drawAdjudicationMinPly = ParseNumber<int>(value()).value_or(config.drawAdjudicationMinPly);
-            else if (option == "--dedup-bits") config.deduplicationBits = ParseNumber<int>(value()).value_or(config.deduplicationBits);
+            else if (option == "--positions") config.targetPositions = RequireNumber<uint64_t>(option, value());
+            else if (option == "--depth") config.depth = RequireNumber<int>(option, value());
+            else if (option == "--nodes") config.nodes = RequireNumber<uint64_t>(option, value());
+            else if (option == "--threads") config.threads = RequireNumber<size_t>(option, value());
+            else if (option == "--hash") config.hashMegabytes = RequireNumber<size_t>(option, value());
+            else if (option == "--seed") config.seed = RequireNumber<uint64_t>(option, value());
+            else if (option == "--random-plies") config.randomOpeningPlies = RequireNumber<int>(option, value());
+            else if (option == "--max-plies") config.maxGamePlies = RequireNumber<int>(option, value());
+            else if (option == "--max-score") config.maxAbsoluteScore = RequireNumber<int>(option, value());
+            else if (option == "--win-score") config.winAdjudicationScore = RequireNumber<int>(option, value());
+            else if (option == "--win-plies") config.winAdjudicationPlies = RequireNumber<int>(option, value());
+            else if (option == "--draw-score") config.drawAdjudicationScore = RequireNumber<int>(option, value());
+            else if (option == "--draw-plies") config.drawAdjudicationPlies = RequireNumber<int>(option, value());
+            else if (option == "--draw-after") config.drawAdjudicationMinPly = RequireNumber<int>(option, value());
+            else if (option == "--dedup-bits") config.deduplicationBits = RequireNumber<int>(option, value());
             else if (option == "--keep-checks") config.skipInCheck = false;
             else if (option == "--keep-tactical") config.skipCaptureBestMove = false;
             else if (option == "--append") config.append = true;
@@ -131,6 +198,8 @@ int main(int argc, char** argv)
         // Material mode plays randomly, so a search would only slow it down.
         if (config.mode == NeraChessSelfPlay::Mode::Material)
             config.randomOpeningPlies = 0;
+
+        ValidateConfig(config);
 
         std::ostream& log = std::cout;
         const auto started = std::chrono::steady_clock::now();

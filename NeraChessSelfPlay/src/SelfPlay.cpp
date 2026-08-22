@@ -487,6 +487,7 @@ namespace NeraChessSelfPlay
 
         DuplicateFilter duplicates(config.deduplicationBits);
         std::atomic<bool> wantMore{ true };
+        std::atomic<bool> starved{ false };
         std::atomic<uint64_t> reportedAt{ 0 };
         std::mutex totalsMutex;
         WorkerTotals combined;
@@ -507,6 +508,12 @@ namespace NeraChessSelfPlay
                 WorkerTotals totals;
                 std::vector<Sample> samples;
 
+                // A configuration that filters out every position would
+                // otherwise spin forever: the target is never reached, so the
+                // loop never exits. Give up instead of running silently.
+                constexpr int MaxEmptyGamesInARow = 1000;
+                int emptyGames = 0;
+
                 while (wantMore.load(std::memory_order_relaxed))
                 {
                     if (config.mode == Mode::Material)
@@ -514,8 +521,21 @@ namespace NeraChessSelfPlay
                     else
                         PlaySearchGame(config, *search, random, duplicates, samples, totals);
 
-                    if (!samples.empty() && !writer.Write(samples))
-                        wantMore.store(false, std::memory_order_relaxed);
+                    if (samples.empty())
+                    {
+                        if (++emptyGames >= MaxEmptyGamesInARow)
+                        {
+                            starved.store(true, std::memory_order_relaxed);
+                            wantMore.store(false, std::memory_order_relaxed);
+                            break;
+                        }
+                    }
+                    else
+                    {
+                        emptyGames = 0;
+                        if (!writer.Write(samples))
+                            wantMore.store(false, std::memory_order_relaxed);
+                    }
 
                     const uint64_t written = writer.Written();
                     if (config.progressInterval > 0 &&
@@ -553,6 +573,15 @@ namespace NeraChessSelfPlay
         if (writer.Failed())
         {
             log << "error: writing " << writer.WritePath() << " failed\n";
+            return 1;
+        }
+
+        if (starved.load())
+        {
+            log << "error: 1000 consecutive games produced no samples, so the "
+                   "target of " << config.targetPositions << " positions cannot be reached.\n"
+                << "Check --max-plies, --random-plies, --max-score, and the "
+                   "--keep-checks/--keep-tactical filters.\n";
             return 1;
         }
 

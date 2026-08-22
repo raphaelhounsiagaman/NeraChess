@@ -1160,8 +1160,51 @@ namespace
             "multithreaded search with a loaded network did not return a legal move");
         search.SetThreadCount(1);
 
+        // A network that fails to load must leave the working one in place. A
+        // mistyped EvalFile used to unload the live network and leave the
+        // engine evaluating every position as zero, with no way back short of
+        // a restart.
+        const auto before = SearchEngine::Evaluate(original);
+        Require(Nnue::Evaluator::Load("nerachess-no-such-network.nnue") !=
+            Nnue::NetworkFormat::Status::Ok,
+            "loading a missing network reported success");
+        Require(NeraChessSearch::Evaluation::IsNetworkLoaded(),
+            "a failed load unloaded the working network");
+        Require(SearchEngine::Evaluate(original) == before,
+            "a failed load changed what the working network evaluates");
+
+        // The same must hold for a file that exists but is not a network.
+        const std::filesystem::path corrupt =
+            std::filesystem::temp_directory_path() / "nerachess-corrupt.nnue";
+        {
+            std::ofstream stream(corrupt, std::ios::binary | std::ios::trunc);
+            stream << "this is not a network";
+        }
+        Require(Nnue::Evaluator::Load(corrupt) != Nnue::NetworkFormat::Status::Ok,
+            "loading a corrupt network reported success");
+        Require(NeraChessSearch::Evaluation::IsNetworkLoaded() &&
+            SearchEngine::Evaluate(original) == before,
+            "a corrupt network replaced the working one");
+        RemoveNetworkFile(corrupt);
+
         Nnue::Evaluator::Unload();
         RemoveNetworkFile(networkPath);
+    }
+
+    // Set by --eval-file. TestNnueEvaluation ends by unloading the synthetic
+    // network it installed, so a real network has to be loaded after it and
+    // before the tests that measure what the evaluator actually chooses.
+    std::filesystem::path g_EvalFilePath;
+
+    void LoadRequestedNetwork()
+    {
+        if (g_EvalFilePath.empty())
+            return;
+
+        std::string message;
+        if (!NeraChessSearch::Evaluation::LoadNetwork(g_EvalFilePath, message))
+            throw std::runtime_error("--eval-file " + g_EvalFilePath.string() + ": " + message);
+        std::cout << "Loaded " << g_EvalFilePath << ": " << message << '\n';
     }
 
     void TestSearchChoices()
@@ -1172,10 +1215,15 @@ namespace
         // anything once a trained network exists. Until then the search has
         // nothing positional to reason about and the expected moves are
         // arbitrary.
+        //
+        // Run with --eval-file to point this at a real network; CI runs the
+        // shipped one so these assertions cover what actually ships rather
+        // than only the synthetic weights the format tests use.
         if (!Evaluation::IsNetworkLoaded())
         {
             std::cout << "Skipping strategic and tactical search choices: "
-                      << "no NNUE network is loaded.\n";
+                      << "no NNUE network is loaded.\n"
+                      << "Pass --eval-file <network.nnue> to run them.\n";
             return;
         }
 
@@ -1641,6 +1689,15 @@ int main(int argc, char** argv)
                 : 0x9E3779B97F4A7C15ull;
             return WriteRandomNetwork(argv[2], seed);
         }
+        if (argc >= 2 && std::string_view(argv[1]) == "--eval-file")
+        {
+            if (argc < 3)
+            {
+                std::cerr << "--eval-file needs a path to a .nnue network\n";
+                return 2;
+            }
+            g_EvalFilePath = argv[2];
+        }
 
         TestFenValidation();
         TestPerft();
@@ -1661,6 +1718,7 @@ int main(int argc, char** argv)
         TestNnueAccumulatorUpdates();
         TestNnueAccumulatorStack();
         TestNnueEvaluation();
+        LoadRequestedNetwork();
         TestSearchChoices();
         TestSliderAttackLookups();
         TestStaticExchangeEvaluation();

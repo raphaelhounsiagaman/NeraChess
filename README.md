@@ -10,19 +10,14 @@ NeraChess is a C++23 chess engine, UCI executable, and SDL2/Dear ImGui desktop a
 
 ![NeraChess desktop application](assets/screenshots/NeraChessUIStartingPosition.png)
 
-> **NeraChess has migrated to NNUE.** The hand-crafted evaluation is gone,
-> replaced by a trained network. Positions come from NeraChess's own play; the
-> evaluations they are labelled with come from Stockfish. No engine code is
-> copied, derived from, or linked against — Stockfish is run as a separate
-> program and asked for a number, the way a human analyst would. A trained
-> network ships in
+> **NeraChess evaluates with a trained NNUE network.** The hand-crafted
+> evaluation is gone. A network ships in
 > `NeraChessApp/Resources/NNUE/nera.nnue`, so a fresh clone plays out of the
-> box. Over 1000 games at `10+0.1` with the search held identical on both
-> sides, the network measured **+25.8 Elo** against the hand-crafted
-> evaluation it replaced (95% interval [+7.1, +44.6]); see
-> [docs/NNUE_PROGRESS.md](docs/NNUE_PROGRESS.md). See
-> [docs/NNUE.md](docs/NNUE.md) for the architecture and
-> [docs/TRAINING.md](docs/TRAINING.md) for training a stronger one.
+> box. What it is, where its data came from, how it was promoted, and what
+> about it is not reproducible are all recorded in
+> [docs/MODEL_CARD.md](docs/MODEL_CARD.md) — the one place that describes the
+> shipped network. See [docs/NNUE.md](docs/NNUE.md) for the architecture and
+> [docs/TRAINING.md](docs/TRAINING.md) for training your own.
 
 At engine commit `212e012`, a 300-game paired-opening tournament estimated
 NeraChess at **2627 Stockfish 18 UCI-Elo-equivalent** at `10+0.1`, with a
@@ -86,9 +81,8 @@ been removed.
   UCI engine and the desktop bot
 - PyTorch training pipeline in [`NNUETraining`](NNUETraining/README.md), checked
   against the engine position by position
-- Positions from NeraChess's own play, labelled with Stockfish evaluations.
-  No engine code is copied or linked; Stockfish is an external process that is
-  asked for a score
+- Training data and lineage for the shipped network: see
+  [docs/MODEL_CARD.md](docs/MODEL_CARD.md)
 
 The classical terms — tapered piece-square tables, pawn structure, mobility, and
 king safety — were removed in favour of the network, which learns them from
@@ -114,8 +108,12 @@ The goal of this structure is separation of concerns rather than extreme abstrac
 - `NeraChessTests`: headless perft, state, search, NNUE, book, and benchmark coverage
 - `NNUETraining`: Python and PyTorch pipeline that produces the network the engine loads
 
-`NeraChessSearch` reaches the network through a small facade, so search code
-never includes NNUE headers directly.
+`NeraChessSearch` reaches the network through the `Evaluation` facade, which
+owns network loading and scoring. The boundary is partial rather than complete:
+`SearchEngine` holds a per-worker `AccumulatorStack` and a `Network` pointer,
+so its public header does include NNUE types. Making those opaque is on the
+list; the facade currently buys one place to change how a position is scored,
+not full insulation from the evaluator.
 
 ---
 
@@ -292,8 +290,16 @@ management, and the full opening-book index:
 ./bin/Release/NeraChessTests/NeraChessTests
 ```
 
-Tests that measure evaluation quality skip themselves while no network is
-loaded, and say so.
+Tests that measure evaluation quality need a network. Point the suite at one
+with `--eval-file`, which is how CI runs it, so the assertions cover the
+network that actually ships:
+
+```sh
+./bin/Release/NeraChessTests/NeraChessTests --eval-file NeraChessApp/Resources/NNUE/nera.nnue
+```
+
+Without that flag those tests skip themselves and say so. A network that fails
+to load is a test failure rather than a skip.
 
 The NNUE training pipeline has its own suite, which needs no dependencies:
 
@@ -339,10 +345,9 @@ engine pick it up at startup.
 
 ## Training a network
 
-Networks are trained on positions from NeraChess's own play, labelled with
-Stockfish evaluations. No engine code is copied or linked against. One command
-runs the whole loop -- material bootstrap, then generate, train, and verify for
-each generation:
+The checked-in pipeline trains on positions from NeraChess's own play, labelled
+with its own search. One command runs the whole loop — material bootstrap, then
+generate, train, and verify for each generation:
 
 ```sh
 python3 NNUETraining/scripts/pipeline.py --workdir runs/first --generations 5
@@ -357,9 +362,9 @@ the result — and [docs/NNUE.md](docs/NNUE.md) for the architecture.
 ## Known Limitations
 
 - The shipped network is an early one and plays far below the calibrated
-  strength quoted above, which was measured with the hand-crafted evaluation
-  this branch removed. Training a stronger one is a matter of running more
-  generations at greater depth.
+  strength quoted above, which was measured with the hand-crafted evaluation it
+  replaced. Training a stronger one is a matter of running more generations at
+  greater depth.
 - x86 builds use a vectorized accumulator but a scalar output layer unless AVX2
   is enabled at compile time.
 - Search performance and calibrated strength depend on hardware, thread count, and time control.

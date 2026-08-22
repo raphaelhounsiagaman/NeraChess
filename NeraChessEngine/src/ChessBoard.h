@@ -45,8 +45,6 @@ namespace NeraChessEngine
 	    ChessBoard(const std::string& fen = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1");
 	    ~ChessBoard() = default;
 
-        static void RunPerformanceTest(ChessBoard& board, int calcDepth = 1);
-
         MoveList<218> GetLegalMoves() const;
 
         void MakeMove(Move move, bool gameMove = false);

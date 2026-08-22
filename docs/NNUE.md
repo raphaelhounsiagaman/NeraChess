@@ -1,8 +1,7 @@
 # NNUE
 
-This document describes the NNUE evaluation being built on this branch: the
-architecture, the pieces that exist, the pieces that do not, and the order they
-should be built in.
+This document describes the NNUE evaluation the engine uses: the architecture,
+the format, how the engine reaches it, and how a network is trained.
 
 > **Status.** Inference and the self-play training loop both work end to end,
 > and a trained network ships at `NeraChessApp/Resources/NNUE/nera.nnue`, so a
@@ -100,11 +99,13 @@ and `test_mirrored_positions_produce_mirrored_features` in the Python one.
 ### `NeraChessSelfPlay` — training data
 
 Generates the positions used for training, by playing games against itself.
-The evaluations those positions are labelled with may come from this search or
-from Stockfish; see `experiments/sflabel.py` for the latter.
 `--mode material` labels random play with material balance to bootstrap
 generation 0; the default mode plays games with a network and labels them with
 search scores and results.
+
+The shipped network's positions were labelled with Stockfish instead. That tool
+is not in this repository; [MODEL_CARD.md](MODEL_CARD.md) records what is and
+is not reproducible as a result.
 
 ### `NNUETraining` — training
 
@@ -112,10 +113,17 @@ See [`NNUETraining/README.md`](../NNUETraining/README.md).
 
 ### How the engine reaches it
 
-`NeraChessSearch::Evaluation` is a facade: search never includes NNUE headers
-directly, so swapping or wrapping the evaluator touches one file. `SearchEngine`
+`NeraChessSearch::Evaluation` is the facade: it owns network loading and
+scoring, so changing how a position is scored touches one file. `SearchEngine`
 owns a per-worker `AccumulatorStack` that is pushed and popped alongside the
 board's make/unmake.
+
+The insulation is partial, and it is worth being precise about where it stops.
+`SearchEngine.h` includes `Accumulator.h` and `Network.h` and holds both types
+as members, and `Evaluation.h` takes an `Accumulator&` in its hot overload, so
+NNUE types do appear in search's public headers. Closing that gap means opaque
+handles or dependency injection; until then, "facade" describes one place to
+change the evaluator, not a search layer that could compile without NNUE.
 
 ---
 
@@ -427,10 +435,17 @@ refreshes over the same move tree:
 Run it on a Release build; Debug enables `NNUE_VERIFY_ACCUMULATOR`, whose
 refresh-per-evaluation makes the comparison meaningless.
 
-Tests that measure evaluation quality — `TestSearchChoices` — skip themselves
-while no network is loaded and print that they did. The test binary does not
-load the shipped network, and the shipped network does not yet pass those
-benchmarks anyway; they are waiting on a stronger one.
+Tests that measure evaluation quality — `TestSearchChoices` — need a loaded
+network. Pass `--eval-file` to give the suite one:
+
+```sh
+./bin/Release/NeraChessTests/NeraChessTests --eval-file NeraChessApp/Resources/NNUE/nera.nnue
+```
+
+CI runs it that way on Linux, on the AVX2 build, and on macOS, so those
+assertions cover the shipped network rather than only the synthetic weights
+the format tests use. Without the flag they skip themselves and print that they
+did; a network that fails to load is a test failure, not a skip.
 
 To compare two networks head to head:
 

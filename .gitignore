@@ -38,3 +38,6 @@ __pycache__/
 venv/
 *.egg-info/
 .ruff_cache/
+# python -m build output
+NNUETraining/build/
+NNUETraining/dist/

@@ -79,6 +79,8 @@ namespace NeraChessNNUE::NetworkFormat
         case Status::ArchitectureMismatch: return "network file was trained for a different architecture";
         case Status::TruncatedPayload:     return "network file is truncated";
         case Status::ChecksumMismatch:     return "network file failed its checksum";
+        case Status::NotLoaded:            return "no network is loaded to save";
+        case Status::WriteFailed:          return "network file could not be written";
         }
         return "unknown network error";
     }

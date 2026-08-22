@@ -1,10 +1,14 @@
 #!/usr/bin/env python3
 """Runs the self-play training loop end to end.
 
-No external engine is involved at any point. Generation 0 is trained on the
+No external engine is involved in *this* loop: generation 0 is trained on the
 material balance of random play, which is enough to make the engine play
-non-random chess; every generation after that trains on games the previous
-generation played.
+non-random chess, and every generation after that trains on games the previous
+generation played, labelled with its own search.
+
+That is not how the shipped network was labelled -- see docs/MODEL_CARD.md.
+Self-play labelling has a ceiling, because a network trained on its own search
+can only chase itself; generation 42 is roughly where it stopped improving.
 
     python3 scripts/pipeline.py --workdir runs/first --generations 5
 
@@ -88,19 +92,22 @@ class Pipeline:
         if output.exists() and not self.args.force:
             print(f"reusing {output}")
             return
+        budget = (["--nodes", str(self.args.nodes)] if self.args.nodes
+                  else ["--depth", str(self.args.depth)])
         run(
             [
                 str(self.args.selfplay),
                 "--network", str(self.network(generation - 1)),
                 "--output", str(output),
                 "--positions", str(self.args.positions),
-                "--depth", str(self.args.depth),
+                *budget,
                 "--threads", str(self.args.threads),
                 "--hash", str(self.args.hash_megabytes),
                 "--seed", str(self.args.seed + generation),
                 "--quiet",
             ],
-            f"generation {generation} data (self-play with gen{generation - 1})",
+            f"generation {generation} data (self-play with gen{generation - 1})"
+            f" at {'nodes ' + str(self.args.nodes) if self.args.nodes else 'depth ' + str(self.args.depth)}",
         )
 
     def train(self, generation: int) -> None:
@@ -228,8 +235,15 @@ def parse_arguments(argv: list[str] | None = None) -> argparse.Namespace:
                         help="material-labelled positions for generation 0")
     parser.add_argument("--positions", type=int, default=2_000_000,
                         help="self-play positions per generation")
-    parser.add_argument("--depth", type=int, default=6,
+    # Mutually exclusive: NeraChessSelfPlay lets --nodes override --depth, and
+    # a run that passed both would record a depth it did not use.
+    budget = parser.add_mutually_exclusive_group()
+    budget.add_argument("--depth", type=int, default=6,
                         help="search depth per self-play move")
+    budget.add_argument("--nodes", type=int, default=None,
+                        help="node budget per self-play move instead of a depth; "
+                             "makes the work per move predictable regardless of "
+                             "how sharp the position is")
     parser.add_argument("--threads", type=int, default=0,
                         help="parallel game workers, 0 for all hardware threads")
     parser.add_argument("--hash-megabytes", type=int, default=16)

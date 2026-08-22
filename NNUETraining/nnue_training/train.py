@@ -50,8 +50,8 @@ class TrainConfig:
     init_from: Path | None = None
 
     #: Read the pack off disk instead of into memory. None decides by size:
-    #: a pack that would not comfortably fit is mapped. Loading 340M positions
-    #: would need 30GB on a machine with seven.
+    #: a pack that would not comfortably fit is mapped. A pack large enough to
+    #: need this runs to tens of gigabytes on a machine with seven.
     memmap: bool | None = None
 
     device: str = "cpu"

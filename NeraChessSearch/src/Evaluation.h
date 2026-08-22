@@ -9,14 +9,15 @@
 
 // Search-facing evaluation facade.
 //
-// The hand-crafted evaluation -- tapered piece-square tables, mobility, pawn
-// structure, and king safety -- was removed when this branch started, and all
-// positional judgement now comes from the NNUE network in NeraChessNNUE.
-// Until a trained network exists, Evaluate returns a constant, so the engine
-// on this branch plays no better than its search alone. See docs/NNUE.md.
+// All positional judgement comes from the NNUE network in NeraChessNNUE;
+// there is no hand-crafted evaluation. With no network loaded Evaluate
+// returns a constant, so the engine plays no better than its search alone.
+// See docs/NNUE.md.
 //
-// This header exists so that search never includes NNUE internals directly:
-// only the facade knows which evaluator is in use.
+// This header is where the choice of evaluator lives, so changing how a
+// position is scored touches one file. It is not a complete boundary:
+// the accumulator overload below takes an NNUE type, and SearchEngine holds
+// an AccumulatorStack and a Network pointer in its own header.
 
 namespace NeraChessSearch::Evaluation
 {

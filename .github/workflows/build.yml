@@ -64,7 +64,11 @@ jobs:
 
       - name: Run release regressions and UCI smoke test
         run: |
-          ./bin/Release/NeraChessTests/NeraChessTests
+          # --eval-file loads the network that actually ships, so the
+          # strategic and tactical choice tests run instead of skipping
+          # themselves. Without it they are dead in every CI run.
+          ./bin/Release/NeraChessTests/NeraChessTests \
+            --eval-file NeraChessApp/Resources/NNUE/nera.nnue
           uci_output="$(printf 'uci\nisready\nposition startpos\ngo depth 3 wtime 60000 btime 60000 winc 1000 binc 1000 movestogo 30\n' | ./bin/Release/NeraChessUCI/NeraChessUCI)"
           printf '%s\n' "$uci_output"
           grep -q '^uciok$' <<< "$uci_output"
@@ -125,7 +129,8 @@ jobs:
           make -C NeraChessNNUE config=release -B -j"$jobs" CXXFLAGS="-mavx2"
           make -C NeraChessSearch config=release -B -j"$jobs" CXXFLAGS="-mavx2"
           make -C NeraChessTests config=release -B -j"$jobs" CXXFLAGS="-mavx2"
-          ./bin/Release/NeraChessTests/NeraChessTests
+          ./bin/Release/NeraChessTests/NeraChessTests \
+            --eval-file NeraChessApp/Resources/NNUE/nera.nnue
 
       - name: Build and run sanitized regressions
         run: |
@@ -178,7 +183,9 @@ jobs:
           ./bin/Release/NeraChessApp/NeraChessApp --clock-smoke-test
 
       - name: Run engine regression tests
-        run: ./bin/Release/NeraChessTests/NeraChessTests
+        run: |
+          ./bin/Release/NeraChessTests/NeraChessTests \
+            --eval-file NeraChessApp/Resources/NNUE/nera.nnue
 
       - name: Run UCI protocol smoke test
         run: |
