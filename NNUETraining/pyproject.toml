@@ -1,5 +1,5 @@
 [build-system]
-requires = ["setuptools>=68"]
+requires = ["setuptools>=77"]
 build-backend = "setuptools.build_meta"
 
 [project]
@@ -8,7 +8,10 @@ version = "0.1.0"
 description = "Training pipeline for the NeraChess NNUE evaluation network"
 readme = "README.md"
 requires-python = ">=3.10"
-license = { file = "../LICENSE" }
+# An SPDX expression rather than a path: setuptools refuses to read a license
+# file outside the project root, and the repository's LICENSE lives one level
+# up. The TOML-table form this replaces is also deprecated.
+license = "MIT"
 authors = [{ name = "Raphael Hounsiagaman" }]
 
 # Deliberately empty. Reading, writing, and verifying a network needs only the
