@@ -313,6 +313,11 @@ are also available:
 `--thread-bench` is a quick, scheduling-sensitive scaling diagnostic rather
 than a reproducible Elo measurement.
 
+Playing-strength changes are tested separately with paired Fastchess matches
+and SPRT on a controlled self-hosted runner. See
+[docs/Strength-Testing.md](docs/Strength-Testing.md) for the host setup, manual
+GitHub Actions workflow, test interpretation, and local commands.
+
 The NNUE accumulator has its own benchmark, comparing incremental updates
 against full refreshes over the same move tree:
 
