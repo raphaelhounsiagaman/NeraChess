@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import struct
 import tempfile
 import unittest
 from pathlib import Path
@@ -20,6 +21,17 @@ class ParsingTest(unittest.TestCase):
         self.assertEqual(sample.fen, START)
         self.assertEqual(sample.score, 25.0)
         self.assertEqual(sample.result, 0.5)
+
+    def test_rejects_a_non_finite_score(self) -> None:
+        # float() accepts these; a single one ruins every batch it lands in.
+        for text in ("nan", "inf", "-inf"):
+            with self.assertRaises(ValueError):
+                data.parse_line(f"{START} | {text} | 0.5", 1, "test")
+
+    def test_rejects_a_non_finite_result(self) -> None:
+        for text in ("nan", "inf"):
+            with self.assertRaises(ValueError):
+                data.parse_line(f"{START} | 25 | {text}", 1, "test")
 
     def test_skips_blank_lines_and_comments(self) -> None:
         self.assertIsNone(data.parse_line("", 1, "test"))
@@ -204,6 +216,77 @@ class FeatureCacheTest(unittest.TestCase):
             cache = data.FeatureCache.from_text(path)
         self.assertEqual(len(cache), 2)
         self.assertEqual(list(cache.scores), [25.0, -40.0])
+
+
+class CorruptPackTest(unittest.TestCase):
+    """A corrupt pack must be refused, not trained on.
+
+    Every case here used to load without complaint on at least one of the two
+    read paths, which is how a truncated or mislabelled file became a network
+    that trained smoothly and played badly.
+    """
+
+    def packed(self, directory: str) -> Path:
+        cache = data.FeatureCache.from_samples(
+            [
+                data.Sample(fen=START, score=25.0, result=1.0),
+                data.Sample(fen=ENDGAME, score=-40.0, result=0.0),
+            ]
+        )
+        path = Path(directory) / "samples.pack"
+        cache.save(path)
+        return path
+
+    def assertBothReadersReject(self, path: Path) -> None:
+        with self.assertRaises(ValueError):
+            data.FeatureCache.load(path)
+        try:
+            import numpy  # noqa: F401
+        except ImportError:
+            self.skipTest("numpy is not installed, so the memmap reader cannot run")
+        with self.assertRaises(ValueError):
+            data.MemmapFeatureCache(path)
+
+    def test_rejects_a_truncated_payload(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            path = self.packed(directory)
+            raw = path.read_bytes()
+            path.write_bytes(raw[: len(raw) - 4])
+            self.assertBothReadersReject(path)
+
+    def test_rejects_trailing_bytes(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            path = self.packed(directory)
+            with path.open("ab") as handle:
+                handle.write(b"\0\0\0\0")
+            self.assertBothReadersReject(path)
+
+    def test_rejects_a_header_that_disagrees_about_the_sample_count(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            path = self.packed(directory)
+            raw = bytearray(path.read_bytes())
+            # The declared sample count sits just past the magic and version.
+            start = len(data.PACK_MAGIC) + 4
+            raw[start : start + 8] = struct.pack("<Q", 99)
+            path.write_bytes(bytes(raw))
+            self.assertBothReadersReject(path)
+
+    def test_rejects_non_monotonic_offsets(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            path = self.packed(directory)
+            raw = bytearray(path.read_bytes())
+            # Header, then own_indices, then own_offsets. Walk the declared
+            # lengths rather than hard-coding a byte position.
+            cursor = len(data.PACK_MAGIC) + 4 + 8
+            counts = []
+            for _ in data.FeatureCache._ARRAYS:
+                counts.append(struct.unpack_from("<Q", raw, cursor)[0])
+                cursor += 8
+            cursor += counts[0] * 2  # own_indices, uint16
+            # Make the final own_offsets entry go backwards.
+            struct.pack_into("<I", raw, cursor + (counts[1] - 1) * 4, 0)
+            path.write_bytes(bytes(raw))
+            self.assertBothReadersReject(path)
 
 
 if __name__ == "__main__":

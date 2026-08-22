@@ -16,6 +16,7 @@ persist them in a packed binary form.
 
 from __future__ import annotations
 
+import math
 import random
 import struct
 import sys
@@ -59,6 +60,14 @@ def parse_line(line: str, line_number: int, source: str) -> Sample | None:
         parsed_result = float(result)
     except ValueError as error:
         raise ValueError(f"{source}:{line_number}: {error}") from error
+
+    # float() happily accepts 'nan' and 'inf'. Either one poisons the loss for
+    # the whole batch it lands in, and the resulting network is ruined in a way
+    # that looks like a training-rate problem rather than a bad sample.
+    if not math.isfinite(parsed_score):
+        raise ValueError(f"{source}:{line_number}: score {score!r} is not finite")
+    if not math.isfinite(parsed_result):
+        raise ValueError(f"{source}:{line_number}: result {result!r} is not finite")
 
     if not 0.0 <= parsed_result <= 1.0:
         raise ValueError(
@@ -168,6 +177,74 @@ class FeatureCache:
         ("results", "f"),
     )
 
+    @classmethod
+    def _read_header(cls, handle, path) -> tuple[int, list[int]]:
+        """Reads and validates a pack header, shared by both load paths.
+
+        Both readers used to trust the header to different degrees, so a file
+        one rejected the other would happily train on. Everything that can be
+        checked before touching the payload is checked here, once.
+        """
+
+        def exact(size: int, what: str) -> bytes:
+            chunk = handle.read(size)
+            if len(chunk) != size:
+                raise ValueError(
+                    f"{path} is truncated: wanted {size} bytes of {what}, "
+                    f"got {len(chunk)}"
+                )
+            return chunk
+
+        if exact(len(PACK_MAGIC), "magic") != PACK_MAGIC:
+            raise ValueError(f"{path} is not a packed NeraChess dataset")
+        (version,) = struct.unpack("<I", exact(4, "version"))
+        if version != PACK_VERSION:
+            raise ValueError(
+                f"{path} uses pack version {version}, expected {PACK_VERSION}"
+            )
+        (sample_count,) = struct.unpack("<Q", exact(8, "sample count"))
+        counts = [
+            struct.unpack("<Q", exact(8, f"{name} length"))[0]
+            for name, _ in cls._ARRAYS
+        ]
+
+        # The declared sample count is the authority; every array length is a
+        # function of it. A pack whose arrays disagree is corrupt, and training
+        # on it silently pairs positions with other positions' labels.
+        by_name = dict(zip((name for name, _ in cls._ARRAYS), counts))
+        for name in ("scores", "results"):
+            if by_name[name] != sample_count:
+                raise ValueError(
+                    f"{path} declares {sample_count} samples but holds "
+                    f"{by_name[name]} {name}"
+                )
+        for name in ("own_offsets", "their_offsets"):
+            if by_name[name] != sample_count + 1:
+                raise ValueError(
+                    f"{path} declares {sample_count} samples, so {name} must "
+                    f"hold {sample_count + 1} entries, not {by_name[name]}"
+                )
+        return sample_count, counts
+
+    @staticmethod
+    def _validate_offsets(path, offsets, indices_length: int, name: str) -> None:
+        """Offsets must start at zero, never go backwards, and end at the end."""
+        if len(offsets) == 0:
+            raise ValueError(f"{path}: {name} is empty")
+        if offsets[0] != 0:
+            raise ValueError(f"{path}: {name} starts at {offsets[0]}, not 0")
+        if offsets[-1] != indices_length:
+            raise ValueError(
+                f"{path}: {name} ends at {offsets[-1]} but its index array "
+                f"holds {indices_length} entries"
+            )
+        for position in range(1, len(offsets)):
+            if offsets[position] < offsets[position - 1]:
+                raise ValueError(
+                    f"{path}: {name} decreases at entry {position} "
+                    f"({offsets[position - 1]} -> {offsets[position]})"
+                )
+
     def save(self, path: str | Path) -> Path:
         """Writes the cache so a later run skips parsing entirely."""
         destination = Path(path)
@@ -191,22 +268,34 @@ class FeatureCache:
     def load(cls, path: str | Path) -> "FeatureCache":
         cache = cls()
         with Path(path).open("rb") as handle:
-            if handle.read(len(PACK_MAGIC)) != PACK_MAGIC:
-                raise ValueError(f"{path} is not a packed NeraChess dataset")
-            (version,) = struct.unpack("<I", handle.read(4))
-            if version != PACK_VERSION:
-                raise ValueError(
-                    f"{path} uses pack version {version}, expected {PACK_VERSION}"
-                )
-            handle.read(8)  # sample count, implied by the array lengths
+            _, counts = cls._read_header(handle, path)
 
-            counts = [struct.unpack("<Q", handle.read(8))[0] for _ in cls._ARRAYS]
             for (name, typecode), count in zip(cls._ARRAYS, counts):
                 values = array(typecode)
-                values.fromfile(handle, count)
+                try:
+                    values.fromfile(handle, count)
+                except EOFError as error:
+                    # array.fromfile leaves the partial read in place, so the
+                    # bare EOFError says nothing about which array ran out.
+                    raise ValueError(
+                        f"{path} is truncated inside {name}: wanted {count} "
+                        f"entries, got {len(values)}"
+                    ) from error
                 if sys.byteorder != "little":
                     values.byteswap()
                 setattr(cache, name, values)
+
+            if handle.read(1):
+                raise ValueError(
+                    f"{path} has trailing bytes; the header and the file "
+                    "disagree about its contents"
+                )
+
+        for offsets, indices, name in (
+            (cache.own_offsets, cache.own_indices, "own_offsets"),
+            (cache.their_offsets, cache.their_indices, "their_offsets"),
+        ):
+            cls._validate_offsets(path, offsets, len(indices), name)
         return cache
 
     # -- batching ---------------------------------------------------------
@@ -407,18 +496,7 @@ class MemmapFeatureCache:
 
         self._path = Path(path)
         with self._path.open("rb") as handle:
-            if handle.read(len(PACK_MAGIC)) != PACK_MAGIC:
-                raise ValueError(f"{path} is not a packed NeraChess dataset")
-            (version,) = struct.unpack("<I", handle.read(4))
-            if version != PACK_VERSION:
-                raise ValueError(
-                    f"{path} uses pack version {version}, expected {PACK_VERSION}"
-                )
-            (self._length,) = struct.unpack("<Q", handle.read(8))
-            counts = [
-                struct.unpack("<Q", handle.read(8))[0]
-                for _ in FeatureCache._ARRAYS
-            ]
+            self._length, counts = FeatureCache._read_header(handle, path)
             offset = handle.tell()
 
         expected = self._path.stat().st_size
@@ -437,6 +515,26 @@ class MemmapFeatureCache:
                 f"{path} has {expected - offset} trailing bytes; the header and "
                 "the file disagree about its contents"
             )
+
+        # Offsets are validated on the mapped arrays rather than read back into
+        # memory: numpy checks the whole thing without paging in the indices.
+        for offsets_name, indices_name in (
+            ("own_offsets", "own_indices"),
+            ("their_offsets", "their_indices"),
+        ):
+            offsets = self._arrays[offsets_name]
+            indices_length = len(self._arrays[indices_name])
+            if offsets[0] != 0:
+                raise ValueError(
+                    f"{path}: {offsets_name} starts at {offsets[0]}, not 0"
+                )
+            if offsets[-1] != indices_length:
+                raise ValueError(
+                    f"{path}: {offsets_name} ends at {offsets[-1]} but its "
+                    f"index array holds {indices_length} entries"
+                )
+            if np.any(np.diff(offsets.astype(np.int64)) < 0):
+                raise ValueError(f"{path}: {offsets_name} is not monotonic")
 
         for name in self._arrays:
             setattr(self, name, self._arrays[name])
