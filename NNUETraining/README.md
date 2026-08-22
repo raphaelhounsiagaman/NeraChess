@@ -125,31 +125,14 @@ view, and `result` is the game result from the same point of view (`1.0` win,
 
 ## Getting training data
 
-Positions always come from self-play. What labels them has changed: the
-pipeline in this directory labels them with NeraChess's own search, and that is
-what the rest of this section describes. The network that ships is labelled
-with Stockfish instead, by a tool that is not in this repository — see
-[`../docs/MODEL_CARD.md`](../docs/MODEL_CARD.md).
+Nothing in this repository produces it. Positions come from NeraChess's own
+play and their labels come from Stockfish, both by tooling that is not in this
+tree — see [`../docs/MODEL_CARD.md`](../docs/MODEL_CARD.md) for the shipped
+network's lineage and for what about it is not reproducible from here.
 
-The bootstrapping problem (training needs search scores, search needs an
-evaluation, the evaluation is the network) is broken with one piece of injected
-knowledge: piece values, the same ones the move ordering already uses. Even
-that lives in the data rather than in the engine. `NeraChessSelfPlay --mode
-material` labels random play with material balance, which trains a
-generation-0 network; every generation after that trains on the previous one's
-games.
+The sample format above is the entire interface. Anything that can write those
+lines can feed this trainer.
 
-The whole loop is one command:
-
-```bash
-.venv/bin/python scripts/pipeline.py --workdir runs/first --generations 5
-```
-
-Generation is written in C++ rather than here, because it needs legal move
-generation, game-over detection, and a search per move — all of which the
-engine already has, at roughly a hundred times the throughput a Python driver
-plus a UCI round-trip per move would manage.
-
-[`../docs/TRAINING.md`](../docs/TRAINING.md) is the full walkthrough: running on
-a Linux server, choosing parameters, checking whether a generation actually
-improved, and installing the network so the engine plays with it.
+[`../docs/TRAINING.md`](../docs/TRAINING.md) is the full walkthrough: training,
+verifying, checking whether a new network actually improved, and installing it
+so the engine plays with it.

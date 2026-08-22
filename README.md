@@ -86,9 +86,9 @@ been removed.
 
 The classical terms — tapered piece-square tables, pawn structure, mobility, and
 king safety — were removed in favour of the network, which learns them from
-labelled positions instead: after a single generation of pure self-play the
-network already valued a centralized knight over a rim knight and an advanced
-pawn over a home one, with no such term written anywhere.
+labelled positions instead: after a single generation the network already
+valued a centralized knight over a rim knight and an advanced pawn over a home
+one, with no such term written anywhere.
 See [docs/NNUE.md](docs/NNUE.md).
 
 ---
@@ -104,9 +104,8 @@ The goal of this structure is separation of concerns rather than extreme abstrac
 - `NeraChessSearch`: search, transposition table, time management, opening book, and the evaluation facade
 - `NeraChessUCI`: headless asynchronous UCI protocol adapter
 - `NeraChessApp`: SDL/ImGui desktop application and chess-player adapters
-- `NeraChessSelfPlay`: self-play generator that produces NNUE training data
 - `NeraChessTests`: headless perft, state, search, NNUE, book, and benchmark coverage
-- `NNUETraining`: Python and PyTorch pipeline that produces the network the engine loads
+- `NNUETraining`: Python and PyTorch trainer that turns labelled positions into the network the engine loads
 
 `NeraChessSearch` reaches the network through the `Evaluation` facade, which
 owns network loading and scoring. The boundary is partial rather than complete:
@@ -261,7 +260,6 @@ make -C NeraChessEngine config=release
 make -C NeraChessNNUE config=release
 make -C NeraChessSearch config=release
 make -C NeraChessUCI config=release
-make -C NeraChessSelfPlay config=release
 make -C NeraChessTests config=release
 ./bin/Release/NeraChessTests/NeraChessTests
 ./bin/Release/NeraChessUCI/NeraChessUCI
@@ -345,17 +343,19 @@ engine pick it up at startup.
 
 ## Training a network
 
-The checked-in pipeline trains on positions from NeraChess's own play, labelled
-with its own search. One command runs the whole loop — material bootstrap, then
-generate, train, and verify for each generation:
+Training data is not produced here — positions and labels both come from
+tooling outside this repository, as [docs/MODEL_CARD.md](docs/MODEL_CARD.md)
+records. What this tree does is turn a file of labelled positions into a
+network and prove the engine evaluates it exactly as the trainer does:
 
 ```sh
-python3 NNUETraining/scripts/pipeline.py --workdir runs/first --generations 5
+cd NNUETraining && python3 -m nnue_training.train --data samples.txt --output net.nnue --epochs 20
+python3 -m nnue_training.verify --network net.nnue --engine ../bin/Release/NeraChessUCI/NeraChessUCI
 ```
 
-See [docs/TRAINING.md](docs/TRAINING.md) for the full walkthrough — running on
-a Linux server, choosing parameters, A/B testing a generation, and installing
-the result — and [docs/NNUE.md](docs/NNUE.md) for the architecture.
+See [docs/TRAINING.md](docs/TRAINING.md) for the full walkthrough — choosing
+parameters, A/B testing a new network, and installing the result — and
+[docs/NNUE.md](docs/NNUE.md) for the architecture.
 
 ---
 

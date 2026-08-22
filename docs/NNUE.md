@@ -3,15 +3,16 @@
 This document describes the NNUE evaluation the engine uses: the architecture,
 the format, how the engine reaches it, and how a network is trained.
 
-> **Status.** Inference and the self-play training loop both work end to end,
-> and a trained network ships at `NeraChessApp/Resources/NNUE/nera.nnue`, so a
-> fresh clone plays out of the box. Positions come from NeraChess's own play;
-> the evaluations they are labelled with come from Stockfish, run as a separate
-> program. No engine code is copied, derived from, or linked against. With the
-> search held identical on both
-> sides it measured +25.8 Elo over 1000 games against the hand-crafted
-> evaluation it replaced; see [NNUE_PROGRESS.md](NNUE_PROGRESS.md). See
-> [Training by self-play](#training-by-self-play) to train a stronger one.
+> **Status.** Inference works end to end and a trained network ships at
+> `NeraChessApp/Resources/NNUE/nera.nnue`, so a fresh clone plays out of the
+> box. Positions come from NeraChess's own play; the evaluations they are
+> labelled with come from Stockfish, run as a separate program. No engine code
+> is copied, derived from, or linked against. Neither step is performed by
+> anything in this repository — see [MODEL_CARD.md](MODEL_CARD.md). With the
+> search held identical on both sides it measured +25.8 Elo over 1000 games
+> against the hand-crafted evaluation it replaced; see
+> [NNUE_PROGRESS.md](NNUE_PROGRESS.md). See [Training](#training) for turning a
+> sample file into a network.
 
 ---
 
@@ -96,16 +97,12 @@ and `test_mirrored_positions_produce_mirrored_features` in the Python one.
 | `SimdOps.h` | Vector primitives: scalar reference plus NEON, SSE2, and AVX2 |
 | `NnueEvaluator.{h,cpp}` | The process-wide network and the engine's entry point |
 
-### `NeraChessSelfPlay` — training data
+### Training data
 
-Generates the positions used for training, by playing games against itself.
-`--mode material` labels random play with material balance to bootstrap
-generation 0; the default mode plays games with a network and labels them with
-search scores and results.
-
-The shipped network's positions were labelled with Stockfish instead. That tool
-is not in this repository; [MODEL_CARD.md](MODEL_CARD.md) records what is and
-is not reproducible as a result.
+Not produced here. Positions and labels both come from tooling outside this
+repository; [MODEL_CARD.md](MODEL_CARD.md) records what is and is not
+reproducible as a result. This tree reads the resulting sample file and trains
+on it.
 
 ### `NNUETraining` — training
 
@@ -177,8 +174,6 @@ shipped network means overwriting that file.
 - **NEON, SSE2, and AVX2 kernels**, each checked bit-for-bit against scalar
 - The PyTorch model, loss, batching, and training loop
 - Quantization and export
-- **Self-play data generation and the training loop**, end to end and with no
-  external engine
 
 ### Not done
 
@@ -187,8 +182,8 @@ shipped network means overwriting that file.
    material, and solves the kiwipete tactic -- but it misses the positional
    benchmark in `TestSearchChoices`, which is why that test still skips itself.
    More generations at greater depth is the whole answer.
-2. **Score calibration.** Self-play training against game results inflates the
-   scale: the shipped network calls a queen roughly +2800 rather than +900.
+2. **Score calibration.** Training against game results inflates the scale: the
+   shipped network calls a queen roughly +2800 rather than +900.
    Move ordering only cares about the ordering, so play is unaffected, but the
    scores a GUI displays are misleading and the search's centipawn-denominated
    pruning margins are effectively tighter than intended.
@@ -197,123 +192,61 @@ shipped network means overwriting that file.
 
 ---
 
-## Training by self-play
+## Training
 
-Self-play alone has a bootstrapping problem: training needs search scores,
-search needs an evaluation, and the evaluation is the network being trained. A
-network trained on its own search can only ever chase itself, and in practice
-it stops improving once it has caught up -- which is what happened here around
-generation 42.
+This repository trains a network from a file of labelled positions. It does not
+produce that file — see [MODEL_CARD.md](MODEL_CARD.md).
 
-Labelling with a stronger external engine removes the ceiling, and is now how
-the shipped network is trained. The self-play bootstrap below is kept because
-it is how the first networks were made, and because it still generates the
-positions; only the scores attached to them changed.
+Samples are plain text, one position per line:
 
-The circle is broken with exactly one piece of injected knowledge — piece
-values, the same ones the move ordering already uses for static exchange
-evaluation — and even that lives in the training data rather than in the
-engine.
+```text
+<fen> | <score> | <result>
+```
 
-### Generation 0: material, learned rather than coded
+`score` is centipawns from the side-to-move point of view; `result` is the game
+result from the same point of view. That format is the entire interface between
+whatever generates data and everything here.
 
-`NeraChessSelfPlay --mode material` plays random legal moves and labels each
-position with its material balance. Training on that yields a network that
-evaluates material and nothing else:
+```bash
+cd NNUETraining && python3 -m nnue_training.train --data samples.txt --output net.nnue --epochs 20
+```
 
-| Position | gen0 evaluation |
-| --- | --- |
-| Start position | -14 |
-| Up a knight | +309 |
-| Up a queen | +877 |
-| Down eight pawns | -778 |
+```bash
+cd NNUETraining && python3 -m nnue_training.verify --network net.nnue --engine ../bin/Release/NeraChessUCI/NeraChessUCI
+```
 
-Accurate to about 25cp, which is all it needs to be. The alternative — putting
-a material evaluation back into C++ — would mean a second evaluation path in
-the engine that has to be removed again later. This way generation 0 is a file
-that gets deleted.
+`verify` is the step that matters: it cross-checks the trainer's reference
+forward pass against the built engine's `eval` output position by position. A
+disagreement means the two do not implement the same network, and no amount of
+training fixes that.
 
-### Generation 1 and beyond: real games
+Training is bound by batch collation in Python rather than by the gradient
+step, so a GPU buys almost nothing at this network size — measured within 15%
+of CPU on Apple MPS. Twenty epochs over 2M positions is roughly five minutes on
+eight cores. Runs are `--seed` reproducible.
 
-`NeraChessSelfPlay` then plays games with the current network, labelling every
-position with the search score and the eventual game result. Training on
-generation 0's games produces a network that has learned things generation 0
-had no concept of:
+See [TRAINING.md](TRAINING.md) for the full walkthrough, including comparing a
+new network against the old one and installing the result.
 
-| Property | gen0 (material) | gen1 (self-play) |
+### What the network learned on its own
+
+Worth recording, because it is the argument for the whole approach. The
+earliest networks were bootstrapped from material balance alone — a generation-0
+network that evaluated material to within about 25cp and knew nothing else.
+Training the next generation on games played by that network produced this:
+
+| Property | gen0 (material only) | gen1 |
 | --- | --- | --- |
 | Centralized knight over a rim knight | +4 | **+68** |
 | Pawn on the seventh over the second | -5 | **+88** |
 
 Nobody told it that knights belong in the centre or that passed pawns want to
 advance. Those are the piece-square terms the hand-crafted evaluation used to
-contain, recovered from self-play alone.
+contain, recovered from the data.
 
-### The three things that decide whether it works
-
-**Adjudication.** A weak network shuffles until the fifty-move rule fires, so
-without it nearly every label is a draw and the data teaches nothing. Games are
-adjudicated as a win when the score stays past `--win-score` for `--win-plies`
-consecutive plies, and as a draw when it stays near zero late in the game. With
-adjudication on, a generation-0 run produces roughly 74% decisive games; without
-it, almost none.
-
-**Opening variety.** A deterministic engine from the start position plays one
-game forever. `--random-plies` plays random legal moves first, and those
-positions are never recorded.
-
-**Filtering.** A score that belongs to a tactic the search is still resolving
-is not a label for the position. Positions in check, positions whose best move
-is a capture or promotion, mate scores, and anything beyond `--max-score` are
-all dropped, along with approximate duplicates.
-
-### Running it
-
-```bash
-python3 NNUETraining/scripts/pipeline.py --workdir runs/first --generations 5
-```
-
-That does everything: material data, generation 0, then self-play, train, and
-verify for each generation. It reuses files that already exist, so an
-interrupted run resumes. `--install NeraChessApp/Resources/NNUE/nera.nnue`
-copies the final network where both binaries will find it.
-
-The stages can be run individually:
-
-```bash
-./bin/Release/NeraChessSelfPlay/NeraChessSelfPlay --mode material --output gen0.txt --positions 1000000
-```
-
-```bash
-./bin/Release/NeraChessSelfPlay/NeraChessSelfPlay --network gen0.nnue --output gen1.txt --positions 2000000 --depth 6
-```
-
-### What it costs
-
-Measured on an 8-core Apple M-series:
-
-| Stage | Rate | For 2M positions |
-| --- | --- | --- |
-| Material labelling | ~850k positions/s | 2 seconds |
-| Self-play, `--depth 4` | ~1600 positions/s | 21 minutes |
-| Self-play, `--nodes 5000` | ~1235 positions/s | 27 minutes |
-| Self-play, `--depth 6` | ~120 positions/s | 4.6 hours |
-| Training, 20 epochs | ~1.5s per 200k per epoch | 5 minutes |
-
-Self-play dominates completely — training is minutes against hours. Depth is
-the expensive knob: two extra plies cost 13x. Prefer `--nodes` for a
-predictable budget per move, and keep the depth low for early generations,
-because position variety matters more than label precision while the network is
-still weak.
-
-Training is bound by batch collation in Python rather than by the gradient
-step, so a GPU buys almost nothing at this network size — measured within 15%
-of CPU on Apple MPS. Spend the hardware on self-play cores instead.
-
-Every stage is `--seed` reproducible.
-
-See [TRAINING.md](TRAINING.md) for the full walkthrough, including running on a
-Linux server and installing the result.
+That bootstrap had a ceiling: a network trained on its own search can only
+chase itself, and it stopped improving around generation 42. Labelling with a
+stronger external engine is what removed the ceiling.
 
 ---
 

@@ -7,8 +7,13 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 NeraChess is a C++23 chess engine, UCI executable, and SDL2/Dear ImGui desktop
 application, plus a Python/PyTorch pipeline that trains its NNUE evaluation
 network. Search and rules code never link against another engine; Stockfish is
-only ever invoked as an external process to label self-play training data, the
-way a human analyst would give a position a score.
+only ever invoked as an external process to label training data, the way a
+human analyst would give a position a score.
+
+Training data — both the positions and their labels — is produced by tooling
+that is **not in this repository**. This tree reads a file of labelled
+positions and trains on it; it does not generate games. See
+`docs/MODEL_CARD.md`.
 
 ## Build (Linux headless engine — no SDL needed)
 
@@ -18,7 +23,6 @@ make -C NeraChessEngine config=release
 make -C NeraChessNNUE config=release
 make -C NeraChessSearch config=release
 make -C NeraChessUCI config=release
-make -C NeraChessSelfPlay config=release
 make -C NeraChessTests config=release
 ```
 
@@ -111,13 +115,10 @@ sideways or up:
 - **`NeraChessApp`** — the desktop bot: `ChessPlayers/` adapters (`Human`,
   `NeraChessBot`, `BotRandom`) plug into layers built on `ApplicationCore`
   (`BoardLayer`, `GameManagerLayer`, `UILayer`, `BackgroundLayer`).
-- **`NeraChessSelfPlay`** — generates NNUE training data by having the engine
-  play itself (`--mode material` for the generation-0 bootstrap using piece
-  values only, since generation 0 has no network yet).
 - **`NeraChessTests`** — single-binary regression + benchmark suite for
   everything above.
-- **`NNUETraining`** — Python/PyTorch pipeline (outside the C++ build) that
-  turns self-play data into a `.nnue` file:
+- **`NNUETraining`** — Python/PyTorch trainer (outside the C++ build) that
+  turns a file of labelled positions into a `.nnue` file:
   - `architecture.py` / `features.py` / `serialize.py` **deliberately mirror**
     `NetworkArchitecture.h` / `FeatureSet.cpp` / `NetworkFormat.h` in C++
     (duplicated because the engine needs them at compile time). This
@@ -128,19 +129,23 @@ sideways or up:
   - Only `model.py`, `loss.py`, `train.py` need PyTorch; everything else
     (format read/write, verification, feature indexing) runs on the standard
     library so it stays testable without a heavyweight install.
-  - `scripts/pipeline.py` runs the full loop (generate → train → verify) per
-    generation; `nnue_training.verify` cross-checks the trainer's reference
-    forward pass against the built engine's `eval` output position by
-    position — a disagreement means the trainer and engine do not implement
-    the same network, and no amount of training fixes that.
+  - `nnue_training.train` trains and exports; `nnue_training.verify`
+    cross-checks the trainer's reference forward pass against the built
+    engine's `eval` output position by position — a disagreement means the
+    trainer and engine do not implement the same network, and no amount of
+    training fixes that. `scripts/match.py` plays two networks against each
+    other, which is the only thing that says whether a new one is better.
 
-## Working with self-play generations
+## Working with network generations
 
 Recent history on `main` is a sequence of commits shipping successive trained
 networks ("Ship generation N of the self-play network") alongside engine
 changes. Generation networks live under `NeraChessApp/Resources/NNUE/`, are
 loaded automatically by both the UCI engine and the desktop app at startup,
 and are read by the `EvalFile` UCI option.
+
+The bar for shipping a network is a match confidence interval that excludes
+zero, not merely a score above 50%.
 
 ## Notes specific to this repo
 

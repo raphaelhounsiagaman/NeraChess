@@ -5,9 +5,9 @@ run killed part-way through replaces a good dataset or network with a corrupt
 one. The next run then loads that file and either fails somewhere far from the
 cause or, worse, trains on it.
 
-``NeraChessSelfPlay`` already writes its samples to a partial file and renames
-it on completion. This is the same pattern for the Python side, so the whole
-pipeline either produces a complete artifact or leaves the previous one alone.
+Writing to a partial file and renaming it on completion keeps that from
+happening, so training either produces a complete artifact or leaves the
+previous one alone.
 """
 
 from __future__ import annotations
