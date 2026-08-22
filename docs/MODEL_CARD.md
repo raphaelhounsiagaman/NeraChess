@@ -27,8 +27,7 @@ sha256sum NeraChessApp/Resources/NNUE/nera.nnue
 
 ## Training data
 
-**Positions** come from NeraChess's own play. Nothing else generates them.
-`NeraChessSelfPlay` plays the games; see [TRAINING.md](TRAINING.md).
+**Positions** come from NeraChess's own play.
 
 **Labels** come from Stockfish, run as a separate process and asked for a score
 for a position. This changed at [`2adf122`](https://github.com/raphaelhounsiagaman/NeraChess/commit/2adf122)
@@ -36,6 +35,15 @@ for a position. This changed at [`2adf122`](https://github.com/raphaelhounsiagam
 and that had a ceiling — a network trained on its own search chases itself, and
 generation 42 is roughly where it stopped improving. Generations 58, 60, and 61
 were produced after that change; generation 61 is what ships.
+
+Neither step is performed by anything in this repository. The in-tree game
+generator that produced positions for the earliest generations,
+`NeraChessSelfPlay`, was removed once external tooling took over both halves;
+it is recoverable from history at
+[`b4c2c80`](https://github.com/raphaelhounsiagaman/NeraChess/commit/b4c2c80)
+and earlier, but it is not the method behind the shipped network. What this
+repository does with a sample file, once one exists, is
+[TRAINING.md](TRAINING.md).
 
 No Stockfish code is copied, derived from, linked against, or vendored. The
 repository contains no Stockfish source and no Stockfish binary. The
@@ -45,10 +53,10 @@ relationship is that of a separate program asked for a number.
 
 Stated plainly, because the gap matters more than a claim of completeness:
 
-- **The labelling tool is not in the tree.** `docs/NNUE.md` used to point at
-  `experiments/sflabel.py`; no such file has ever been committed. The
-  checked-in pipeline (`NNUETraining/scripts/pipeline.py`) performs pure
-  self-play labelling and is the generation-42-and-earlier method.
+- **Neither the position generator nor the labelling tool is in the tree.**
+  `docs/NNUE.md` used to point at `experiments/sflabel.py`; no such file has
+  ever been committed. What this repository now contains is the training half
+  only: it reads a sample file and produces a network.
 - **The Stockfish version, depth or node budget, and exact invocation are not
   recorded.**
 - **The training corpus is not published**, and no checksum of it was kept, so

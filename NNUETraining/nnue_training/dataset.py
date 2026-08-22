@@ -380,9 +380,9 @@ class FeatureCache:
     ) -> Iterator[Batch]:
         """Yields batches, optionally shuffled and optionally over a subset.
 
-        Shuffling matters more than usual here: self-play samples arrive in
-        game order, so an unshuffled batch is a few positions from the same
-        handful of games and its gradient is badly correlated.
+        Shuffling matters more than usual here: samples arrive in game order,
+        so an unshuffled batch is a few positions from the same handful of
+        games and its gradient is badly correlated.
 
         `indices` restricts iteration to a subset, which is how a training and
         a validation split share one cache without copying it.

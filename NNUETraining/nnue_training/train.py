@@ -170,9 +170,9 @@ def train(config: TrainConfig) -> Path:
         total_loss = 0.0
         batch_count = 0
 
-        # Self-play samples arrive in game order, so an unshuffled batch is a
-        # few positions from the same handful of games and its gradient is
-        # badly correlated. Reshuffle every epoch.
+        # Samples arrive in game order, so an unshuffled batch is a few
+        # positions from the same handful of games and its gradient is badly
+        # correlated. Reshuffle every epoch.
         for batch in cache.batches(
             config.batch_size,
             shuffle_seed=config.seed + epoch,
