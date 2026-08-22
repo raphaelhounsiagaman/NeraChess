@@ -473,10 +473,6 @@ class MemmapFeatureCache:
             pieces.append(flat)
             offsets.append(starts_out)
 
-        extra = {}
-        if "output_buckets" in self._arrays:
-            extra["output_buckets"] = self._arrays["output_buckets"][order].tolist()
-
         return Batch(
             own_indices=pieces[0].tolist(),
             own_offsets=offsets[0].tolist(),
@@ -484,7 +480,6 @@ class MemmapFeatureCache:
             their_offsets=offsets[1].tolist(),
             scores=self._arrays["scores"][order].tolist(),
             results=self._arrays["results"][order].tolist(),
-            **extra,
         )
 
     def batches(
