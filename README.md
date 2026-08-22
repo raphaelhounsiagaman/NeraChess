@@ -10,19 +10,14 @@ NeraChess is a C++23 chess engine, UCI executable, and SDL2/Dear ImGui desktop a
 
 ![NeraChess desktop application](assets/screenshots/NeraChessUIStartingPosition.png)
 
-> **NeraChess has migrated to NNUE.** The hand-crafted evaluation is gone,
-> replaced by a trained network. Positions come from NeraChess's own play; the
-> evaluations they are labelled with come from Stockfish. No engine code is
-> copied, derived from, or linked against — Stockfish is run as a separate
-> program and asked for a number, the way a human analyst would. A trained
-> network ships in
+> **NeraChess evaluates with a trained NNUE network.** The hand-crafted
+> evaluation is gone. A network ships in
 > `NeraChessApp/Resources/NNUE/nera.nnue`, so a fresh clone plays out of the
-> box. Over 1000 games at `10+0.1` with the search held identical on both
-> sides, the network measured **+25.8 Elo** against the hand-crafted
-> evaluation it replaced (95% interval [+7.1, +44.6]); see
-> [docs/NNUE_PROGRESS.md](docs/NNUE_PROGRESS.md). See
-> [docs/NNUE.md](docs/NNUE.md) for the architecture and
-> [docs/TRAINING.md](docs/TRAINING.md) for training a stronger one.
+> box. What it is, where its data came from, how it was promoted, and what
+> about it is not reproducible are all recorded in
+> [docs/MODEL_CARD.md](docs/MODEL_CARD.md) — the one place that describes the
+> shipped network. See [docs/NNUE.md](docs/NNUE.md) for the architecture and
+> [docs/TRAINING.md](docs/TRAINING.md) for training your own.
 
 At engine commit `212e012`, a 300-game paired-opening tournament estimated
 NeraChess at **2627 Stockfish 18 UCI-Elo-equivalent** at `10+0.1`, with a
@@ -86,9 +81,8 @@ been removed.
   UCI engine and the desktop bot
 - PyTorch training pipeline in [`NNUETraining`](NNUETraining/README.md), checked
   against the engine position by position
-- Positions from NeraChess's own play, labelled with Stockfish evaluations.
-  No engine code is copied or linked; Stockfish is an external process that is
-  asked for a score
+- Training data and lineage for the shipped network: see
+  [docs/MODEL_CARD.md](docs/MODEL_CARD.md)
 
 The classical terms — tapered piece-square tables, pawn structure, mobility, and
 king safety — were removed in favour of the network, which learns them from
@@ -351,10 +345,9 @@ engine pick it up at startup.
 
 ## Training a network
 
-Networks are trained on positions from NeraChess's own play, labelled with
-Stockfish evaluations. No engine code is copied or linked against. One command
-runs the whole loop -- material bootstrap, then generate, train, and verify for
-each generation:
+The checked-in pipeline trains on positions from NeraChess's own play, labelled
+with its own search. One command runs the whole loop — material bootstrap, then
+generate, train, and verify for each generation:
 
 ```sh
 python3 NNUETraining/scripts/pipeline.py --workdir runs/first --generations 5

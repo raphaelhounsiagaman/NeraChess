@@ -1,8 +1,14 @@
 # Training a network
 
-How to produce a `.nnue` file and get the engine playing with it. No external
-engine is involved at any point — the network is trained entirely on games
-NeraChess plays against itself.
+How to produce a `.nnue` file and get the engine playing with it. Everything
+below is the self-play pipeline: positions from NeraChess's own games, labelled
+with NeraChess's own search.
+
+That is not how the network that currently ships was labelled. Its positions
+come from self-play, but its scores come from Stockfish, run as a separate
+process; the tool that does that is not in this repository. See
+[MODEL_CARD.md](MODEL_CARD.md) for the shipped network's lineage and for what
+about it is not reproducible from this tree.
 
 For the architecture and how inference works, see [NNUE.md](NNUE.md). This
 document is the operational side.

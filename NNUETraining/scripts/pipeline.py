@@ -1,10 +1,14 @@
 #!/usr/bin/env python3
 """Runs the self-play training loop end to end.
 
-No external engine is involved at any point. Generation 0 is trained on the
+No external engine is involved in *this* loop: generation 0 is trained on the
 material balance of random play, which is enough to make the engine play
-non-random chess; every generation after that trains on games the previous
-generation played.
+non-random chess, and every generation after that trains on games the previous
+generation played, labelled with its own search.
+
+That is not how the shipped network was labelled -- see docs/MODEL_CARD.md.
+Self-play labelling has a ceiling, because a network trained on its own search
+can only chase itself; generation 42 is roughly where it stopped improving.
 
     python3 scripts/pipeline.py --workdir runs/first --generations 5
 

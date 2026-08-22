@@ -5,9 +5,11 @@ inference library lives in [`../NeraChessNNUE`](../NeraChessNNUE); this project
 owns everything that produces a `.nnue` file the engine can load.
 
 > **Status: working.** The loop runs end to end with no external engine, and
-> the network it produced ships at
-> `../NeraChessApp/Resources/NNUE/nera.nnue`. See
-> [`../docs/NNUE.md`](../docs/NNUE.md) for how the bootstrapping works.
+> produced every network up to generation 42. The network that ships at
+> `../NeraChessApp/Resources/NNUE/nera.nnue` is later than that and was
+> labelled differently; see
+> [`../docs/MODEL_CARD.md`](../docs/MODEL_CARD.md). For how the bootstrapping
+> works, see [`../docs/NNUE.md`](../docs/NNUE.md).
 
 ## Layout
 
@@ -123,8 +125,11 @@ view, and `result` is the game result from the same point of view (`1.0` win,
 
 ## Getting training data
 
-Training data comes from self-play and nothing else — no external engine labels
-any position, ever.
+Positions always come from self-play. What labels them has changed: the
+pipeline in this directory labels them with NeraChess's own search, and that is
+what the rest of this section describes. The network that ships is labelled
+with Stockfish instead, by a tool that is not in this repository — see
+[`../docs/MODEL_CARD.md`](../docs/MODEL_CARD.md).
 
 The bootstrapping problem (training needs search scores, search needs an
 evaluation, the evaluation is the network) is broken with one piece of injected

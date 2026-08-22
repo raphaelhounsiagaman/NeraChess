@@ -99,11 +99,13 @@ and `test_mirrored_positions_produce_mirrored_features` in the Python one.
 ### `NeraChessSelfPlay` — training data
 
 Generates the positions used for training, by playing games against itself.
-The evaluations those positions are labelled with may come from this search or
-from Stockfish; see `experiments/sflabel.py` for the latter.
 `--mode material` labels random play with material balance to bootstrap
 generation 0; the default mode plays games with a network and labels them with
 search scores and results.
+
+The shipped network's positions were labelled with Stockfish instead. That tool
+is not in this repository; [MODEL_CARD.md](MODEL_CARD.md) records what is and
+is not reproducible as a result.
 
 ### `NNUETraining` — training
 
