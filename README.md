@@ -292,8 +292,16 @@ management, and the full opening-book index:
 ./bin/Release/NeraChessTests/NeraChessTests
 ```
 
-Tests that measure evaluation quality skip themselves while no network is
-loaded, and say so.
+Tests that measure evaluation quality need a network. Point the suite at one
+with `--eval-file`, which is how CI runs it, so the assertions cover the
+network that actually ships:
+
+```sh
+./bin/Release/NeraChessTests/NeraChessTests --eval-file NeraChessApp/Resources/NNUE/nera.nnue
+```
+
+Without that flag those tests skip themselves and say so. A network that fails
+to load is a test failure rather than a skip.
 
 The NNUE training pipeline has its own suite, which needs no dependencies:
 

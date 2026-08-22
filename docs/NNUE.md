@@ -427,10 +427,17 @@ refreshes over the same move tree:
 Run it on a Release build; Debug enables `NNUE_VERIFY_ACCUMULATOR`, whose
 refresh-per-evaluation makes the comparison meaningless.
 
-Tests that measure evaluation quality — `TestSearchChoices` — skip themselves
-while no network is loaded and print that they did. The test binary does not
-load the shipped network, and the shipped network does not yet pass those
-benchmarks anyway; they are waiting on a stronger one.
+Tests that measure evaluation quality — `TestSearchChoices` — need a loaded
+network. Pass `--eval-file` to give the suite one:
+
+```sh
+./bin/Release/NeraChessTests/NeraChessTests --eval-file NeraChessApp/Resources/NNUE/nera.nnue
+```
+
+CI runs it that way on Linux, on the AVX2 build, and on macOS, so those
+assertions cover the shipped network rather than only the synthetic weights
+the format tests use. Without the flag they skip themselves and print that they
+did; a network that fails to load is a test failure, not a skip.
 
 To compare two networks head to head:
 

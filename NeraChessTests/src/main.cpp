@@ -1164,6 +1164,22 @@ namespace
         RemoveNetworkFile(networkPath);
     }
 
+    // Set by --eval-file. TestNnueEvaluation ends by unloading the synthetic
+    // network it installed, so a real network has to be loaded after it and
+    // before the tests that measure what the evaluator actually chooses.
+    std::filesystem::path g_EvalFilePath;
+
+    void LoadRequestedNetwork()
+    {
+        if (g_EvalFilePath.empty())
+            return;
+
+        std::string message;
+        if (!NeraChessSearch::Evaluation::LoadNetwork(g_EvalFilePath, message))
+            throw std::runtime_error("--eval-file " + g_EvalFilePath.string() + ": " + message);
+        std::cout << "Loaded " << g_EvalFilePath << ": " << message << '\n';
+    }
+
     void TestSearchChoices()
     {
         using namespace NeraChessSearch;
@@ -1172,10 +1188,15 @@ namespace
         // anything once a trained network exists. Until then the search has
         // nothing positional to reason about and the expected moves are
         // arbitrary.
+        //
+        // Run with --eval-file to point this at a real network; CI runs the
+        // shipped one so these assertions cover what actually ships rather
+        // than only the synthetic weights the format tests use.
         if (!Evaluation::IsNetworkLoaded())
         {
             std::cout << "Skipping strategic and tactical search choices: "
-                      << "no NNUE network is loaded.\n";
+                      << "no NNUE network is loaded.\n"
+                      << "Pass --eval-file <network.nnue> to run them.\n";
             return;
         }
 
@@ -1641,6 +1662,15 @@ int main(int argc, char** argv)
                 : 0x9E3779B97F4A7C15ull;
             return WriteRandomNetwork(argv[2], seed);
         }
+        if (argc >= 2 && std::string_view(argv[1]) == "--eval-file")
+        {
+            if (argc < 3)
+            {
+                std::cerr << "--eval-file needs a path to a .nnue network\n";
+                return 2;
+            }
+            g_EvalFilePath = argv[2];
+        }
 
         TestFenValidation();
         TestPerft();
@@ -1661,6 +1691,7 @@ int main(int argc, char** argv)
         TestNnueAccumulatorUpdates();
         TestNnueAccumulatorStack();
         TestNnueEvaluation();
+        LoadRequestedNetwork();
         TestSearchChoices();
         TestSliderAttackLookups();
         TestStaticExchangeEvaluation();
