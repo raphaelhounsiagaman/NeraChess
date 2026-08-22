@@ -98,7 +98,7 @@ namespace NeraChessNNUE
     NetworkFormat::Status Network::SaveToFile(const std::filesystem::path& path) const
     {
         if (!m_Loaded)
-            return NetworkFormat::Status::ReadFailed;
+            return NetworkFormat::Status::NotLoaded;
 
         std::vector<std::byte> payload(Architecture::TotalParameterBytes, std::byte{ 0 });
         size_t cursor = 0;
@@ -118,16 +118,39 @@ namespace NeraChessNNUE
         std::vector<std::byte> headerBytes(NetworkFormat::HeaderBytes, std::byte{ 0 });
         NetworkFormat::WriteHeader(header, headerBytes);
 
-        std::ofstream stream(path, std::ios::binary | std::ios::trunc);
-        if (!stream)
-            return NetworkFormat::Status::ReadFailed;
+        // Write beside the destination and rename over it. Truncating the
+        // target first means an interrupted save leaves a half-written file
+        // where a valid network used to be, which the next run loads as a
+        // corrupt network rather than noticing the save never finished.
+        std::filesystem::path temporary = path;
+        temporary += ".partial";
 
-        stream.write(reinterpret_cast<const char*>(headerBytes.data()),
-            static_cast<std::streamsize>(headerBytes.size()));
-        stream.write(reinterpret_cast<const char*>(payload.data()),
-            static_cast<std::streamsize>(payload.size()));
-        if (!stream)
-            return NetworkFormat::Status::ReadFailed;
+        {
+            std::ofstream stream(temporary, std::ios::binary | std::ios::trunc);
+            if (!stream)
+                return NetworkFormat::Status::WriteFailed;
+
+            stream.write(reinterpret_cast<const char*>(headerBytes.data()),
+                static_cast<std::streamsize>(headerBytes.size()));
+            stream.write(reinterpret_cast<const char*>(payload.data()),
+                static_cast<std::streamsize>(payload.size()));
+            stream.flush();
+            if (!stream)
+            {
+                std::error_code ignored;
+                std::filesystem::remove(temporary, ignored);
+                return NetworkFormat::Status::WriteFailed;
+            }
+        }
+
+        std::error_code error;
+        std::filesystem::rename(temporary, path, error);
+        if (error)
+        {
+            std::error_code ignored;
+            std::filesystem::remove(temporary, ignored);
+            return NetworkFormat::Status::WriteFailed;
+        }
 
         return NetworkFormat::Status::Ok;
     }

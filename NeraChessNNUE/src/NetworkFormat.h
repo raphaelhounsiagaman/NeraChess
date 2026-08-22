@@ -91,6 +91,10 @@ namespace NeraChessNNUE::NetworkFormat
         ArchitectureMismatch,
         TruncatedPayload,
         ChecksumMismatch,
+        // Saving only. Reporting a write problem as ReadFailed sent whoever
+        // read the message looking at the wrong end of the operation.
+        NotLoaded,
+        WriteFailed,
     };
 
     std::string_view Describe(Status status);

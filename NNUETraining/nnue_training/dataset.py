@@ -27,6 +27,7 @@ from pathlib import Path
 from typing import Iterable, Iterator, Sequence
 
 from . import features as feat
+from .atomic import atomic_write
 
 
 @dataclass(frozen=True)
@@ -246,10 +247,13 @@ class FeatureCache:
                 )
 
     def save(self, path: str | Path) -> Path:
-        """Writes the cache so a later run skips parsing entirely."""
+        """Writes the cache so a later run skips parsing entirely.
+
+        Atomic: a pack is hours of work, and an interrupted save that
+        truncated the destination would destroy the previous one as well.
+        """
         destination = Path(path)
-        destination.parent.mkdir(parents=True, exist_ok=True)
-        with destination.open("wb") as handle:
+        with atomic_write(destination) as handle:
             handle.write(PACK_MAGIC)
             handle.write(struct.pack("<I", PACK_VERSION))
             handle.write(struct.pack("<Q", len(self)))

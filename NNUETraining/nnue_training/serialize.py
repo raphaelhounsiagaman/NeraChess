@@ -38,6 +38,7 @@ from pathlib import Path
 from typing import Sequence
 
 from . import architecture as arch
+from .atomic import atomic_write_bytes
 
 MAGIC = b"NERANNUE"
 VERSION = 1
@@ -168,10 +169,9 @@ def dumps(parameters: NetworkParameters) -> bytes:
 
 
 def write(path: str | Path, parameters: NetworkParameters) -> Path:
-    destination = Path(path)
-    destination.parent.mkdir(parents=True, exist_ok=True)
-    destination.write_bytes(dumps(parameters))
-    return destination
+    # Atomic: a run interrupted mid-write would otherwise leave a truncated
+    # network where the previous good one was.
+    return atomic_write_bytes(path, dumps(parameters))
 
 
 def read_header(data: bytes) -> Header:
