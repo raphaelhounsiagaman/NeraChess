@@ -1160,6 +1160,33 @@ namespace
             "multithreaded search with a loaded network did not return a legal move");
         search.SetThreadCount(1);
 
+        // A network that fails to load must leave the working one in place. A
+        // mistyped EvalFile used to unload the live network and leave the
+        // engine evaluating every position as zero, with no way back short of
+        // a restart.
+        const auto before = SearchEngine::Evaluate(original);
+        Require(Nnue::Evaluator::Load("nerachess-no-such-network.nnue") !=
+            Nnue::NetworkFormat::Status::Ok,
+            "loading a missing network reported success");
+        Require(NeraChessSearch::Evaluation::IsNetworkLoaded(),
+            "a failed load unloaded the working network");
+        Require(SearchEngine::Evaluate(original) == before,
+            "a failed load changed what the working network evaluates");
+
+        // The same must hold for a file that exists but is not a network.
+        const std::filesystem::path corrupt =
+            std::filesystem::temp_directory_path() / "nerachess-corrupt.nnue";
+        {
+            std::ofstream stream(corrupt, std::ios::binary | std::ios::trunc);
+            stream << "this is not a network";
+        }
+        Require(Nnue::Evaluator::Load(corrupt) != Nnue::NetworkFormat::Status::Ok,
+            "loading a corrupt network reported success");
+        Require(NeraChessSearch::Evaluation::IsNetworkLoaded() &&
+            SearchEngine::Evaluate(original) == before,
+            "a corrupt network replaced the working one");
+        RemoveNetworkFile(corrupt);
+
         Nnue::Evaluator::Unload();
         RemoveNetworkFile(networkPath);
     }

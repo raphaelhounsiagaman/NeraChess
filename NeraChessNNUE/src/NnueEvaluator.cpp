@@ -29,9 +29,19 @@ namespace NeraChessNNUE::Evaluator
 
     NetworkFormat::Status Load(const std::filesystem::path& path)
     {
-        const NetworkFormat::Status status = MutableNetwork().LoadFromFile(path);
+        // Validate into a scratch network and swap only on success.
+        // Network::LoadFromFile unloads on every failure path, so loading
+        // straight into the live one turned a mistyped EvalFile into an
+        // engine that evaluated every position as zero -- with the working
+        // network already gone and no way back short of a restart.
+        Network candidate;
+        const NetworkFormat::Status status = candidate.LoadFromFile(path);
         s_LastStatus = status;
-        MutablePath() = status == NetworkFormat::Status::Ok ? path : std::filesystem::path{};
+        if (status != NetworkFormat::Status::Ok)
+            return status;
+
+        MutableNetwork() = std::move(candidate);
+        MutablePath() = path;
         return status;
     }
 
@@ -53,11 +63,19 @@ namespace NeraChessNNUE::Evaluator
         {
             if (candidate.empty())
                 continue;
-            if (Load(candidate) == NetworkFormat::Status::Ok)
-                return NetworkFormat::Status::Ok;
+
+            const NetworkFormat::Status status = Load(candidate);
+            if (status == NetworkFormat::Status::Ok)
+                return status;
+
+            // A candidate that is simply absent is not an error; the next
+            // location may hold the network. One that exists but cannot be
+            // read, or was built for another architecture, is a real problem
+            // and reporting FileNotFound for it hides the actual diagnosis.
+            if (status != NetworkFormat::Status::FileNotFound)
+                return status;
         }
 
-        Unload();
         s_LastStatus = NetworkFormat::Status::FileNotFound;
         return s_LastStatus;
     }
