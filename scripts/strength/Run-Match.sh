@@ -23,11 +23,9 @@ results_directory="$4"
 fastchess_bin="${FASTCHESS_BIN:-fastchess}"
 time_control="${STRENGTH_TC:-10+0.1}"
 concurrency="${STRENGTH_CONCURRENCY:-2}"
-max_pairs="${STRENGTH_MAX_PAIRS:-5000}"
+max_pairs="${STRENGTH_MAX_PAIRS:-125}"
 hash_mb="${STRENGTH_HASH_MB:-128}"
 threads="${STRENGTH_THREADS:-1}"
-elo0="${STRENGTH_ELO0:-0}"
-elo1="${STRENGTH_ELO1:-5}"
 seed="${STRENGTH_SEED:-1}"
 allow_network_change="${ALLOW_NETWORK_CHANGE:-false}"
 
@@ -52,7 +50,6 @@ if ! command -v "${fastchess_bin}" >/dev/null 2>&1 && [[ ! -x "${fastchess_bin}"
 fi
 
 positive_integer='^[1-9][0-9]*$'
-number='^-?[0-9]+([.][0-9]+)?$'
 time_control_pattern='^[0-9]+([.][0-9]+)?\+[0-9]+([.][0-9]+)?$'
 
 for name_and_value in \
@@ -71,11 +68,6 @@ done
 
 if [[ ! "${time_control}" =~ ${time_control_pattern} ]]; then
   echo "Invalid time control '${time_control}'; use a value such as 10+0.1." >&2
-  exit 1
-fi
-
-if [[ ! "${elo0}" =~ ${number} ]] || [[ ! "${elo1}" =~ ${number} ]]; then
-  echo "Elo bounds must be numbers." >&2
   exit 1
 fi
 
@@ -118,8 +110,7 @@ results_directory="$(realpath "${results_directory}")"
   echo "max_pairs=${max_pairs}"
   echo "threads=${threads}"
   echo "hash_mb=${hash_mb}"
-  echo "sprt_elo0=${elo0}"
-  echo "sprt_elo1=${elo1}"
+  echo "test=fixed_games"
   echo "opening_seed=${seed}"
   "${fastchess_bin}" -version 2>&1 | sed 's/^/fastchess=/'
 } | tee "${results_directory}/configuration.txt"
@@ -135,7 +126,6 @@ results_directory="$(realpath "${results_directory}")"
   -rounds "${max_pairs}" \
   -repeat \
   -concurrency "${concurrency}" \
-  -sprt elo0="${elo0}" elo1="${elo1}" alpha=0.05 beta=0.05 model=normalized \
   -draw movenumber=40 movecount=8 score=10 \
   -resign movecount=6 score=800 twosided=true \
   -maxmoves 300 \
