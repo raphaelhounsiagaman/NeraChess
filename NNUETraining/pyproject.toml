@@ -26,9 +26,16 @@ train = [
   # that reads like a failure.
   "numpy>=1.24",
 ]
+# scripts/match.py needs legal move generation and game-over detection. It
+# does not need PyTorch, so it is its own extra rather than part of `train`.
+# The PyPI distribution for python-chess is named `chess`.
+match = [
+  "chess>=1.10",
+]
 dev = [
   "torch>=2.2",
   "numpy>=1.24",
+  "chess>=1.10",
   "ruff>=0.5",
 ]
 
