@@ -147,8 +147,28 @@ class FeatureCache:
     def __len__(self) -> int:
         return len(self.scores)
 
+    # An offset counts active feature indices, not samples, so the ceiling is
+    # reached far earlier than the sample count suggests: roughly 134 million
+    # positions at 32 pieces each, or about 330 million at a 13-piece average.
+    MAX_OFFSET = 2**32 - 1
+
     def append(self, sample: Sample) -> None:
         own, their = sample.perspectives()
+
+        # Checked before writing anything, so a cache that cannot hold the
+        # sample is not left holding half of it. Without this the failure is
+        # an OverflowError from array.append, hours into a pack, naming
+        # neither the limit nor what to do about it.
+        if (len(self.own_indices) + len(own) > self.MAX_OFFSET or
+                len(self.their_indices) + len(their) > self.MAX_OFFSET):
+            raise ValueError(
+                f"pack format v{PACK_VERSION} stores offsets as unsigned "
+                f"32-bit, which tops out at {self.MAX_OFFSET} feature indices "
+                f"({len(self)} samples packed so far). Split the dataset "
+                "across several packs, or widen the offsets to 64-bit in a "
+                "new pack version."
+            )
+
         self.own_indices.extend(own)
         self.own_offsets.append(len(self.own_indices))
         self.their_indices.extend(their)
@@ -177,6 +197,20 @@ class FeatureCache:
         ("scores", "f"),
         ("results", "f"),
     )
+
+    # The on-disk layout is fixed-width, but array typecodes are only
+    # guaranteed a minimum size. The memmap reader hard-codes <u2/<u4/<f4, so
+    # a platform where these differ would write a pack that reader silently
+    # misinterprets. Fail at import instead.
+    _ITEMSIZES = {"H": 2, "I": 4, "f": 4}
+    for _name, _typecode in _ARRAYS:
+        if array(_typecode).itemsize != _ITEMSIZES[_typecode]:
+            raise RuntimeError(
+                f"array('{_typecode}') is "
+                f"{array(_typecode).itemsize} bytes on this platform, but the "
+                f"pack format requires {_ITEMSIZES[_typecode]}"
+            )
+    del _name, _typecode
 
     @classmethod
     def _read_header(cls, handle, path) -> tuple[int, list[int]]:
@@ -483,14 +517,18 @@ class MemmapFeatureCache:
     """A packed dataset read off disk instead of into memory.
 
     :meth:`FeatureCache.load` allocates every array up front. That is fine at
-    twenty-three million positions -- 2.7GB -- and impossible at three hundred
-    and forty million, which is 30GB on a machine with seven and a Lichess bot
-    that must not be disturbed. The packed layout is a header followed by
-    contiguous fixed-width arrays, so each one is mapped where it lies and the
-    operating system pages in only what a batch touches.
+    twenty-three million positions -- 2.7GB -- and impossible at ten times
+    that, on a machine with seven and a Lichess bot that must not be
+    disturbed. The packed layout is a header followed by contiguous
+    fixed-width arrays, so each one is mapped where it lies and the operating
+    system pages in only what a batch touches.
 
     Presents the same interface as :class:`FeatureCache`, so the trainer does
     not know which one it has.
+
+    Mapping does not raise the format's own ceiling: offsets are 32-bit, so a
+    single pack holds at most 2**32 - 1 feature indices however it is read.
+    See :attr:`FeatureCache.MAX_OFFSET`.
     """
 
     _DTYPES = {"H": "<u2", "I": "<u4", "f": "<f4", "B": "<u1"}

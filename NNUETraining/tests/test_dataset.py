@@ -218,6 +218,30 @@ class FeatureCacheTest(unittest.TestCase):
         self.assertEqual(list(cache.scores), [25.0, -40.0])
 
 
+class OffsetCeilingTest(unittest.TestCase):
+    def test_refuses_to_exceed_the_32_bit_offset_ceiling(self) -> None:
+        # Reaching the real ceiling needs ~134 million positions, so pretend
+        # the cache is already nearly full rather than packing them.
+        cache = data.FeatureCache()
+        cache.MAX_OFFSET = 4  # type: ignore[misc]
+        with self.assertRaises(ValueError) as caught:
+            cache.append(data.Sample(fen=START, score=0.0, result=0.5))
+        self.assertIn("32-bit", str(caught.exception))
+
+    def test_a_refused_sample_leaves_the_cache_unchanged(self) -> None:
+        cache = data.FeatureCache()
+        cache.append(data.Sample(fen=ENDGAME, score=0.0, result=0.5))
+        before = (len(cache), len(cache.own_indices), len(cache.own_offsets))
+
+        cache.MAX_OFFSET = len(cache.own_indices)  # type: ignore[misc]
+        with self.assertRaises(ValueError):
+            cache.append(data.Sample(fen=START, score=0.0, result=0.5))
+
+        self.assertEqual(
+            (len(cache), len(cache.own_indices), len(cache.own_offsets)), before
+        )
+
+
 class CorruptPackTest(unittest.TestCase):
     """A corrupt pack must be refused, not trained on.
 
