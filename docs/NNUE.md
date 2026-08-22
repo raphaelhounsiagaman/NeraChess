@@ -1,8 +1,7 @@
 # NNUE
 
-This document describes the NNUE evaluation being built on this branch: the
-architecture, the pieces that exist, the pieces that do not, and the order they
-should be built in.
+This document describes the NNUE evaluation the engine uses: the architecture,
+the format, how the engine reaches it, and how a network is trained.
 
 > **Status.** Inference and the self-play training loop both work end to end,
 > and a trained network ships at `NeraChessApp/Resources/NNUE/nera.nnue`, so a
@@ -112,10 +111,17 @@ See [`NNUETraining/README.md`](../NNUETraining/README.md).
 
 ### How the engine reaches it
 
-`NeraChessSearch::Evaluation` is a facade: search never includes NNUE headers
-directly, so swapping or wrapping the evaluator touches one file. `SearchEngine`
+`NeraChessSearch::Evaluation` is the facade: it owns network loading and
+scoring, so changing how a position is scored touches one file. `SearchEngine`
 owns a per-worker `AccumulatorStack` that is pushed and popped alongside the
 board's make/unmake.
+
+The insulation is partial, and it is worth being precise about where it stops.
+`SearchEngine.h` includes `Accumulator.h` and `Network.h` and holds both types
+as members, and `Evaluation.h` takes an `Accumulator&` in its hot overload, so
+NNUE types do appear in search's public headers. Closing that gap means opaque
+handles or dependency injection; until then, "facade" describes one place to
+change the evaluator, not a search layer that could compile without NNUE.
 
 ---
 

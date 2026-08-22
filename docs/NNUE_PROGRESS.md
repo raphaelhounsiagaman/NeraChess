@@ -4,8 +4,16 @@ The single running record of how the network compares to a reference engine.
 One row per match. Nothing is promoted on validation loss; only a match result
 with a confidence interval that excludes zero counts as a gain.
 
-Every row records both commits, because a strength number means nothing without
-knowing which search produced it. Until commit `23645a8` the `NNUE` branch was
+A row should record both commits, because a strength number means nothing
+without knowing which search produced it. The gen42 rows do. The rows from
+gen48 onward carry `verified` instead: those matches were run by the
+generation pipeline against the previous generation with the search unchanged
+on both sides, and the engine commit was not captured at the time. They are
+comparisons between consecutive networks, not against a fixed reference, so
+their Elo figures do not compose into a total and cannot be reproduced exactly.
+Rows added from here on should carry real hashes.
+
+Until commit `23645a8` the `NNUE` branch was
 missing `main`'s selectivity work (late-move-count pruning, internal iterative
 reduction, the improving stack), so any comparison made before that date was
 measuring search and evaluation together.
@@ -29,23 +37,17 @@ Unless a row says otherwise:
 | 2026-08-14 | gen42 | `23645a8` | main (classical) | `96c0d15` | 500 | 203-165-132 (0.538) | +26.5 | ±26.2 | 97.7% |
 | 2026-08-15 | gen42 | `23645a8` | main (classical) | `96c0d15` | 500 | 212-176-112 (0.536) | +25.1 | ±26.9 | 96.7% |
 | 2026-08-15 | gen42 | `23645a8` | main (classical) | `96c0d15` | **1000** | **415-341-244 (0.537)** | **+25.8** | **±18.8** | **99.65%** |
-
 | 2026-08-15 | gen48 | `verified` | previous verified net | `verified` | 500 | 267-95-138 (0.672) | +124.6 | [+98.4, +152.3] | 100.0% |
-
 | 2026-08-15 | gen52 | `verified` | previous verified net | `verified` | 400 | 195-84-121 (0.6387) | +99.0 | [+70.5, +128.8] | 100.0% |
-
 | 2026-08-16 | gen55 | `verified` | previous verified net | `verified` | 400 | 165-97-138 (0.585) | +59.6 | [+32.2, +87.8] | 100.0% |
-
 | 2026-08-16 | gen56 | `verified` | previous verified net | `verified` | 400 | 149-117-134 (0.54) | +27.9 | [+0.2, +55.9] | 97.57% |
-
 | 2026-08-17 | gen58 | `verified` | previous verified net | `verified` | 400 | 185-116-99 (0.5863) | +60.5 | [+31.1, +90.9] | 100.0% |
-
 | 2026-08-18 | gen60 | `verified` | previous verified net | `verified` | 400 | 168-82-150 (0.6075) | +75.9 | [+49.1, +103.6] | 100.0% |
-
 | 2026-08-21 | gen61 | `verified` | previous verified net | `verified` | 700 | 218-131-351 (0.5621) | +43.4 | [+25.3, +61.7] | 100.0% |
 
-<!-- AUTOMATED-ROWS: control/evaluate.py inserts verification rows directly
-     above this line. Keep it here and keep it last in the table. -->
+<!-- New rows go directly above this line, inside the table: a blank line
+     between rows ends the table and everything below it stops rendering as
+     one. There is no script that inserts them; add them by hand. -->
 
 The third row is the first two combined, not a third match: two independent
 500-game runs under identical conditions with different opening seeds

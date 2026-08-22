@@ -114,8 +114,12 @@ The goal of this structure is separation of concerns rather than extreme abstrac
 - `NeraChessTests`: headless perft, state, search, NNUE, book, and benchmark coverage
 - `NNUETraining`: Python and PyTorch pipeline that produces the network the engine loads
 
-`NeraChessSearch` reaches the network through a small facade, so search code
-never includes NNUE headers directly.
+`NeraChessSearch` reaches the network through the `Evaluation` facade, which
+owns network loading and scoring. The boundary is partial rather than complete:
+`SearchEngine` holds a per-worker `AccumulatorStack` and a `Network` pointer,
+so its public header does include NNUE types. Making those opaque is on the
+list; the facade currently buys one place to change how a position is scored,
+not full insulation from the evaluator.
 
 ---
 
@@ -365,9 +369,9 @@ the result — and [docs/NNUE.md](docs/NNUE.md) for the architecture.
 ## Known Limitations
 
 - The shipped network is an early one and plays far below the calibrated
-  strength quoted above, which was measured with the hand-crafted evaluation
-  this branch removed. Training a stronger one is a matter of running more
-  generations at greater depth.
+  strength quoted above, which was measured with the hand-crafted evaluation it
+  replaced. Training a stronger one is a matter of running more generations at
+  greater depth.
 - x86 builds use a vectorized accumulator but a scalar output layer unless AVX2
   is enabled at compile time.
 - Search performance and calibrated strength depend on hardware, thread count, and time control.

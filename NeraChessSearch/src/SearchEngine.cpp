@@ -471,10 +471,10 @@ namespace NeraChessSearch
         // are all conditioned on it: a position that is getting worse deserves a wider,
         // more careful search than one that is getting better.
         //
-        // EvaluateNode, not Evaluate: the former reads this worker's NNUE accumulator
-        // for the current ply, the latter is the hand-crafted evaluation. Using the
-        // wrong one here would quietly make the branch part-NNUE and invalidate any
-        // NNUE-vs-classical comparison.
+        // EvaluateNode, not Evaluate: both score with the network, but the former
+        // reads this worker's incrementally updated accumulator for the current ply
+        // while the latter refreshes a scratch one from scratch. They agree on the
+        // score; only one of them is affordable per node.
         const Score staticEval = inCheck ? SCORE_NONE : EvaluateNode(board);
         m_StaticEval[ply] = staticEval;
         const bool improving = !inCheck && ply >= 2 &&
@@ -567,7 +567,7 @@ namespace NeraChessSearch
                 }
             }
 
-            // MakeSearchMove, not board.MakeMove: this branch keeps a per-ply NNUE
+            // MakeSearchMove, not board.MakeMove: the search keeps a per-ply NNUE
             // accumulator that has to be pushed with the move and popped with it.
             MakeSearchMove(board, move);
             givesCheck = board.IsInCheck();
