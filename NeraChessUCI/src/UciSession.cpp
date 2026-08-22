@@ -371,7 +371,14 @@ void UciSession::StartSearch(std::string_view command)
         else if (token == "mate")
         {
             if (const auto moves = ParseNumber<int>(value))
-                limits.maxDepth = std::clamp(*moves * 2, 1, NeraChessSearch::MAX_PLY - 1);
+            {
+                // Clamp the mate distance before doubling it: a GUI sending a
+                // large but perfectly valid int would otherwise overflow on
+                // the multiply, which is undefined behaviour, and land on an
+                // arbitrary depth rather than the intended maximum.
+                const int plies = std::clamp(*moves, 1, NeraChessSearch::MAX_PLY / 2);
+                limits.maxDepth = std::clamp(plies * 2, 1, NeraChessSearch::MAX_PLY - 1);
+            }
             ++index;
         }
         else if (token == "movetime")
