@@ -30,10 +30,13 @@ namespace NeraChessSearch::TimeManagement
             : (fullMove < 20 ? 30 : (fullMove < 40 ? 24 : 18));
         milliseconds softTime = remaining / estimatedMovesLeft + increment * 3 / 4;
         softTime = std::max(milliseconds{ 20 }, softTime);
-        softTime = std::min({ softTime, available, milliseconds{ 10'000 } });
+        // Never plan to spend more than a quarter of the remaining clock on a
+        // single move, however few moves the estimator thinks are left. This
+        // scales with the time control, unlike a fixed millisecond ceiling.
+        softTime = std::min({ softTime, available, remaining / 4 });
 
         milliseconds hardTime = std::max(softTime, softTime * 3 / 2 + milliseconds{ 50 });
-        hardTime = std::min({ hardTime, available, milliseconds{ 15'000 } });
+        hardTime = std::min(hardTime, available);
         softTime = std::min(softTime, hardTime);
 
         SearchLimits limits;
