@@ -9,15 +9,15 @@ duplication is what let the repository carry two contradictory accounts at once.
 | Field | Value |
 | --- | --- |
 | Path | [`NeraChessApp/Resources/NNUE/nera.nnue`](../NeraChessApp/Resources/NNUE/nera.nnue) |
-| SHA-256 | `5a5853d6614e886ed9c39f5f99a4b11a9a537a2d190506b4db959931f4d31679` |
+| SHA-256 | `f1fa68e41e7bb5532880b285d02e3773d40c8defb6aab1e9554cb37fea6baab9` |
 | Size | 789,554 bytes |
-| Generation | 61 |
-| Shipped in | [`853238a`](https://github.com/raphaelhounsiagaman/NeraChess/commit/853238a2e46f8652639a5be25cda8054f19479c4), 2026-08-21 |
+| Generation | binpack-warm-001, epoch 8 |
+| Shipped in | candidate, not yet promoted |
 | Architecture | `(768 -> 512)x2 -> 1`, 1 input bucket, 1 output bucket |
 | Architecture hash | `0x53e8d097` |
 | Quantization | QA 255, QB 64, eval scale 400 |
 | Activation | Squared clipped ReLU |
-| Parent | generation 60, shipped in [`ef50fdb`](https://github.com/raphaelhounsiagaman/NeraChess/commit/ef50fdb) |
+| Parent | generation 61, shipped in [`853238a`](https://github.com/raphaelhounsiagaman/NeraChess/commit/853238a2e46f8652639a5be25cda8054f19479c4) |
 
 Verify the file you have is the file described here:
 
@@ -27,14 +27,34 @@ sha256sum NeraChessApp/Resources/NNUE/nera.nnue
 
 ## Training data
 
-**Positions** come from NeraChess's own play.
+**Positions and labels both** come from a published Stockfish training corpus:
+`nodes5000pv2_UHO.binpack` from
+[official-stockfish/master-binpacks](https://huggingface.co/datasets/official-stockfish/master-binpacks),
+repo commit `1e095a75`, 40,292,454,358 bytes, SHA-256
+`7a80e6d233d4df954e162e0d992b768bf1799154289f08299735ddd1ba2bdc34`. That is a
+change of kind from every earlier generation, which used NeraChess's own play
+for positions.
 
-**Labels** come from Stockfish, run as a separate process and asked for a score
-for a position. This changed at [`2adf122`](https://github.com/raphaelhounsiagaman/NeraChess/commit/2adf122)
-(2026-08-17): before it, positions were labelled with NeraChess's own search,
+The earlier lineage still explains the parent. Labels moved to Stockfish at
+[`2adf122`](https://github.com/raphaelhounsiagaman/NeraChess/commit/2adf122)
+(2026-08-17); before it, positions were labelled with NeraChess's own search,
 and that had a ceiling — a network trained on its own search chases itself, and
 generation 42 is roughly where it stopped improving. Generations 58, 60, and 61
-were produced after that change; generation 61 is what ships.
+were produced after that change, and generation 61 is this network's parent.
+
+### How this one was made
+
+Warm-started from generation 61 and trained for 8 epochs of 100M positions
+(800M total, about 6% of the corpus) at learning rate 1e-4 with 1000 warmup
+steps, lambda annealing 1.0 to 0.7 across a 20-epoch schedule that was stopped
+early at epoch 8. Loss scaling 626.1; source scores multiplied by 0.480769.
+Validation was 50,000 positions reservoir-sampled from 64 chunks reserved by
+seed and scattered across the whole file, and fell from 0.003550 to 0.002829
+over the eight epochs without flattening.
+
+Unlike every previous generation, this one **is** reproducible from tooling that
+is committed: the run's exact configuration, including the reserved validation
+chunk ids, is written to `config.json` beside the network by the trainer.
 
 Neither step is performed by anything in this repository. The in-tree game
 generator that produced positions for the earliest generations,
@@ -89,11 +109,16 @@ and no current measurement places generation 61 on the scale used in
 
 ## Known limitations
 
-- **Score scale is uncalibrated.** The network calls a queen roughly +2800
-  rather than +900. Move ordering only cares about ordering, but the search's
-  pruning margins are denominated in centipawns, so they are effectively
-  tighter than their constants suggest, and scores shown by a GUI are
-  misleading. See [NNUE.md](NNUE.md).
+- **Score scale, corrected.** Earlier revisions of this document said the
+  network "calls a queen roughly +2800 rather than +900". That figure was never
+  measured and does not hold: regressed against Stockfish evaluations over 1500
+  corpus positions, generation 61 reports 0.31 engine centipawns per unit of
+  Stockfish's internal score, which puts a queen near +580 — low, not high.
+  This network was trained with labels deliberately scaled to real centipawns
+  and measures 0.4867, putting a queen at +911. The search's pruning margins
+  are denominated in centipawns, so this changes what they mean; that is a
+  reason to retune them, and a reason not to read a strength result here as
+  isolating the data change.
 - **No king buckets and one output head.** The smallest architecture worth
   training, chosen for simplicity over strength.
 - **Strength is unmeasured against any external reference** since the NNUE

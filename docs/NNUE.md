@@ -182,11 +182,12 @@ shipped network means overwriting that file.
    material, and solves the kiwipete tactic -- but it misses the positional
    benchmark in `TestSearchChoices`, which is why that test still skips itself.
    More generations at greater depth is the whole answer.
-2. **Score calibration.** Training against game results inflates the scale: the
-   shipped network calls a queen roughly +2800 rather than +900.
-   Move ordering only cares about the ordering, so play is unaffected, but the
-   scores a GUI displays are misleading and the search's centipawn-denominated
-   pruning margins are effectively tighter than intended.
+2. **Score calibration.** The "+2800 for a queen" figure this list used to carry
+   was never measured and is wrong; see [MODEL_CARD.md](MODEL_CARD.md) for what
+   the shipped network actually reports and how it was measured. Calibration is
+   now a training input rather than an accident, but the search's pruning
+   margins are still denominated in centipawns and have not been retuned against
+   it.
 3. **Architecture growth** — king buckets, output buckets, a wider hidden layer
    — each worth A/B testing against the previous network rather than assuming.
 
