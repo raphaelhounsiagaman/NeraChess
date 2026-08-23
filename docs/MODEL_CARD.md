@@ -9,9 +9,9 @@ duplication is what let the repository carry two contradictory accounts at once.
 | Field | Value |
 | --- | --- |
 | Path | [`NeraChessApp/Resources/NNUE/nera.nnue`](../NeraChessApp/Resources/NNUE/nera.nnue) |
-| SHA-256 | `f1fa68e41e7bb5532880b285d02e3773d40c8defb6aab1e9554cb37fea6baab9` |
+| SHA-256 | `e3e480195e0b2f92409b3ca3472e22e2530591c6fa85bbba5c9c4bfdea2fa521` |
 | Size | 789,554 bytes |
-| Generation | binpack-warm-001, epoch 8 |
+| Generation | binpack-warm-002, epoch 24 |
 | Shipped in | candidate, not yet promoted |
 | Architecture | `(768 -> 512)x2 -> 1`, 1 input bucket, 1 output bucket |
 | Architecture hash | `0x53e8d097` |
@@ -44,13 +44,24 @@ were produced after that change, and generation 61 is this network's parent.
 
 ### How this one was made
 
-Warm-started from generation 61 and trained for 8 epochs of 100M positions
-(800M total, about 6% of the corpus) at learning rate 1e-4 with 1000 warmup
-steps, lambda annealing 1.0 to 0.7 across a 20-epoch schedule that was stopped
-early at epoch 8. Loss scaling 626.1; source scores multiplied by 0.480769.
-Validation was 50,000 positions reservoir-sampled from 64 chunks reserved by
-seed and scattered across the whole file, and fell from 0.003550 to 0.002829
-over the eight epochs without flattening.
+Two runs, both warm-started, both at learning rate 1e-4 with 1000 warmup steps,
+loss scaling 626.1, and source scores multiplied by 0.480769.
+
+`binpack-warm-001` started from generation 61 and ran 8 epochs of 100M
+positions (800M total). `binpack-warm-002` continued from its epoch 8 and ran
+24 epochs of 250M positions (6B total), stopped short of its 40-epoch schedule.
+Together that is 6.8B positions, close to half the corpus.
+
+Validation is 50,000 positions reservoir-sampled from 64 chunks reserved by
+seed and scattered across the whole file, held fixed across both runs so the
+numbers compare: 0.003550 at the start of run 001, 0.002829 at its end,
+0.002458 at epoch 24 of run 002. Every one of the 32 epochs improved it, and it
+had not flattened when the run was stopped.
+
+One avoidable cost is recorded because it is easy to repeat: run 002 was
+started with the default `--lambda-start 1.0` rather than continuing run 001's
+schedule from 0.889. Since validation is measured at a fixed lambda of 0.7,
+that made the metric jump backwards and it took eleven epochs to recover.
 
 Unlike every previous generation, this one **is** reproducible from tooling that
 is committed: the run's exact configuration, including the reserved validation
@@ -115,10 +126,12 @@ and no current measurement places generation 61 on the scale used in
   corpus positions, generation 61 reports 0.31 engine centipawns per unit of
   Stockfish's internal score, which puts a queen near +580 — low, not high.
   This network was trained with labels deliberately scaled to real centipawns
-  and measures 0.4867, putting a queen at +911. The search's pruning margins
-  are denominated in centipawns, so this changes what they mean; that is a
-  reason to retune them, and a reason not to read a strength result here as
-  isolating the data change.
+  and measures 0.5290, putting a queen at +990. Note that it drifted about 10%
+  above the 0.4808 it was trained toward: as lambda anneals, game results enter
+  the objective and pull evaluations larger, which is the grain of truth in the
+  claim this entry replaces. The search's pruning margins are denominated in
+  centipawns, so this changes what they mean; that is a reason to retune them,
+  and a reason not to read a strength result here as isolating the data change.
 - **No king buckets and one output head.** The smallest architecture worth
   training, chosen for simplicity over strength.
 - **Strength is unmeasured against any external reference** since the NNUE
