@@ -808,6 +808,38 @@ namespace
             "a file shorter than its header was accepted");
     }
 
+    // ActivatedDotProduct's AVX2/SSE4.1 clones on an SSE2-baseline x86 build
+    // (NeraChessNNUE/src/SimdOps.h) are runtime-multiversioned rather than
+    // compile-time selected, so exercising Simd::ActivatedDotProduct alone
+    // only tests whichever tier this machine happens to pick. Call every
+    // tier the binary carries directly -- guarded by the same CPU-support
+    // check the dispatcher itself uses, since calling an AVX2 clone on
+    // hardware without AVX2 is a SIGILL, not a wrong answer.
+    void RequireDispatchTiersAgree(const Nnue::Weight* values, const Nnue::Weight* weights,
+        size_t length)
+    {
+#if defined(NNUE_SIMD_X86_DISPATCH)
+        const Nnue::Accumulation reference =
+            Nnue::Simd::Scalar::ActivatedDotProduct(values, weights, length);
+        if (__builtin_cpu_supports("sse4.1"))
+        {
+            Require(Nnue::Simd::Dispatch::DotSse41(values, weights, length) == reference,
+                "SIMD ActivatedDotProduct's SSE4.1 dispatch tier disagrees with the scalar "
+                "reference at length " + std::to_string(length));
+        }
+        if (__builtin_cpu_supports("avx2"))
+        {
+            Require(Nnue::Simd::Dispatch::DotAvx2(values, weights, length) == reference,
+                "SIMD ActivatedDotProduct's AVX2 dispatch tier disagrees with the scalar "
+                "reference at length " + std::to_string(length));
+        }
+#else
+        (void)values;
+        (void)weights;
+        (void)length;
+#endif
+    }
+
     void TestNnueSimdKernels()
     {
         // Vector kernels must agree with the scalar reference exactly, not
@@ -880,6 +912,8 @@ namespace
                     Nnue::Simd::Scalar::ActivatedDotProduct(values.data(), added.data(), length),
                     "SIMD ActivatedDotProduct disagrees with the scalar reference at length " +
                         std::to_string(length));
+
+                RequireDispatchTiersAgree(values.data(), added.data(), length);
             }
         }
 
@@ -892,6 +926,7 @@ namespace
             Nnue::Simd::Scalar::ActivatedDotProduct(saturated.data(), extremeWeights.data(),
                 saturated.size()),
             "SIMD ActivatedDotProduct overflows where the scalar reference does not");
+        RequireDispatchTiersAgree(saturated.data(), extremeWeights.data(), saturated.size());
     }
 
     void TestNnueFeatureIndexing()
@@ -1351,7 +1386,7 @@ namespace
         const Nnue::Network& network = Nnue::Evaluator::GetNetwork();
 
         std::cout << "NNUE evaluation benchmark (" << network.GetHeader().Describe() << ")\n"
-                  << "kernels " << Nnue::Simd::TargetName << "\n\n";
+                  << "kernels " << Nnue::Simd::TargetName() << "\n\n";
 
         for (const BenchCase& testCase : cases)
         {

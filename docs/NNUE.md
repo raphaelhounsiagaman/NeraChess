@@ -295,9 +295,18 @@ on x86-64. AVX2 is used when the build enables it:
 make config=release CXXFLAGS="-mavx2"
 ```
 
-x86 builds without AVX2 get vector accumulator updates but a scalar output
-layer. SSE2 has no packed 32-bit multiply — that arrived with SSE4.1 — and
-emulating one costs more than it saves.
+x86 builds without AVX2 get vector accumulator updates. The output layer's
+activated dot product has no SSE2 vector kernel — SSE2 has no packed 32-bit
+multiply, that arrived with SSE4.1, and emulating one costs more than it
+saves — but on GCC/Clang it does not fall back to scalar either: function
+multiversioning gives the binary AVX2 and SSE4.1 clones of the scalar loop
+(`Simd::Dispatch` in `SimdOps.h`), and `ActivatedDotProduct` picks between
+them at runtime with `__builtin_cpu_supports`, resolved once per process.
+Every clone is bit-exact with `Simd::Scalar` by construction — it is the same
+loop, recompiled at a wider target, and the accumulation argument below holds
+regardless of how the additions are reassociated. MSVC has no `target`
+attribute, so it keeps the plain scalar fallback. `Simd::TargetName()` reports
+the tier actually selected, not just the one compiled.
 
 ### Exactness is the constraint, not speed
 

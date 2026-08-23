@@ -365,8 +365,9 @@ parameters, A/B testing a new network, and installing the result — and
   strength quoted above, which was measured with the hand-crafted evaluation it
   replaced. Training a stronger one is a matter of running more generations at
   greater depth.
-- x86 builds use a vectorized accumulator but a scalar output layer unless AVX2
-  is enabled at compile time.
+- x86 builds without AVX2 enabled at compile time get vector accumulator
+  updates. The output layer's dot product is runtime-dispatched to an AVX2 or
+  SSE4.1 kernel on GCC/Clang; MSVC still falls back to scalar there.
 - Search performance and calibrated strength depend on hardware, thread count, and time control.
 
 ---

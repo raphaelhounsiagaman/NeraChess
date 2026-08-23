@@ -17,10 +17,17 @@
 // trained network happens to produce -- and TestNnueSimdKernels checks the
 // vector and scalar paths against each other on adversarial inputs.
 //
-// Selection is at compile time. The defaults are the widest instruction set
-// each platform guarantees: NEON on AArch64, SSE2 on x86-64. AVX2 is used when
-// the build enables it (-mavx2, /arch:AVX2), which is worth doing for a machine
-// you control but cannot be the default without dropping pre-2013 CPUs.
+// Selection is mostly at compile time. The defaults are the widest instruction
+// set each platform guarantees: NEON on AArch64, SSE2 on x86-64. AVX2 is used
+// throughout when the build enables it (-mavx2, /arch:AVX2), which is worth
+// doing for a machine you control but cannot be the default without dropping
+// pre-2013 CPUs. The one exception is ActivatedDotProduct on an SSE2-baseline
+// GCC/Clang x86 build: it has no SSE2 vector implementation (see below), so it
+// instead picks an AVX2 or SSE4.1 clone of the scalar loop at runtime via
+// function multiversioning. That choice is resolved once per process and
+// every clone is bit-exact with Simd::Scalar by construction, so two Lazy SMP
+// workers in the same process -- the only place a disagreement could poison
+// the shared transposition table -- always agree.
 
 // AArch64 rather than any NEON: the kernels use vmull_high_s16 and
 // vmovl_high_s32, which 32-bit ARM's NEON does not provide.
@@ -79,17 +86,96 @@ namespace NeraChessNNUE::Simd
     // -- Dispatch ----------------------------------------------------------
 
 #if defined(NNUE_SIMD_NEON)
-    inline constexpr const char* TargetName = "neon";
     inline constexpr size_t Lanes = 8;
+    inline const char* TargetName() { return "neon"; }
 #elif defined(NNUE_SIMD_AVX2)
-    inline constexpr const char* TargetName = "avx2";
     inline constexpr size_t Lanes = 16;
+    inline const char* TargetName() { return "avx2"; }
 #elif defined(NNUE_SIMD_SSE2)
-    inline constexpr const char* TargetName = "sse2";
     inline constexpr size_t Lanes = 8;
+
+    // SSE2 has no vector implementation of ActivatedDotProduct below (SSE2
+    // lacks a 32-bit packed multiply, and emulating one costs more than it
+    // saves: 248 ns vs 259 ns for a 512-wide call, measured). GCC/Clang
+    // function multiversioning lets the binary carry AVX2 and SSE4.1 clones
+    // of the scalar loop and pick between them at runtime with
+    // __builtin_cpu_supports, without forcing the whole translation unit --
+    // and therefore every pre-2013 x86-64 target -- onto a newer baseline.
+    // Accumulator kernels (Add/Subtract/AddSubtract) already have an SSE2
+    // vector path and are unaffected.
+#if defined(__GNUC__) || defined(__clang__)
+    #define NNUE_SIMD_X86_DISPATCH 1
+#endif
+
+#if defined(NNUE_SIMD_X86_DISPATCH)
+    namespace Dispatch
+    {
+        // Each tier below is bit-exact with Scalar::ActivatedDotProduct by
+        // construction: it is the identical loop, recompiled at a wider
+        // target so the vectorizer reassociates the additions. That is safe
+        // because no reassociation can overflow -- a squared clip times an
+        // int16 weight fits in int32, and the running int64 total cannot
+        // overflow for any int16 weight the format permits (at most 512
+        // terms, each under 65025 * 32767 < 2^31) -- so every grouping of the
+        // sum produces the same int64 value.
+        __attribute__((target("avx2")))
+        inline Accumulation DotAvx2(const Weight* values, const Weight* weights, size_t count)
+        {
+            Accumulation sum = 0;
+            for (size_t index = 0; index < count; ++index)
+                sum += Quantization::Activate(values[index]) * weights[index];
+            return sum;
+        }
+
+        __attribute__((target("sse4.1")))
+        inline Accumulation DotSse41(const Weight* values, const Weight* weights, size_t count)
+        {
+            Accumulation sum = 0;
+            for (size_t index = 0; index < count; ++index)
+                sum += Quantization::Activate(values[index]) * weights[index];
+            return sum;
+        }
+
+        enum class Tier { Avx2, Sse41, Baseline };
+
+        inline Tier DetectTier()
+        {
+            __builtin_cpu_init();
+            // __builtin_cpu_supports checks OS-enabled YMM/XMM state (via
+            // XGETBV), not just the CPUID feature bit, so it cannot select a
+            // tier the OS has not enabled register state for.
+            if (__builtin_cpu_supports("avx2"))
+                return Tier::Avx2;
+            if (__builtin_cpu_supports("sse4.1"))
+                return Tier::Sse41;
+            return Tier::Baseline;
+        }
+
+        // Resolved once; the microarchitecture a process runs on cannot
+        // change while it runs.
+        inline Tier SelectedTier()
+        {
+            static const Tier tier = DetectTier();
+            return tier;
+        }
+    }
+#endif
+
+    inline const char* TargetName()
+    {
+#if defined(NNUE_SIMD_X86_DISPATCH)
+        switch (Dispatch::SelectedTier())
+        {
+        case Dispatch::Tier::Avx2:      return "sse2 (dispatch: avx2)";
+        case Dispatch::Tier::Sse41:     return "sse2 (dispatch: sse4.1)";
+        case Dispatch::Tier::Baseline:  break;
+        }
+#endif
+        return "sse2";
+    }
 #else
-    inline constexpr const char* TargetName = "scalar";
     inline constexpr size_t Lanes = 1;
+    inline const char* TargetName() { return "scalar"; }
 #endif
 
     // Architecture::HiddenSize is asserted to be a multiple of 16, so every
@@ -316,9 +402,20 @@ namespace NeraChessNNUE::Simd
         const Accumulation sum = lanes[0] + lanes[1] + lanes[2] + lanes[3];
         return sum + Scalar::ActivatedDotProduct(values + index, weights + index, count - index);
 #else
+#if defined(NNUE_SIMD_X86_DISPATCH)
+        switch (Dispatch::SelectedTier())
+        {
+        case Dispatch::Tier::Avx2:
+            return Dispatch::DotAvx2(values, weights, count);
+        case Dispatch::Tier::Sse41:
+            return Dispatch::DotSse41(values, weights, count);
+        case Dispatch::Tier::Baseline:
+            break;
+        }
+#endif
         // SSE2 lacks a 32-bit packed multiply (that is SSE4.1), and emulating
-        // one costs more than it saves. Builds that want a vector output layer
-        // on x86 should enable AVX2.
+        // one costs more than it saves, so hardware the dispatch tiers above
+        // reject (or a non-GCC/Clang toolchain) falls back to scalar.
         return Scalar::ActivatedDotProduct(values, weights, count);
 #endif
     }
