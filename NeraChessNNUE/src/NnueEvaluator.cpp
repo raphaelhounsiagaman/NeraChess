@@ -113,7 +113,7 @@ namespace NeraChessNNUE::Evaluator
         }
 
         return "network " + MutablePath().filename().string() + ' ' +
-            network.GetHeader().Describe() + ", kernels " + Simd::TargetName;
+            network.GetHeader().Describe() + ", kernels " + Simd::TargetName();
     }
 
     Score Evaluate(const BoardState& state, Accumulator& accumulator)
