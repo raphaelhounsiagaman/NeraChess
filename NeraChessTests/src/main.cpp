@@ -1547,8 +1547,20 @@ namespace
         const auto defaultLimits = CalculateLimits(board, defaultClock);
         Require(defaultLimits.softTime == seconds{ 10 },
             "default time manager soft limit is incorrect");
-        Require(defaultLimits.hardTime == seconds{ 15 },
+        Require(defaultLimits.hardTime > seconds{ 15 } && defaultLimits.hardTime < minutes{ 1 },
             "default time manager hard limit is incorrect");
+
+        // The budget must scale with the clock instead of pinning to a fixed
+        // ceiling once the per-move share crosses it (issue: time management
+        // caps every search at 10s soft / 15s hard regardless of time control).
+        Clock longClock(minutes{ 90 }, seconds{ 40 });
+        const auto longLimits = CalculateLimits(board, longClock);
+        Require(longLimits.softTime > defaultLimits.softTime * 5,
+            "time manager budget did not scale up for a much longer clock");
+        Require(longLimits.hardTime > defaultLimits.hardTime * 5,
+            "time manager hard limit did not scale up for a much longer clock");
+        Require(longLimits.hardTime < minutes{ 90 },
+            "time manager hard limit ignored the clock safety reserve");
 
         Clock lowClock(milliseconds{ 1'000 }, milliseconds{ 100 });
         const auto lowLimits = CalculateLimits(board, lowClock);
