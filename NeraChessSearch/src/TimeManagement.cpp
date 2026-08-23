@@ -33,7 +33,10 @@ namespace NeraChessSearch::TimeManagement
         // Never plan to spend more than a quarter of the remaining clock on a
         // single move, however few moves the estimator thinks are left. This
         // scales with the time control, unlike a fixed millisecond ceiling.
-        softTime = std::min({ softTime, available, remaining / 4 });
+        // Floored at 1 ms: integer division can round remaining / 4 to 0 when
+        // remaining is a few milliseconds, and SearchEngine treats a zero
+        // soft limit as disabled rather than as "stop immediately".
+        softTime = std::min({ softTime, available, std::max(milliseconds{ 1 }, remaining / 4) });
 
         milliseconds hardTime = std::max(softTime, softTime * 3 / 2 + milliseconds{ 50 });
         hardTime = std::min(hardTime, available);
