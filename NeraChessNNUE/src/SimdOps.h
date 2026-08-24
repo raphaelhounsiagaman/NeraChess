@@ -73,6 +73,38 @@ namespace NeraChessNNUE::Simd
             }
         }
 
+        // destination[i] = source[i] + column[i]
+        //
+        // Same arithmetic as Add, but reads the running total from a separate
+        // source buffer instead of accumulating in place -- the first delta
+        // operation of a Push can then read the parent accumulator and write
+        // the child directly, instead of copying the parent over first.
+        inline void CopyAdd(Weight* destination, const Weight* source, const Weight* column,
+            size_t count)
+        {
+            for (size_t index = 0; index < count; ++index)
+                destination[index] = static_cast<Weight>(source[index] + column[index]);
+        }
+
+        // destination[i] = source[i] - column[i]
+        inline void CopySubtract(Weight* destination, const Weight* source, const Weight* column,
+            size_t count)
+        {
+            for (size_t index = 0; index < count; ++index)
+                destination[index] = static_cast<Weight>(source[index] - column[index]);
+        }
+
+        // destination[i] = source[i] + added[i] - removed[i]
+        inline void CopyAddSubtract(Weight* destination, const Weight* source,
+            const Weight* added, const Weight* removed, size_t count)
+        {
+            for (size_t index = 0; index < count; ++index)
+            {
+                destination[index] = static_cast<Weight>(
+                    source[index] + added[index] - removed[index]);
+            }
+        }
+
         inline Accumulation ActivatedDotProduct(const Weight* values, const Weight* weights,
             size_t count)
         {
@@ -134,6 +166,67 @@ namespace NeraChessNNUE::Simd
             for (size_t index = 0; index < count; ++index)
                 sum += Quantization::Activate(values[index]) * weights[index];
             return sum;
+        }
+
+        // Add/Subtract/AddSubtract and the Copy* variants below already have a
+        // native SSE2 vector path (unlike ActivatedDotProduct), so there is no
+        // SSE4.1 tier for them: SSE2 already vectorizes this arithmetic and
+        // SSE4.1 adds nothing an AVX2 clone doesn't already give. Each clone
+        // here is the identical scalar loop recompiled at a wider target;
+        // int16 addition/subtraction wraps the same way regardless of lane
+        // width, so every clone is bit-exact with Simd::Scalar by construction
+        // -- there is no reassociation risk the way there is for the dot
+        // product's reduction.
+        __attribute__((target("avx2")))
+        inline void AddAvx2(Weight* accumulator, const Weight* column, size_t count)
+        {
+            for (size_t index = 0; index < count; ++index)
+                accumulator[index] = static_cast<Weight>(accumulator[index] + column[index]);
+        }
+
+        __attribute__((target("avx2")))
+        inline void SubtractAvx2(Weight* accumulator, const Weight* column, size_t count)
+        {
+            for (size_t index = 0; index < count; ++index)
+                accumulator[index] = static_cast<Weight>(accumulator[index] - column[index]);
+        }
+
+        __attribute__((target("avx2")))
+        inline void AddSubtractAvx2(Weight* accumulator, const Weight* added,
+            const Weight* removed, size_t count)
+        {
+            for (size_t index = 0; index < count; ++index)
+            {
+                accumulator[index] = static_cast<Weight>(
+                    accumulator[index] + added[index] - removed[index]);
+            }
+        }
+
+        __attribute__((target("avx2")))
+        inline void CopyAddAvx2(Weight* destination, const Weight* source, const Weight* column,
+            size_t count)
+        {
+            for (size_t index = 0; index < count; ++index)
+                destination[index] = static_cast<Weight>(source[index] + column[index]);
+        }
+
+        __attribute__((target("avx2")))
+        inline void CopySubtractAvx2(Weight* destination, const Weight* source,
+            const Weight* column, size_t count)
+        {
+            for (size_t index = 0; index < count; ++index)
+                destination[index] = static_cast<Weight>(source[index] - column[index]);
+        }
+
+        __attribute__((target("avx2")))
+        inline void CopyAddSubtractAvx2(Weight* destination, const Weight* source,
+            const Weight* added, const Weight* removed, size_t count)
+        {
+            for (size_t index = 0; index < count; ++index)
+            {
+                destination[index] = static_cast<Weight>(
+                    source[index] + added[index] - removed[index]);
+            }
         }
 
         enum class Tier { Avx2, Sse41, Baseline };
@@ -204,6 +297,13 @@ namespace NeraChessNNUE::Simd
         }
         Scalar::Add(accumulator + index, column + index, count - index);
 #elif defined(NNUE_SIMD_SSE2)
+#if defined(NNUE_SIMD_X86_DISPATCH)
+        if (Dispatch::SelectedTier() == Dispatch::Tier::Avx2)
+        {
+            Dispatch::AddAvx2(accumulator, column, count);
+            return;
+        }
+#endif
         size_t index = 0;
         for (; index + 8 <= count; index += 8)
         {
@@ -240,6 +340,13 @@ namespace NeraChessNNUE::Simd
         }
         Scalar::Subtract(accumulator + index, column + index, count - index);
 #elif defined(NNUE_SIMD_SSE2)
+#if defined(NNUE_SIMD_X86_DISPATCH)
+        if (Dispatch::SelectedTier() == Dispatch::Tier::Avx2)
+        {
+            Dispatch::SubtractAvx2(accumulator, column, count);
+            return;
+        }
+#endif
         size_t index = 0;
         for (; index + 8 <= count; index += 8)
         {
@@ -286,6 +393,13 @@ namespace NeraChessNNUE::Simd
         }
         Scalar::AddSubtract(accumulator + index, added + index, removed + index, count - index);
 #elif defined(NNUE_SIMD_SSE2)
+#if defined(NNUE_SIMD_X86_DISPATCH)
+        if (Dispatch::SelectedTier() == Dispatch::Tier::Avx2)
+        {
+            Dispatch::AddSubtractAvx2(accumulator, added, removed, count);
+            return;
+        }
+#endif
         size_t index = 0;
         for (; index + 8 <= count; index += 8)
         {
@@ -305,6 +419,154 @@ namespace NeraChessNNUE::Simd
     inline void Copy(Weight* destination, const Weight* source, size_t count)
     {
         std::memcpy(destination, source, count * sizeof(Weight));
+    }
+
+    // destination[i] = source[i] + column[i]
+    //
+    // Same shape as Add, but writes a separate destination instead of
+    // accumulating in place -- see Scalar::CopyAdd.
+    inline void CopyAdd(Weight* destination, const Weight* source, const Weight* column,
+        size_t count)
+    {
+#if defined(NNUE_SIMD_NEON)
+        size_t index = 0;
+        for (; index + 8 <= count; index += 8)
+        {
+            vst1q_s16(destination + index,
+                vaddq_s16(vld1q_s16(source + index), vld1q_s16(column + index)));
+        }
+        Scalar::CopyAdd(destination + index, source + index, column + index, count - index);
+#elif defined(NNUE_SIMD_AVX2)
+        size_t index = 0;
+        for (; index + 16 <= count; index += 16)
+        {
+            const __m256i sum = _mm256_add_epi16(
+                _mm256_loadu_si256(reinterpret_cast<const __m256i*>(source + index)),
+                _mm256_loadu_si256(reinterpret_cast<const __m256i*>(column + index)));
+            _mm256_storeu_si256(reinterpret_cast<__m256i*>(destination + index), sum);
+        }
+        Scalar::CopyAdd(destination + index, source + index, column + index, count - index);
+#elif defined(NNUE_SIMD_SSE2)
+#if defined(NNUE_SIMD_X86_DISPATCH)
+        if (Dispatch::SelectedTier() == Dispatch::Tier::Avx2)
+        {
+            Dispatch::CopyAddAvx2(destination, source, column, count);
+            return;
+        }
+#endif
+        size_t index = 0;
+        for (; index + 8 <= count; index += 8)
+        {
+            const __m128i sum = _mm_add_epi16(
+                _mm_loadu_si128(reinterpret_cast<const __m128i*>(source + index)),
+                _mm_loadu_si128(reinterpret_cast<const __m128i*>(column + index)));
+            _mm_storeu_si128(reinterpret_cast<__m128i*>(destination + index), sum);
+        }
+        Scalar::CopyAdd(destination + index, source + index, column + index, count - index);
+#else
+        Scalar::CopyAdd(destination, source, column, count);
+#endif
+    }
+
+    // destination[i] = source[i] - column[i]
+    inline void CopySubtract(Weight* destination, const Weight* source, const Weight* column,
+        size_t count)
+    {
+#if defined(NNUE_SIMD_NEON)
+        size_t index = 0;
+        for (; index + 8 <= count; index += 8)
+        {
+            vst1q_s16(destination + index,
+                vsubq_s16(vld1q_s16(source + index), vld1q_s16(column + index)));
+        }
+        Scalar::CopySubtract(destination + index, source + index, column + index, count - index);
+#elif defined(NNUE_SIMD_AVX2)
+        size_t index = 0;
+        for (; index + 16 <= count; index += 16)
+        {
+            const __m256i difference = _mm256_sub_epi16(
+                _mm256_loadu_si256(reinterpret_cast<const __m256i*>(source + index)),
+                _mm256_loadu_si256(reinterpret_cast<const __m256i*>(column + index)));
+            _mm256_storeu_si256(reinterpret_cast<__m256i*>(destination + index), difference);
+        }
+        Scalar::CopySubtract(destination + index, source + index, column + index, count - index);
+#elif defined(NNUE_SIMD_SSE2)
+#if defined(NNUE_SIMD_X86_DISPATCH)
+        if (Dispatch::SelectedTier() == Dispatch::Tier::Avx2)
+        {
+            Dispatch::CopySubtractAvx2(destination, source, column, count);
+            return;
+        }
+#endif
+        size_t index = 0;
+        for (; index + 8 <= count; index += 8)
+        {
+            const __m128i difference = _mm_sub_epi16(
+                _mm_loadu_si128(reinterpret_cast<const __m128i*>(source + index)),
+                _mm_loadu_si128(reinterpret_cast<const __m128i*>(column + index)));
+            _mm_storeu_si128(reinterpret_cast<__m128i*>(destination + index), difference);
+        }
+        Scalar::CopySubtract(destination + index, source + index, column + index, count - index);
+#else
+        Scalar::CopySubtract(destination, source, column, count);
+#endif
+    }
+
+    // destination[i] = source[i] + added[i] - removed[i]
+    //
+    // The fused replacement for AccumulatorStack::Push's memcpy-then-delta:
+    // reads the parent accumulator once and writes the child directly,
+    // instead of copying the parent over and then rewriting it in place.
+    inline void CopyAddSubtract(Weight* destination, const Weight* source, const Weight* added,
+        const Weight* removed, size_t count)
+    {
+#if defined(NNUE_SIMD_NEON)
+        size_t index = 0;
+        for (; index + 8 <= count; index += 8)
+        {
+            const int16x8_t updated = vsubq_s16(
+                vaddq_s16(vld1q_s16(source + index), vld1q_s16(added + index)),
+                vld1q_s16(removed + index));
+            vst1q_s16(destination + index, updated);
+        }
+        Scalar::CopyAddSubtract(destination + index, source + index, added + index,
+            removed + index, count - index);
+#elif defined(NNUE_SIMD_AVX2)
+        size_t index = 0;
+        for (; index + 16 <= count; index += 16)
+        {
+            const __m256i updated = _mm256_sub_epi16(
+                _mm256_add_epi16(
+                    _mm256_loadu_si256(reinterpret_cast<const __m256i*>(source + index)),
+                    _mm256_loadu_si256(reinterpret_cast<const __m256i*>(added + index))),
+                _mm256_loadu_si256(reinterpret_cast<const __m256i*>(removed + index)));
+            _mm256_storeu_si256(reinterpret_cast<__m256i*>(destination + index), updated);
+        }
+        Scalar::CopyAddSubtract(destination + index, source + index, added + index,
+            removed + index, count - index);
+#elif defined(NNUE_SIMD_SSE2)
+#if defined(NNUE_SIMD_X86_DISPATCH)
+        if (Dispatch::SelectedTier() == Dispatch::Tier::Avx2)
+        {
+            Dispatch::CopyAddSubtractAvx2(destination, source, added, removed, count);
+            return;
+        }
+#endif
+        size_t index = 0;
+        for (; index + 8 <= count; index += 8)
+        {
+            const __m128i updated = _mm_sub_epi16(
+                _mm_add_epi16(
+                    _mm_loadu_si128(reinterpret_cast<const __m128i*>(source + index)),
+                    _mm_loadu_si128(reinterpret_cast<const __m128i*>(added + index))),
+                _mm_loadu_si128(reinterpret_cast<const __m128i*>(removed + index)));
+            _mm_storeu_si128(reinterpret_cast<__m128i*>(destination + index), updated);
+        }
+        Scalar::CopyAddSubtract(destination + index, source + index, added + index,
+            removed + index, count - index);
+#else
+        Scalar::CopyAddSubtract(destination, source, added, removed, count);
+#endif
     }
 
     // Sum of Activate(values[i]) * weights[i].

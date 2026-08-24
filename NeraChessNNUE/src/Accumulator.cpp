@@ -4,6 +4,7 @@
 #include "SimdOps.h"
 
 #include <algorithm>
+#include <cassert>
 
 namespace NeraChessNNUE
 {
@@ -73,6 +74,59 @@ namespace NeraChessNNUE
         }
     }
 
+    void Accumulator::ApplyDeltaFrom(const Network& network, const Weight* source,
+        const FeatureSet::FeatureDelta& delta, Perspective perspective)
+    {
+        if (!network.IsLoaded())
+            return;
+
+        Weight* target = (*this)[perspective];
+        // Push's out-of-room guard (m_Top >= MaxAccumulatorPly) is what keeps
+        // this from ever aliasing: it is the one case where two plies would
+        // otherwise clamp onto the same entry.
+        assert(target != source &&
+            "ApplyDeltaFrom's source must not alias the accumulator it writes");
+
+        const size_t paired = std::min(delta.addedCount, delta.removedCount);
+
+        // The first delta operation reads `source` (the parent) and writes
+        // `target` (this, the child) directly, folding in the copy that a
+        // plain ApplyDelta would need done ahead of time. Every operation
+        // after the first is in place on `target`, exactly as in ApplyDelta.
+        if (paired > 0)
+        {
+            Simd::CopyAddSubtract(target, source, network.FeatureColumn(delta.added[0]),
+                network.FeatureColumn(delta.removed[0]), Architecture::HiddenSize);
+        }
+        else if (delta.addedCount > 0)
+        {
+            Simd::CopyAdd(target, source, network.FeatureColumn(delta.added[0]),
+                Architecture::HiddenSize);
+        }
+        else if (delta.removedCount > 0)
+        {
+            Simd::CopySubtract(target, source, network.FeatureColumn(delta.removed[0]),
+                Architecture::HiddenSize);
+        }
+        else
+        {
+            Simd::Copy(target, source, Architecture::HiddenSize);
+        }
+
+        for (size_t index = 1; index < paired; ++index)
+        {
+            Simd::AddSubtract(target, network.FeatureColumn(delta.added[index]),
+                network.FeatureColumn(delta.removed[index]), Architecture::HiddenSize);
+        }
+        for (size_t index = std::max<size_t>(paired, 1); index < delta.addedCount; ++index)
+            Simd::Add(target, network.FeatureColumn(delta.added[index]), Architecture::HiddenSize);
+        for (size_t index = std::max<size_t>(paired, 1); index < delta.removedCount; ++index)
+        {
+            Simd::Subtract(target, network.FeatureColumn(delta.removed[index]),
+                Architecture::HiddenSize);
+        }
+    }
+
     AccumulatorStack::AccumulatorStack()
         : m_Entries(std::make_unique<Entries>())
     {
@@ -129,12 +183,11 @@ namespace NeraChessNNUE
                 continue;
             }
 
-            Simd::Copy(child[perspective], parent[perspective], Architecture::HiddenSize);
             child.inputBuckets[Index(perspective)] = static_cast<uint8_t>(bucket);
 
             FeatureSet::FeatureDelta delta;
             FeatureSet::ComputeDelta(dirty, perspective, bucket, delta);
-            child.ApplyDelta(network, delta, perspective);
+            child.ApplyDeltaFrom(network, parent[perspective], delta, perspective);
         }
 
         child.computed = true;
