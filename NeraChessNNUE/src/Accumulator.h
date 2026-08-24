@@ -58,6 +58,15 @@ namespace NeraChessNNUE
         // accumulator.
         void ApplyDelta(const Network& network, const FeatureSet::FeatureDelta& delta,
             Perspective perspective);
+
+        // Same as ApplyDelta, but reads the starting values from `source`
+        // instead of this accumulator's own (already up to date) values, and
+        // writes the result into this accumulator. Lets a child node's Push
+        // fold the parent-to-child copy into its first delta operation
+        // instead of copying the parent over and then rewriting it in place.
+        // `source` must not alias this perspective's storage.
+        void ApplyDeltaFrom(const Network& network, const Weight* source,
+            const FeatureSet::FeatureDelta& delta, Perspective perspective);
     };
 
     // Upper bound on search depth plus quiescence extensions. Must stay at or
