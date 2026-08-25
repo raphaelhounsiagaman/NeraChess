@@ -17,10 +17,12 @@
 //
 //     (768 -> 512)x2 -> 1
 //
-// with one input bucket and one output bucket. King-bucketed feature sets
-// (HalfKP / HalfKA) and output buckets by material count are the intended
-// next steps; the bucket dimensions already exist so that adding them does
-// not require reshaping call sites. See docs/NNUE.md for the upgrade path.
+// with one input bucket and one output bucket. Features are horizontally
+// canonicalized on the perspective's own king (see FeatureSetVersion below).
+// King-bucketed feature sets (HalfKP / HalfKA) and output buckets by material
+// count are the intended next steps; the bucket dimensions already exist so
+// that adding them does not require reshaping call sites. See docs/NNUE.md for
+// the upgrade path.
 
 namespace NeraChessNNUE::Architecture
 {
@@ -29,16 +31,30 @@ namespace NeraChessNNUE::Architecture
     inline constexpr size_t SquareCount = 64;
     inline constexpr size_t PieceTypeCount = 6;
 
-    // Features are (relative colour, piece type, relative square) triples, so
+    // What a feature index means, independent of how many there are.
+    //
+    //   1  (relative colour, piece type, relative square); king independent
+    //   2  adds horizontal mirroring: a perspective's squares are reflected
+    //      when its own king stands on files a-d, so that its king is always
+    //      seen on files e-h
+    //
+    // Bumped whenever a feature index comes to mean something new while every
+    // dimension stays the same. Dimensions are caught by the sizes below; this
+    // is what catches a change the sizes cannot see. It is mixed into
+    // ArchitectureHash(), so a network trained under an older feature set is
+    // rejected at load time instead of being read as though nothing changed.
+    inline constexpr uint16_t FeatureSetVersion = 2;
+
+    // Features are (relative colour, piece type, canonical square) triples, so
     // both perspectives share one weight matrix and a position and its mirror
     // produce mirrored feature sets.
     inline constexpr size_t PerspectiveInputSize =
         PerspectiveCount * PieceTypeCount * SquareCount; // 768
 
     // Number of separate feature-transformer weight matrices selected by the
-    // position of the perspective's own king. One bucket means the feature set
-    // is king independent, which in turn means a king move never forces an
-    // accumulator refresh.
+    // position of the perspective's own king. One bucket means every king
+    // square indexes the same matrix; a king move can still force a refresh of
+    // its own half by flipping that half's horizontal orientation.
     inline constexpr size_t InputBucketCount = 1;
 
     inline constexpr size_t TotalInputSize = InputBucketCount * PerspectiveInputSize;
@@ -108,6 +124,7 @@ namespace NeraChessNNUE::Architecture
             }
         };
 
+        mix(FeatureSetVersion);
         mix(PerspectiveInputSize);
         mix(InputBucketCount);
         mix(HiddenSize);

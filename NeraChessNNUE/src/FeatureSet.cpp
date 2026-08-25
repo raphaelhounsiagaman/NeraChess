@@ -21,16 +21,16 @@ namespace NeraChessNNUE::FeatureSet
         }
     }
 
-    FeatureIndex FeatureIndexOf(Perspective perspective, Piece piece, uint8_t square,
-        size_t inputBucket)
+    FeatureIndex FeatureIndexOf(const View& view, Piece piece, uint8_t square)
     {
-        const size_t colour = RelativeColour(perspective, piece);
+        const size_t colour = RelativeColour(view.perspective, piece);
         const size_t type = static_cast<uint8_t>(piece) % Architecture::PieceTypeCount;
-        const size_t relative = RelativeSquare(perspective, square);
+        const size_t oriented = OrientedSquare(view, square);
 
         const size_t index =
-            (colour * Architecture::PieceTypeCount + type) * Architecture::SquareCount + relative;
-        return static_cast<FeatureIndex>(inputBucket * Architecture::PerspectiveInputSize + index);
+            (colour * Architecture::PieceTypeCount + type) * Architecture::SquareCount + oriented;
+        return static_cast<FeatureIndex>(
+            view.inputBucket * Architecture::PerspectiveInputSize + index);
     }
 
     uint8_t KingSquare(const BoardState& state, Perspective perspective)
@@ -41,13 +41,21 @@ namespace NeraChessNNUE::FeatureSet
         return king ? BitUtil::GetLSBIndex(king) : NoSquare;
     }
 
+    View ViewOf(const BoardState& state, Perspective perspective)
+    {
+        const uint8_t kingSquare = KingSquare(state, perspective);
+        if (kingSquare == NoSquare)
+            return View{ perspective, Orientation::Direct, 0 };
+
+        return ViewOfKing(perspective, kingSquare);
+    }
+
     void CollectActiveFeatures(const BoardState& state, Perspective perspective,
         ActiveFeatures& out)
     {
         out.Clear();
 
-        const uint8_t kingSquare = KingSquare(state, perspective);
-        const size_t bucket = kingSquare == NoSquare ? 0u : KingBucket(perspective, kingSquare);
+        const View view = ViewOf(state, perspective);
 
         for (uint8_t piece = 0; piece < state.pieceBitboards.size(); ++piece)
         {
@@ -55,13 +63,12 @@ namespace NeraChessNNUE::FeatureSet
             while (pieces)
             {
                 const uint8_t square = BitUtil::PopLSB(pieces);
-                out.Add(FeatureIndexOf(perspective, Piece(piece), square, bucket));
+                out.Add(FeatureIndexOf(view, Piece(piece), square));
             }
         }
     }
 
-    void ComputeDelta(const DirtyPieces& dirty, Perspective perspective, size_t inputBucket,
-        FeatureDelta& out)
+    void ComputeDelta(const DirtyPieces& dirty, const View& view, FeatureDelta& out)
     {
         out.Clear();
 
@@ -72,15 +79,9 @@ namespace NeraChessNNUE::FeatureSet
                 continue;
 
             if (piece.from != NoSquare)
-            {
-                out.removed[out.removedCount++] =
-                    FeatureIndexOf(perspective, piece.piece, piece.from, inputBucket);
-            }
+                out.removed[out.removedCount++] = FeatureIndexOf(view, piece.piece, piece.from);
             if (piece.to != NoSquare)
-            {
-                out.added[out.addedCount++] =
-                    FeatureIndexOf(perspective, piece.piece, piece.to, inputBucket);
-            }
+                out.added[out.addedCount++] = FeatureIndexOf(view, piece.piece, piece.to);
         }
     }
 }

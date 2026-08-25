@@ -25,6 +25,7 @@
 #include <iterator>
 #include <mutex>
 #include <optional>
+#include <set>
 #include <span>
 #include <stdexcept>
 #include <string>
@@ -796,6 +797,30 @@ namespace
             Nnue::NetworkFormat::Status::ChecksumMismatch,
             "a file with corrupted weights was accepted");
 
+        // Horizontal mirroring changed what a feature index means without
+        // changing a single dimension, so every size field of a network
+        // trained before it still matches this build's. The architecture hash
+        // is the only thing that tells the two apart, and it has to: loading
+        // those weights under the new feature numbering would evaluate
+        // plausible-looking nonsense.
+        static constexpr uint32_t PreMirroringArchitectureHash = 1'407'766'679u;
+        static_assert(PreMirroringArchitectureHash != Nnue::Architecture::ArchitectureHash(),
+            "the feature set changed but the architecture hash did not; networks "
+            "trained under the previous feature semantics would still load");
+        {
+            std::vector<std::byte> previousFeatureSet = file;
+            for (size_t byte = 0; byte < sizeof(uint32_t); ++byte)
+            {
+                previousFeatureSet[12 + byte] = static_cast<std::byte>(
+                    (PreMirroringArchitectureHash >> (byte * 8)) & 0xFFu);
+            }
+            Nnue::Network candidate;
+            Require(candidate.LoadFromMemory(previousFeatureSet) ==
+                Nnue::NetworkFormat::Status::ArchitectureMismatch,
+                "a network built for the pre-mirroring feature set was accepted");
+            Require(!candidate.IsLoaded(), "a rejected network was left loaded");
+        }
+
         std::vector<std::byte> truncated = file;
         truncated.resize(file.size() - 2);
         Nnue::Network truncatedNetwork;
@@ -1024,11 +1049,28 @@ namespace
             extremeWeights.data(), saturated.size());
     }
 
+    // Sorted active features for one perspective. Sorting is how two feature
+    // sets are compared: the accumulator only sums weight columns, so the
+    // order they arrive in is not part of the representation.
+    std::vector<Nnue::FeatureIndex> SortedActiveFeatures(const ChessBoard& board,
+        Nnue::Perspective perspective)
+    {
+        Nnue::FeatureSet::ActiveFeatures active;
+        Nnue::FeatureSet::CollectActiveFeatures(board.GetBoardState(), perspective, active);
+        std::vector<Nnue::FeatureIndex> indices(active.indices.begin(),
+            active.indices.begin() + active.count);
+        std::sort(indices.begin(), indices.end());
+        return indices;
+    }
+
     void TestNnueFeatureIndexing()
     {
         using namespace NeraChessEngine;
+        using Nnue::FeatureSet::Orientation;
+        using Nnue::FeatureSet::View;
 
-        // Indices must stay inside the input space the weight matrix covers.
+        // Indices must stay inside the input space the weight matrix covers,
+        // whichever way round the perspective happens to be reading the board.
         for (uint8_t piece = 0; piece < 12; ++piece)
         {
             for (uint8_t square = 0; square < 64; ++square)
@@ -1036,31 +1078,44 @@ namespace
                 for (const Nnue::Perspective perspective :
                     { Nnue::Perspective::White, Nnue::Perspective::Black })
                 {
-                    const Nnue::FeatureIndex index =
-                        Nnue::FeatureSet::FeatureIndexOf(perspective, Piece(piece), square);
-                    Require(index < Nnue::Architecture::TotalInputSize,
-                        "a feature index fell outside the input space");
+                    for (const Orientation orientation :
+                        { Orientation::Direct, Orientation::Mirrored })
+                    {
+                        const View view{ perspective, orientation, 0 };
+                        const Nnue::FeatureIndex index =
+                            Nnue::FeatureSet::FeatureIndexOf(view, Piece(piece), square);
+                        Require(index < Nnue::Architecture::TotalInputSize,
+                            "a feature index fell outside the input space");
+                    }
                 }
             }
         }
 
+        // Every feature of a perspective's input space must be reachable, and
+        // reachable only once, or weights would go unused or be shared by two
+        // different meanings.
+        std::set<Nnue::FeatureIndex> reached;
+        for (uint8_t piece = 0; piece < 12; ++piece)
+        {
+            for (uint8_t square = 0; square < 64; ++square)
+            {
+                reached.insert(Nnue::FeatureSet::FeatureIndexOf(
+                    View{ Nnue::Perspective::White, Orientation::Direct, 0 }, Piece(piece),
+                    square));
+            }
+        }
+        Require(reached.size() == Nnue::Architecture::PerspectiveInputSize,
+            "the feature indexer does not cover its input space exactly once");
+
         // The two perspectives of one position must differ, otherwise the
         // network sees the same input for both sides.
         ChessBoard asymmetric("4k3/8/8/8/3P4/8/8/4K3 w - - 0 1");
-        Nnue::FeatureSet::ActiveFeatures white;
-        Nnue::FeatureSet::ActiveFeatures black;
-        Nnue::FeatureSet::CollectActiveFeatures(asymmetric.GetBoardState(),
-            Nnue::Perspective::White, white);
-        Nnue::FeatureSet::CollectActiveFeatures(asymmetric.GetBoardState(),
-            Nnue::Perspective::Black, black);
-        Require(white.count == 3 && black.count == 3,
+        const std::vector<Nnue::FeatureIndex> whiteIndices =
+            SortedActiveFeatures(asymmetric, Nnue::Perspective::White);
+        const std::vector<Nnue::FeatureIndex> blackIndices =
+            SortedActiveFeatures(asymmetric, Nnue::Perspective::Black);
+        Require(whiteIndices.size() == 3 && blackIndices.size() == 3,
             "active feature count does not match the piece count");
-        std::vector<Nnue::FeatureIndex> whiteIndices(white.indices.begin(),
-            white.indices.begin() + white.count);
-        std::vector<Nnue::FeatureIndex> blackIndices(black.indices.begin(),
-            black.indices.begin() + black.count);
-        std::sort(whiteIndices.begin(), whiteIndices.end());
-        std::sort(blackIndices.begin(), blackIndices.end());
         Require(whiteIndices != blackIndices,
             "both perspectives produced the same features for an asymmetric position");
 
@@ -1068,18 +1123,184 @@ namespace
         // features once each is read from its own side's perspective. This is
         // the property that lets both perspectives share one weight matrix.
         ChessBoard mirrored("4k3/8/8/3p4/8/8/8/4K3 b - - 0 1");
-        Nnue::FeatureSet::ActiveFeatures mirroredBlack;
-        Nnue::FeatureSet::CollectActiveFeatures(mirrored.GetBoardState(),
-            Nnue::Perspective::Black, mirroredBlack);
-        std::vector<Nnue::FeatureIndex> mirroredIndices(mirroredBlack.indices.begin(),
-            mirroredBlack.indices.begin() + mirroredBlack.count);
-        std::sort(mirroredIndices.begin(), mirroredIndices.end());
-        Require(mirroredIndices == whiteIndices,
+        Require(SortedActiveFeatures(mirrored, Nnue::Perspective::Black) == whiteIndices,
             "mirrored positions did not produce mirrored features");
 
+        // A king move that stays on one side of the d/e boundary keeps the
+        // half it belongs to valid; one that crosses does not.
         Require(!Nnue::FeatureSet::RequiresRefresh(Nnue::Perspective::White,
             Square::e1, Square::h8),
-            "a king move demanded a refresh from a king-independent feature set");
+            "a king move within one horizontal half demanded a refresh");
+        Require(Nnue::FeatureSet::RequiresRefresh(Nnue::Perspective::White,
+            Square::e1, Square::d1),
+            "a king move across the d/e boundary did not demand a refresh");
+        Require(Nnue::FeatureSet::RequiresRefresh(Nnue::Perspective::Black,
+            Square::d8, Square::e8),
+            "a black king move across the d/e boundary did not demand a refresh");
+    }
+
+    // Horizontal canonicalization: each perspective reads the board so that
+    // its own king always stands on files e..h, independently of the other.
+    void TestNnueHorizontalMirroring()
+    {
+        using namespace NeraChessEngine;
+        using Nnue::FeatureSet::Orientation;
+        using Nnue::FeatureSet::View;
+        using Nnue::Perspective;
+
+        // -- the reflection itself: a<->h, b<->g, c<->f, d<->e -------------
+        static constexpr uint8_t d4 = 27;
+        static constexpr uint8_t e4 = 28;
+        static constexpr uint8_t a5 = 32;
+        static constexpr uint8_t h5 = 39;
+        static constexpr std::pair<uint8_t, uint8_t> reflections[] = {
+            { Square::a1, Square::h1 },
+            { Square::b1, Square::g1 },
+            { Square::c1, Square::f1 },
+            { Square::d1, Square::e1 },
+            { Square::a8, Square::h8 },
+            { Square::d8, Square::e8 },
+            { d4, e4 },
+            { a5, h5 },
+        };
+        for (const auto& [left, right] : reflections)
+        {
+            Require(Nnue::FeatureSet::MirroredSquare(left) == right &&
+                Nnue::FeatureSet::MirroredSquare(right) == left,
+                "the horizontal reflection does not swap the expected files");
+        }
+        for (uint8_t square = 0; square < 64; ++square)
+        {
+            const uint8_t reflected = Nnue::FeatureSet::MirroredSquare(square);
+            Require(Nnue::FeatureSet::MirroredSquare(reflected) == square,
+                "the horizontal reflection is not its own inverse");
+            Require(Square(reflected).GetRank() == Square(square).GetRank(),
+                "the horizontal reflection moved a square off its rank");
+            Require(Square(reflected).GetFile() == 7 - Square(square).GetFile(),
+                "the horizontal reflection did not invert the file");
+        }
+
+        // -- which half of the board mirrors -------------------------------
+        //
+        // The convention: d mirrors, e does not, so a canonicalized king
+        // always ends up on files e..h.
+        Require(Nnue::FeatureSet::OrientationOfKing(Square::d1) == Orientation::Mirrored,
+            "a king on the d file was not mirrored");
+        Require(Nnue::FeatureSet::OrientationOfKing(Square::e1) == Orientation::Direct,
+            "a king on the e file was mirrored");
+        Require(Nnue::FeatureSet::OrientationOfKing(Square::a1) == Orientation::Mirrored,
+            "a king on the a file was not mirrored");
+        Require(Nnue::FeatureSet::OrientationOfKing(Square::h1) == Orientation::Direct,
+            "a king on the h file was mirrored");
+        for (uint8_t square = 0; square < 64; ++square)
+        {
+            const Orientation expected = Square(square).GetFile() <= 3
+                ? Orientation::Mirrored
+                : Orientation::Direct;
+            Require(Nnue::FeatureSet::OrientationOfKing(square) == expected,
+                "a king square fell on the wrong side of the d/e boundary");
+
+            // Whatever the orientation, the canonicalized king lands on e..h.
+            const View view = Nnue::FeatureSet::ViewOfKing(Perspective::White, square);
+            Require(Square(Nnue::FeatureSet::OrientedSquare(view, square)).GetFile() >= 4,
+                "canonicalization left a king on the queen side");
+        }
+
+        // -- the canonicalization is not a no-op ---------------------------
+        const View direct{ Perspective::White, Orientation::Direct, 0 };
+        const View reflected{ Perspective::White, Orientation::Mirrored, 0 };
+        const Piece whiteRook{ PieceType::WHITE_ROOK };
+        Require(Nnue::FeatureSet::FeatureIndexOf(direct, whiteRook, Square::a1) !=
+            Nnue::FeatureSet::FeatureIndexOf(reflected, whiteRook, Square::a1),
+            "a mirrored view numbered a1 the same way a direct one does");
+        Require(Nnue::FeatureSet::FeatureIndexOf(reflected, whiteRook, Square::a1) ==
+            Nnue::FeatureSet::FeatureIndexOf(direct, whiteRook, Square::h1),
+            "a mirrored view did not read a1 where a direct view reads h1");
+
+        // -- Black's mirroring composes with the flip it already applies ----
+        const View blackReflected{ Perspective::Black, Orientation::Mirrored, 0 };
+        const View blackDirect{ Perspective::Black, Orientation::Direct, 0 };
+        const Piece blackRook{ PieceType::BLACK_ROOK };
+        Require(Nnue::FeatureSet::FeatureIndexOf(blackDirect, blackRook, Square::a8) ==
+            Nnue::FeatureSet::FeatureIndexOf(direct, whiteRook, Square::a1),
+            "the vertical flip alone stopped agreeing between the perspectives");
+        Require(Nnue::FeatureSet::FeatureIndexOf(blackReflected, blackRook, Square::a8) ==
+            Nnue::FeatureSet::FeatureIndexOf(direct, whiteRook, Square::h1),
+            "Black's mirroring does not compose with its vertical flip");
+
+        // -- each perspective follows its own king -------------------------
+        struct ViewCase
+        {
+            std::string_view name;
+            std::string_view fen;
+            Orientation white;
+            Orientation black;
+        };
+        static constexpr ViewCase viewCases[] = {
+            { "white queenside, black kingside", "7k/8/8/8/8/8/8/K7 w - - 0 1",
+                Orientation::Mirrored, Orientation::Direct },
+            { "white kingside, black queenside", "k7/8/8/8/8/8/8/7K w - - 0 1",
+                Orientation::Direct, Orientation::Mirrored },
+            { "both on the d file", "3k4/8/8/8/8/8/8/3K4 w - - 0 1",
+                Orientation::Mirrored, Orientation::Mirrored },
+            { "both on the e file", "4k3/8/8/8/8/8/8/4K3 w - - 0 1",
+                Orientation::Direct, Orientation::Direct },
+        };
+        for (const ViewCase& testCase : viewCases)
+        {
+            ChessBoard board{ std::string(testCase.fen) };
+            Require(Nnue::FeatureSet::ViewOf(board.GetBoardState(), Perspective::White)
+                    .orientation == testCase.white,
+                "White's orientation is wrong in " + std::string(testCase.name));
+            Require(Nnue::FeatureSet::ViewOf(board.GetBoardState(), Perspective::Black)
+                    .orientation == testCase.black,
+                "Black's orientation is wrong in " + std::string(testCase.name));
+        }
+
+        // -- a position and its complete horizontal reflection --------------
+        //
+        // This is the invariant the whole feature set exists for: reflecting
+        // every piece, both kings included, must leave the canonical features
+        // untouched from both points of view. Positions carry no castling
+        // rights and no en passant square, so the two differ in nothing but
+        // the file every piece stands on.
+        struct ReflectionCase
+        {
+            std::string_view name;
+            std::string_view fen;
+            std::string_view reflectedFen;
+        };
+        static constexpr ReflectionCase reflectionCases[] = {
+            { "castled pawn shelters",
+                "2k5/1pp5/8/8/8/8/1PP5/2K5 w - - 0 1",
+                "5k2/5pp1/8/8/8/8/5PP1/5K2 w - - 0 1" },
+            { "kings across the boundary",
+                "8/3k4/2p5/8/8/5N2/6PP/6K1 w - - 0 1",
+                "8/4k3/5p2/8/8/2N5/PP6/1K6 w - - 0 1" },
+            { "queen against a bare king",
+                "7k/8/8/3q4/8/8/8/1K6 w - - 0 1",
+                "k7/8/8/4q3/8/8/8/6K1 w - - 0 1" },
+            { "black to move",
+                "1r2k3/p1pp4/8/8/8/6N1/PP4PP/2K4R b - - 0 1",
+                "3k2r1/4pp1p/8/8/8/1N6/PP4PP/R4K2 b - - 0 1" },
+        };
+        for (const ReflectionCase& testCase : reflectionCases)
+        {
+            ChessBoard board{ std::string(testCase.fen) };
+            ChessBoard reflectedBoard{ std::string(testCase.reflectedFen) };
+            Require(board.GetBoardState().pieceBitboards !=
+                reflectedBoard.GetBoardState().pieceBitboards,
+                "reflection case " + std::string(testCase.name) +
+                    " is its own reflection, so it proves nothing");
+
+            for (const Perspective perspective : { Perspective::White, Perspective::Black })
+            {
+                Require(SortedActiveFeatures(board, perspective) ==
+                    SortedActiveFeatures(reflectedBoard, perspective),
+                    "reflection case " + std::string(testCase.name) +
+                        " did not canonicalize to the same features");
+            }
+        }
     }
 
     void TestNnueAccumulatorUpdates()
@@ -1097,6 +1318,11 @@ namespace
             std::string_view fen;
             std::string_view move;
         };
+        // Every case here must leave both perspectives' views alone, which is
+        // the precondition a plain delta has; the queenside castles that used
+        // to sit in this list cross the d/e boundary and now belong to
+        // TestNnueOrientationRefresh. Both horizontal orientations appear, so
+        // the delta path is covered mirrored as well as direct.
         static constexpr DeltaCase cases[] = {
             { "quiet", "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1", "e2e4" },
             { "capture", "rnbqkbnr/ppp1pppp/8/3p4/4P3/8/PPPP1PPP/RNBQKBNR w KQkq - 0 2", "e4d5" },
@@ -1104,9 +1330,16 @@ namespace
             { "promotion", "7k/P7/8/8/8/8/8/K7 w - - 0 1", "a7a8q" },
             { "capture promotion", "1r5k/P7/8/8/8/8/8/K7 w - - 0 1", "a7b8q" },
             { "white kingside castle", "4k3/8/8/8/8/8/8/4K2R w K - 0 1", "e1g1" },
-            { "white queenside castle", "4k3/8/8/8/8/8/8/R3K3 w Q - 0 1", "e1c1" },
             { "black kingside castle", "4k2r/8/8/8/8/8/8/4K3 b k - 0 1", "e8g8" },
-            { "black queenside castle", "r3k3/8/8/8/8/8/8/4K3 b q - 0 1", "e8c8" },
+            // Both kings on the queen side, so both halves read the board
+            // mirrored while the pieces move.
+            { "mirrored quiet", "2k5/1pp5/8/8/8/8/1PP5/2K5 w - - 0 1", "b2b4" },
+            { "mirrored capture", "2k5/1p6/8/8/8/2n5/1P6/2K5 w - - 0 1", "b2c3" },
+            { "mirrored king step", "2k5/1pp5/8/8/8/8/1PP5/2K5 w - - 0 1", "c1b1" },
+            { "mirrored promotion", "1k6/2P5/8/8/8/8/8/2K5 w - - 0 1", "c7c8q" },
+            // One half mirrored and the other not, which is the case a shared
+            // orientation would silently get wrong.
+            { "split orientation", "r6k/1p6/8/8/3K4/8/6P1/R7 w - - 0 1", "g2g4" },
         };
 
         for (const DeltaCase& testCase : cases)
@@ -1120,11 +1353,20 @@ namespace
             incremental.Refresh(network, board.GetBoardState());
 
             const Nnue::DirtyPieces dirty = Nnue::DescribeMove(board, move);
+            ChessBoard after = board;
+            after.MakeMove(move);
+
             for (const Nnue::Perspective perspective :
                 { Nnue::Perspective::White, Nnue::Perspective::Black })
             {
+                const Nnue::FeatureSet::View view =
+                    Nnue::FeatureSet::ViewOf(board.GetBoardState(), perspective);
+                Require(view == Nnue::FeatureSet::ViewOf(after.GetBoardState(), perspective),
+                    "NNUE delta case " + std::string(testCase.name) +
+                        " changes a perspective's view, so a plain delta cannot apply");
+
                 Nnue::FeatureSet::FeatureDelta delta;
-                Nnue::FeatureSet::ComputeDelta(dirty, perspective, 0, delta);
+                Nnue::FeatureSet::ComputeDelta(dirty, view, delta);
                 incremental.ApplyDelta(network, delta, perspective);
             }
 
@@ -1135,6 +1377,102 @@ namespace
             Require(incremental.values == refreshed.values,
                 "NNUE delta case " + std::string(testCase.name) +
                     " diverged from a full refresh");
+        }
+    }
+
+    // A king crossing the d/e boundary renumbers every feature of its own
+    // half, so that half cannot be brought forward with a delta. The other
+    // half's own king has not moved, so its view still stands and it takes the
+    // ordinary delta -- it simply sees an enemy king change square.
+    //
+    // This is the case an incremental accumulator gets wrong by default, and
+    // it gets it wrong quietly: the values stay plausible and the engine just
+    // evaluates some positions as though the pieces stood elsewhere.
+    void TestNnueOrientationRefresh()
+    {
+        using namespace NeraChessEngine;
+
+        const std::vector<std::byte> file = BuildSyntheticNetwork(0x9E3779B97F4A7C15ull);
+        Nnue::Network network;
+        Require(network.LoadFromMemory(file) == Nnue::NetworkFormat::Status::Ok,
+            "the synthetic network failed to load for the orientation tests");
+
+        struct CrossingCase
+        {
+            std::string_view name;
+            std::string_view fen;
+            std::string_view move;
+            bool whiteCrosses;
+            bool blackCrosses;
+        };
+        static constexpr CrossingCase cases[] = {
+            { "Kd4-e4", "r6k/1p6/8/8/3K4/8/6P1/R7 w - - 0 1", "d4e4", true, false },
+            { "Ke4-d4", "r6k/1p6/8/8/4K3/8/6P1/R7 w - - 0 1", "e4d4", true, false },
+            { "Kd6-e6", "r7/1p6/3k4/8/8/8/6P1/R6K b - - 0 1", "d6e6", false, true },
+            { "Ke6-d6", "r7/1p6/4k3/8/8/8/6P1/R6K b - - 0 1", "e6d6", false, true },
+            { "white queenside castle", "4k3/8/8/8/8/8/8/R3K3 w Q - 0 1", "e1c1", true, false },
+            { "black queenside castle", "r3k3/8/8/8/8/8/8/4K3 b q - 0 1", "e8c8", false, true },
+            // The king moves without crossing, so neither half is renumbered
+            // and both must stay on the incremental path.
+            { "Ke4-f4", "r6k/1p6/8/8/4K3/8/6P1/R7 w - - 0 1", "e4f4", false, false },
+            { "Kc4-b4", "r6k/1p6/8/8/2K5/8/6P1/R7 w - - 0 1", "c4b4", false, false },
+        };
+
+        for (const CrossingCase& testCase : cases)
+        {
+            ChessBoard board{ std::string(testCase.fen) };
+            const Move move = FindMove(board, testCase.move);
+            Require(move != 0,
+                "crossing case " + std::string(testCase.name) + " has no such legal move");
+
+            Nnue::AccumulatorStack stack;
+            stack.Reset(network, board.GetBoardState());
+            const Nnue::Accumulator parent = stack.Current();
+            Require(parent.computed, "the root accumulator was left stale");
+
+            const Nnue::DirtyPieces dirty = Nnue::DescribeMove(board, move);
+            board.MakeMove(move);
+            stack.Push(network, board.GetBoardState(), dirty);
+
+            // The views the position implies must be exactly the ones the
+            // orientation bookkeeping predicted, and only the crossing side's
+            // may have moved.
+            for (const auto& [perspective, crosses] : {
+                std::pair<Nnue::Perspective, bool>{ Nnue::Perspective::White,
+                    testCase.whiteCrosses },
+                std::pair<Nnue::Perspective, bool>{ Nnue::Perspective::Black,
+                    testCase.blackCrosses } })
+            {
+                const Nnue::FeatureSet::View after =
+                    Nnue::FeatureSet::ViewOf(board.GetBoardState(), perspective);
+                const bool changed = after != parent.views[Nnue::Index(perspective)];
+                Require(changed == crosses,
+                    "crossing case " + std::string(testCase.name) +
+                        " changed the wrong perspective's view");
+                Require(stack.Current().views[Nnue::Index(perspective)] == after,
+                    "crossing case " + std::string(testCase.name) +
+                        " left a half tagged with a view the position does not imply");
+            }
+
+            // The point of the whole exercise: whichever path Push took, the
+            // result has to be the accumulator the resulting position has.
+            Nnue::Accumulator refreshed;
+            refreshed.Refresh(network, board.GetBoardState());
+            Require(stack.Current().computed,
+                "crossing case " + std::string(testCase.name) + " left the child stale");
+            Require(stack.Current().values == refreshed.values,
+                "crossing case " + std::string(testCase.name) +
+                    " diverged from a full refresh of the resulting position");
+
+            // Undoing must hand the parent back untouched, which is what lets
+            // the search unmake a move without recomputing anything.
+            board.UndoMove(move);
+            stack.Pop();
+            Require(stack.Current().values == parent.values &&
+                stack.Current().views == parent.views &&
+                stack.Current().computed,
+                "crossing case " + std::string(testCase.name) +
+                    " disturbed the parent accumulator");
         }
     }
 
@@ -1193,6 +1531,11 @@ namespace
             { "promotions", "r3k2r/Pppp1ppp/1b3nbN/nP6/BBP1P3/q4N2/Pp1P2PP/R2Q1RK1 w kq - 0 1", 2 },
             { "en passant", "8/8/1k6/2b5/2pP4/8/5K2/8 b - d3 0 1", 3 },
             { "castle rights", "r3k2r/1b4bq/8/8/8/8/7B/R3K2R w KQkq - 0 1", 2 },
+            // Both kings walk back and forth across the d/e boundary, so the
+            // orientation refresh runs inside a real move tree rather than
+            // only in the positions a test picked for it.
+            { "kings crossing", "8/4k3/8/8/8/8/3K4/8 w - - 0 1", 4 },
+            { "queenside castling", "r3k3/1p4p1/8/8/8/8/1P4P1/R3K3 w Qq - 0 1", 3 },
         };
 
         const std::vector<std::byte> file = BuildSyntheticNetwork(0x14057B7EF767814Full);
@@ -1526,12 +1869,21 @@ namespace
     // feature set changes.
     void PrintNnueFeatureVectors()
     {
+        // Both horizontal orientations, in both perspectives and in both
+        // combinations, so the fixture pins down the mirroring rather than
+        // only the layout underneath it.
         static constexpr std::string_view fens[] = {
             "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1",
             "4k3/8/8/8/3P4/8/8/4K3 w - - 0 1",
             "4k3/8/8/3p4/8/8/8/4K3 b - - 0 1",
             "r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq - 0 1",
             "8/2p5/3p4/KP5r/1R3p1k/8/4P1P1/8 w - - 0 1",
+            // Both kings on the queen side: both halves read mirrored.
+            "2kr3r/pp3ppp/8/8/8/8/PPP2PPP/2KR3R w - - 0 1",
+            // White mirrored, Black direct.
+            "r6k/1p6/8/8/3K4/8/6P1/R7 w - - 0 1",
+            // White direct, Black mirrored, and Black to move.
+            "3k2r1/4pp1p/8/8/8/1N6/PP4PP/R4K2 b - - 0 1",
         };
 
         std::cout << "{\n  \"architectureHash\": "
@@ -1857,7 +2209,9 @@ int main(int argc, char** argv)
         TestNnueSimdKernels();
         TestNnueNetworkFormat();
         TestNnueFeatureIndexing();
+        TestNnueHorizontalMirroring();
         TestNnueAccumulatorUpdates();
+        TestNnueOrientationRefresh();
         TestNnueAccumulatorStack();
         TestNnueEvaluation();
         LoadRequestedNetwork();

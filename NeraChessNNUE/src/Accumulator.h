@@ -28,11 +28,15 @@ namespace NeraChessNNUE
         alignas(64) std::array<std::array<Weight, Architecture::HiddenSize>, PerspectiveCount>
             values{};
 
-        // Input bucket each half was computed with. A move that changes a
-        // perspective's bucket invalidates that half and forces a refresh of
-        // it; with one bucket this never happens, but tracking it here is what
-        // makes king-bucketed feature sets a local change later.
-        std::array<uint8_t, PerspectiveCount> inputBuckets{};
+        // The view each half was computed under: its input bucket and its
+        // horizontal orientation. A move that changes a perspective's view --
+        // its own king crossing the d/e boundary, or changing bucket once
+        // buckets exist -- renumbers every feature of that half, so no delta
+        // from the parent applies and that half has to be refreshed.
+        std::array<FeatureSet::View, PerspectiveCount> views{
+            FeatureSet::View{ Perspective::White, FeatureSet::Orientation::Direct, 0 },
+            FeatureSet::View{ Perspective::Black, FeatureSet::Orientation::Direct, 0 },
+        };
 
         // False when the contents are stale and a refresh is required before
         // the accumulator may be read.
@@ -49,8 +53,9 @@ namespace NeraChessNNUE
         // column per piece on the board.
         void Refresh(const Network& network, const NeraChessEngine::BoardState& state);
 
-        // Recomputes a single perspective, which is what a king move into a
-        // different input bucket needs once bucketed feature sets exist.
+        // Recomputes a single perspective, which is what a king move that
+        // changes that side's view needs: crossing the d/e boundary flips its
+        // horizontal orientation, and every one of its features with it.
         void RefreshPerspective(const Network& network,
             const NeraChessEngine::BoardState& state, Perspective perspective);
 

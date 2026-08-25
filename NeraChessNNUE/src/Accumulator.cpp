@@ -10,16 +10,6 @@ namespace NeraChessNNUE
 {
     using namespace NeraChessEngine;
 
-    namespace
-    {
-        // Input bucket a perspective's half belongs to in the given position.
-        size_t BucketFor(const BoardState& state, Perspective perspective)
-        {
-            const uint8_t kingSquare = FeatureSet::KingSquare(state, perspective);
-            return kingSquare == NoSquare ? 0u : FeatureSet::KingBucket(perspective, kingSquare);
-        }
-    }
-
     void Accumulator::RefreshPerspective(const Network& network, const BoardState& state,
         Perspective perspective)
     {
@@ -39,7 +29,7 @@ namespace NeraChessNNUE
                 Architecture::HiddenSize);
         }
 
-        inputBuckets[Index(perspective)] = static_cast<uint8_t>(BucketFor(state, perspective));
+        views[Index(perspective)] = FeatureSet::ViewOf(state, perspective);
     }
 
     void Accumulator::Refresh(const Network& network, const BoardState& state)
@@ -173,20 +163,26 @@ namespace NeraChessNNUE
 
         for (const Perspective perspective : { Perspective::White, Perspective::Black })
         {
-            const size_t bucket = BucketFor(state, perspective);
-            if (bucket != parent.inputBuckets[Index(perspective)])
+            const FeatureSet::View view = FeatureSet::ViewOf(state, perspective);
+            if (view != parent.views[Index(perspective)])
             {
-                // The move moved this side's king across a bucket boundary, so
-                // its half indexes a different weight matrix and no delta from
-                // the parent applies. Unreachable while there is one bucket.
+                // The move took this side's own king across the d/e boundary
+                // (or, once buckets exist, into another bucket), so its half
+                // numbers every feature differently than the parent's does and
+                // no delta from the parent applies.
+                //
+                // Only this half, though. The other perspective's own king
+                // did not move, so its view still stands and it takes the
+                // ordinary delta below: it sees the king move the way it sees
+                // any other enemy piece move.
                 child.RefreshPerspective(network, state, perspective);
                 continue;
             }
 
-            child.inputBuckets[Index(perspective)] = static_cast<uint8_t>(bucket);
+            child.views[Index(perspective)] = view;
 
             FeatureSet::FeatureDelta delta;
-            FeatureSet::ComputeDelta(dirty, perspective, bucket, delta);
+            FeatureSet::ComputeDelta(dirty, view, delta);
             child.ApplyDeltaFrom(network, parent[perspective], delta, perspective);
         }
 

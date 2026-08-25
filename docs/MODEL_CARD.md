@@ -140,6 +140,12 @@ and no current measurement places generation 61 on the scale used in
   claim this entry replaces. The search's pruning margins are denominated in
   centipawns, so this changes what they mean; that is a reason to retune them,
   and a reason not to read a strength result here as isolating the data change.
+- **Trained for feature-set version 1, which no longer exists.** This network
+  predates the horizontal canonicalization described in
+  [NNUE.md](NNUE.md#horizontal-canonicalization). Its weights were learned
+  against the old numbering, so the engine now refuses it with
+  `ArchitectureMismatch` rather than reading them under a mapping they were
+  never trained for. A replacement has to be trained; there is no conversion.
 - **No king buckets and one output head.** The smallest architecture worth
   training, chosen for simplicity over strength.
 - **Strength is unmeasured against any external reference** since the NNUE

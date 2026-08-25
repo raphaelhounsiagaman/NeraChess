@@ -103,6 +103,14 @@ cd NNUETraining && .venv/bin/python -m nnue_training.train --data samples.txt --
 
 Nothing else carries over. There is no optimizer state to restore.
 
+A network only warm-starts a run whose feature set it was trained under. The
+shipped `nera.nnue` predates the horizontal canonicalization described in
+[NNUE.md](NNUE.md#horizontal-canonicalization) and is rejected, so the first
+mirrored generation has to start from a random initialization. Sample packs are
+in the same position: they store extracted feature indices, and `PACK_VERSION`
+was bumped so an old one is refused rather than trained on. Repack from the
+text samples.
+
 ### Choosing parameters
 
 **A GPU is not worth buying for this.** Training is bound by batch collation in

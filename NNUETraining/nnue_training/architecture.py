@@ -25,12 +25,27 @@ SQUARE_COUNT = 64
 PIECE_TYPE_COUNT = 6
 PERSPECTIVE_COUNT = 2
 
-#: Features per perspective: (relative colour, piece type, relative square).
+#: What a feature index means, independent of how many there are.
+#:
+#: 1. ``(relative colour, piece type, relative square)``; king independent.
+#: 2. Adds horizontal mirroring: a perspective's squares are reflected when its
+#:    own king stands on files a-d, so that its king is always seen on files
+#:    e-h.
+#:
+#: Bumped whenever a feature index comes to mean something new while every
+#: dimension stays the same. Mixed into :func:`architecture_hash`, so a network
+#: trained under an older feature set is rejected by the engine rather than
+#: read as though nothing changed. Must match
+#: ``NeraChessNNUE::Architecture::FeatureSetVersion``.
+FEATURE_SET_VERSION = 2
+
+#: Features per perspective: (relative colour, piece type, canonical square).
 PERSPECTIVE_INPUT_SIZE = PERSPECTIVE_COUNT * PIECE_TYPE_COUNT * SQUARE_COUNT
 
 #: Feature-transformer matrices selected by the perspective's own king square.
-#: One bucket means the feature set is king independent and a king move never
-#: forces an accumulator refresh.
+#: One bucket means every king square indexes the same matrix; a king move can
+#: still force a refresh of its own half by flipping its horizontal
+#: orientation.
 INPUT_BUCKET_COUNT = 1
 
 TOTAL_INPUT_SIZE = INPUT_BUCKET_COUNT * PERSPECTIVE_INPUT_SIZE
@@ -102,6 +117,7 @@ def architecture_hash() -> int:
             digest ^= (value >> (byte * 8)) & 0xFF
             digest = (digest * prime) & mask
 
+    mix(FEATURE_SET_VERSION)
     mix(PERSPECTIVE_INPUT_SIZE)
     mix(INPUT_BUCKET_COUNT)
     mix(HIDDEN_SIZE)
