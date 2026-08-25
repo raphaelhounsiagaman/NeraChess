@@ -63,10 +63,12 @@ project "NeraChessUCI"
     runtime "Release"
     optimize "Speed"
     symbols "On"
+    linktimeoptimization "On"
 
   filter "configurations:Dist"
     defines { "DIST" }
     runtime "Release"
     optimize "Speed"
     symbols "Off"
+    linktimeoptimization "On"
   filter {}
