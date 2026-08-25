@@ -143,7 +143,13 @@ jobs:
         # clang toolset once linktimeoptimization is enabled. Xcode ships
         # llvm-ar alongside clang in its toolchain directory, but only
         # `clang`/`ar`/`ranlib` are symlinked onto the default PATH.
-        run: echo "$(dirname "$(xcrun --find clang)")" >> "$GITHUB_PATH"
+        # Adding that whole toolchain directory to PATH would shadow the
+        # /usr/bin/clang wrapper that resolves the SDK sysroot, breaking
+        # every compile, so symlink just the missing tool instead.
+        run: |
+          mkdir -p "$RUNNER_TEMP/llvm-ar-shim"
+          ln -sf "$(xcrun --find llvm-ar)" "$RUNNER_TEMP/llvm-ar-shim/llvm-ar"
+          echo "$RUNNER_TEMP/llvm-ar-shim" >> "$GITHUB_PATH"
 
       - name: Generate Makefiles
         run: ./scripts/Setup-macOS.sh gmake
