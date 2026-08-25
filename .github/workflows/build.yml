@@ -140,15 +140,15 @@ jobs:
 
       - name: Make llvm-ar available for LTO archiving
         # Premake's gmake action switches the archiver to llvm-ar for the
-        # clang toolset once linktimeoptimization is enabled. Xcode ships
-        # llvm-ar alongside clang in its toolchain directory, but only
-        # `clang`/`ar`/`ranlib` are symlinked onto the default PATH.
-        # Adding that whole toolchain directory to PATH would shadow the
-        # /usr/bin/clang wrapper that resolves the SDK sysroot, breaking
-        # every compile, so symlink just the missing tool instead.
+        # clang toolset once linktimeoptimization is enabled. GitHub's
+        # macOS runner does not ship llvm-ar as a standalone tool at all
+        # (xcrun --find llvm-ar fails with "not a developer tool or in
+        # PATH"), but Apple's own ar/ranlib already index LLVM bitcode
+        # natively, so forward llvm-ar to the system ar instead.
         run: |
           mkdir -p "$RUNNER_TEMP/llvm-ar-shim"
-          ln -sf "$(xcrun --find llvm-ar)" "$RUNNER_TEMP/llvm-ar-shim/llvm-ar"
+          printf '#!/bin/sh\nexec ar "$@"\n' > "$RUNNER_TEMP/llvm-ar-shim/llvm-ar"
+          chmod +x "$RUNNER_TEMP/llvm-ar-shim/llvm-ar"
           echo "$RUNNER_TEMP/llvm-ar-shim" >> "$GITHUB_PATH"
 
       - name: Generate Makefiles
