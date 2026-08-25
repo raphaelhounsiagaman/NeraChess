@@ -138,6 +138,19 @@ jobs:
       - name: Install dependencies
         run: brew install premake sdl2-compat sdl2_image sdl2_mixer
 
+      - name: Make llvm-ar available for LTO archiving
+        # Premake's gmake action switches the archiver to llvm-ar for the
+        # clang toolset once linktimeoptimization is enabled. GitHub's
+        # macOS runner does not ship llvm-ar as a standalone tool at all
+        # (xcrun --find llvm-ar fails with "not a developer tool or in
+        # PATH"), but Apple's own ar/ranlib already index LLVM bitcode
+        # natively, so forward llvm-ar to the system ar instead.
+        run: |
+          mkdir -p "$RUNNER_TEMP/llvm-ar-shim"
+          printf '#!/bin/sh\nexec ar "$@"\n' > "$RUNNER_TEMP/llvm-ar-shim/llvm-ar"
+          chmod +x "$RUNNER_TEMP/llvm-ar-shim/llvm-ar"
+          echo "$RUNNER_TEMP/llvm-ar-shim" >> "$GITHUB_PATH"
+
       - name: Generate Makefiles
         run: ./scripts/Setup-macOS.sh gmake
 

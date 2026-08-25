@@ -47,12 +47,14 @@ project "NeraChessEngine"
   filter "configurations:Release"
     defines { "RELEASE" }
     runtime "Release"
-    optimize "On"
+    optimize "Speed"
     symbols "On"
+    linktimeoptimization "On"
 
   filter "configurations:Dist"
     defines { "DIST" }
     runtime "Release"
-    optimize "On"
+    optimize "Speed"
     symbols "Off"
+    linktimeoptimization "On"
   filter {}
