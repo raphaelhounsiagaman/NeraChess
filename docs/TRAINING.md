@@ -103,13 +103,30 @@ cd NNUETraining && .venv/bin/python -m nnue_training.train --data samples.txt --
 
 Nothing else carries over. There is no optimizer state to restore.
 
-A network only warm-starts a run whose feature set it was trained under. The
-shipped `nera.nnue` predates the horizontal canonicalization described in
-[NNUE.md](NNUE.md#horizontal-canonicalization) and is rejected, so the first
-mirrored generation has to start from a random initialization. Sample packs are
-in the same position: they store extracted feature indices, and `PACK_VERSION`
-was bumped so an old one is refused rather than trained on. Repack from the
-text samples.
+A network only warm-starts a run whose feature set it was trained under, and
+`--init-from` refuses one that does not match.
+
+Crossing the horizontal-canonicalization boundary described in
+[NNUE.md](NNUE.md#horizontal-canonicalization) is the one case worth doing
+anyway, and `scripts/port_feature_set.py` is how:
+
+```sh
+python3 scripts/port_feature_set.py --input old.nnue --output seed.nnue
+```
+
+It re-headers a feature-set-1 network so the strict loader accepts it. The
+weights are **reinterpreted, not converted** — no permutation makes an
+unmirrored network exactly right under a mirrored feature set. What it gives
+you is a seed that already plays at roughly the source network's strength,
+because for a perspective whose king is on files e-h the numbering did not
+change at all, and for one on files a-d the new network reads the old
+network's weights for the reflected square, which horizontal symmetry makes
+approximately the same answer. Training reconciles the rest. Ship a network
+that was actually trained under the current feature set, not the seed.
+
+Sample packs cannot be ported: they store extracted feature indices, and
+`PACK_VERSION` was bumped so an old one is refused rather than trained on.
+Repack from the text samples.
 
 ### Choosing parameters
 
