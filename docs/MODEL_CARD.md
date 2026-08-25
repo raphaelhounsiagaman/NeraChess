@@ -9,15 +9,15 @@ duplication is what let the repository carry two contradictory accounts at once.
 | Field | Value |
 | --- | --- |
 | Path | [`NeraChessApp/Resources/NNUE/nera.nnue`](../NeraChessApp/Resources/NNUE/nera.nnue) |
-| SHA-256 | `e3e480195e0b2f92409b3ca3472e22e2530591c6fa85bbba5c9c4bfdea2fa521` |
+| SHA-256 | `1ec594a7fe5d4df0a431adaa5f616ce418570e03b4aef8454919bba0ce6c94f9` |
 | Size | 789,554 bytes |
-| Generation | binpack-warm-002, epoch 24 |
+| Generation | binpack-long-003, epoch 20 |
 | Shipped in | candidate, not yet promoted |
 | Architecture | `(768 -> 512)x2 -> 1`, 1 input bucket, 1 output bucket |
 | Architecture hash | `0x53e8d097` |
 | Quantization | QA 255, QB 64, eval scale 400 |
 | Activation | Squared clipped ReLU |
-| Parent | generation 61, shipped in [`853238a`](https://github.com/raphaelhounsiagaman/NeraChess/commit/853238a2e46f8652639a5be25cda8054f19479c4) |
+| Parent | binpack-warm-002 epoch 24, shipped in [#15](https://github.com/raphaelhounsiagaman/NeraChess/pull/15) |
 
 Verify the file you have is the file described here:
 
@@ -49,14 +49,22 @@ loss scaling 626.1, and source scores multiplied by 0.480769.
 
 `binpack-warm-001` started from generation 61 and ran 8 epochs of 100M
 positions (800M total). `binpack-warm-002` continued from its epoch 8 and ran
-24 epochs of 250M positions (6B total), stopped short of its 40-epoch schedule.
-Together that is 6.8B positions, close to half the corpus.
+24 epochs of 250M positions (6B total). `binpack-long-003` continued from that
+and ran 20 epochs of 500M positions (10B total) before being stopped short of
+its 90-epoch schedule, because validation had flattened. Together that is
+16.8B positions, a little over one full pass through the corpus.
 
 Validation is 50,000 positions reservoir-sampled from 64 chunks reserved by
 seed and scattered across the whole file, held fixed across both runs so the
 numbers compare: 0.003550 at the start of run 001, 0.002829 at its end,
-0.002458 at epoch 24 of run 002. Every one of the 32 epochs improved it, and it
-had not flattened when the run was stopped.
+0.002458 at epoch 24 of run 002, 0.002362 at epoch 20 of run 003.
+
+Run 003 is where it stopped paying. Its first sixteen epochs moved the running
+minimum from 0.002458 to 0.002365; its last four moved it to 0.002362, about
+1e-6 per epoch against epoch-to-epoch swings of 15e-6. At that ratio a new
+"best" is what tracking the minimum of a noisy series produces on its own, so
+the run was stopped rather than left to spend another 68 hours on it. The
+plausible limit is capacity -- 394,753 parameters -- rather than data.
 
 One avoidable cost is recorded because it is easy to repeat: run 002 was
 started with the default `--lambda-start 1.0` rather than continuing run 001's
@@ -126,8 +134,8 @@ and no current measurement places generation 61 on the scale used in
   corpus positions, generation 61 reports 0.31 engine centipawns per unit of
   Stockfish's internal score, which puts a queen near +580 — low, not high.
   This network was trained with labels deliberately scaled to real centipawns
-  and measures 0.5290, putting a queen at +990. Note that it drifted about 10%
-  above the 0.4808 it was trained toward: as lambda anneals, game results enter
+  and measures 0.5535, putting a queen at +1036. Note that it drifted about 10%
+  above the 0.4808 it was trained toward, and drifting further with each run: as lambda anneals, game results enter
   the objective and pull evaluations larger, which is the grain of truth in the
   claim this entry replaces. The search's pruning margins are denominated in
   centipawns, so this changes what they mean; that is a reason to retune them,
