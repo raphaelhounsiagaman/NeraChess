@@ -727,24 +727,24 @@ namespace NeraChessSearch
 
         for (const Move move : candidates)
         {
-            bool deltaPrunable = false;
-            bool seePrunable = false;
             if (!inCheck && !(move.GetMoveFlags() & MoveFlags::IS_PROMOTION))
             {
                 const Piece victim = (move.GetMoveFlags() & MoveFlags::IS_EN_PASSANT)
                     ? Piece(move.GetMovePiece().IsWhite()
                         ? PieceType::BLACK_PAWN : PieceType::WHITE_PAWN)
                     : board.GetPiece(move.GetTargetSquare());
-                deltaPrunable = standPat + PieceValue(victim) + 200 < alpha;
-                seePrunable = MoveOrdering::StaticExchangeEvaluation(board, move) < -50;
+                const bool deltaPrunable = standPat + PieceValue(victim) + 200 < alpha;
+                const bool seePrunable = MoveOrdering::StaticExchangeEvaluation(board, move) < -50;
+
+                // Deciding this before MakeSearchMove avoids paying for the accumulator
+                // push and a full legal-move generation of the child position on a move
+                // that is about to be discarded. GivesCheck answers the same question as
+                // making the move and calling IsInCheck() without either cost.
+                if ((deltaPrunable || seePrunable) && !board.GivesCheck(move))
+                    continue;
             }
 
             MakeSearchMove(board, move);
-            if (!inCheck && !board.IsInCheck() && (deltaPrunable || seePrunable))
-            {
-                UndoSearchMove(board, move);
-                continue;
-            }
             const Score score = -QuiescenceSearch(board, -beta, -alpha, ply + 1);
             UndoSearchMove(board, move);
 
