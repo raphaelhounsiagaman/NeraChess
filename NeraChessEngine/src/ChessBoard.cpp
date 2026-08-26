@@ -604,6 +604,11 @@ namespace NeraChessEngine
 
 	MoveList<218> ChessBoard::GetLegalMoves() const
 	{
+		return GetLegalMovesRef();
+	}
+
+	const MoveList<218>& ChessBoard::GetLegalMovesRef() const
+	{
 		if (m_WasBoardStateChanged)
 		{
 			m_LegalMoves = m_MoveGenerator.GenerateMoves(m_BoardState);
@@ -902,12 +907,62 @@ namespace NeraChessEngine
 
 	bool ChessBoard::IsInCheck() const
 	{
+		const bool whiteToMove = m_BoardState.HasFlag(BoardStateFlags::WhiteToMove);
+		const uint8_t friendlyOffset = whiteToMove ? 0 : 6;
+		const uint8_t enemyOffset = whiteToMove ? 6 : 0;
+
+		const Bitboard king = m_BoardState.pieceBitboards[friendlyOffset + PieceType::WHITE_KING];
+		if (!king)
+			return false;
+		const uint8_t kingSquare = BitUtil::GetLSBIndex(king);
+
+		Bitboard occupancy = 0;
+		for (const Bitboard pieceSet : m_BoardState.pieceBitboards)
+			occupancy |= pieceSet;
+
+		const Bitboard enemyPawns = m_BoardState.pieceBitboards[enemyOffset + PieceType::WHITE_PAWN];
+		const Bitboard pawnCheckers = whiteToMove
+			? MoveGenerator::s_WhitePawnAttackMasks[kingSquare]
+			: MoveGenerator::s_BlackPawnAttackMasks[kingSquare];
+		if (pawnCheckers & enemyPawns)
+			return true;
+
+		const Bitboard enemyKnights = m_BoardState.pieceBitboards[enemyOffset + PieceType::WHITE_KNIGHT];
+		if (MoveGenerator::s_KnightMoveMask[kingSquare] & enemyKnights)
+			return true;
+
+		const Bitboard enemyBishops = m_BoardState.pieceBitboards[enemyOffset + PieceType::WHITE_BISHOP];
+		const Bitboard enemyRooks = m_BoardState.pieceBitboards[enemyOffset + PieceType::WHITE_ROOK];
+		const Bitboard enemyQueens = m_BoardState.pieceBitboards[enemyOffset + PieceType::WHITE_QUEEN];
+		if (MoveGenerator::LookupBishopAttacks(kingSquare, occupancy) & (enemyBishops | enemyQueens))
+			return true;
+		if (MoveGenerator::LookupRookAttacks(kingSquare, occupancy) & (enemyRooks | enemyQueens))
+			return true;
+
+		const Bitboard enemyKing = m_BoardState.pieceBitboards[enemyOffset + PieceType::WHITE_KING];
+		if (MoveGenerator::s_KingMoveMask[kingSquare] & enemyKing)
+			return true;
+
+		return false;
+	}
+
+	bool ChessBoard::IsInCheckByMoveGeneration() const
+	{
 		if (m_WasBoardStateChanged)
 		{
 			m_LegalMoves = m_MoveGenerator.GenerateMoves(m_BoardState);
 			m_WasBoardStateChanged = false;
 		}
 		return m_MoveGenerator.InCheck();
+	}
+
+	bool ChessBoard::IsRuleDraw() const
+	{
+		if (m_HalfMoveClock >= 100)
+			return true;
+		if (m_RepetitionTable.GetRepetitionCount(GetRepetitionKey(), m_HalfMoveClock) >= 3)
+			return true;
+		return InsufficentMaterial(*this);
 	}
 
 	bool ChessBoard::GivesCheck(Move move) const
