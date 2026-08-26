@@ -9,15 +9,16 @@ duplication is what let the repository carry two contradictory accounts at once.
 | Field | Value |
 | --- | --- |
 | Path | [`NeraChessApp/Resources/NNUE/nera.nnue`](../NeraChessApp/Resources/NNUE/nera.nnue) |
-| SHA-256 | `1ec594a7fe5d4df0a431adaa5f616ce418570e03b4aef8454919bba0ce6c94f9` |
+| SHA-256 | `29c972d839c0795affb5dc26ae4e50e2cdbbba6e3539b9d74c4e7d1aa2982c9a` |
 | Size | 789,554 bytes |
-| Generation | binpack-long-003, epoch 20 |
+| Generation | binpack-mirrored-004, epoch 17 |
 | Shipped in | candidate, not yet promoted |
 | Architecture | `(768 -> 512)x2 -> 1`, 1 input bucket, 1 output bucket |
-| Architecture hash | `0x53e8d097` |
+| Feature set | 2 — horizontally canonicalized on the perspective's own king |
+| Architecture hash | `0x469a13dd` |
 | Quantization | QA 255, QB 64, eval scale 400 |
 | Activation | Squared clipped ReLU |
-| Parent | binpack-warm-002 epoch 24, shipped in [#15](https://github.com/raphaelhounsiagaman/NeraChess/pull/15) |
+| Parent | binpack-long-003 epoch 20, reinterpreted into feature set 2 (see below) |
 
 Verify the file you have is the file described here:
 
@@ -40,11 +41,12 @@ The earlier lineage still explains the parent. Labels moved to Stockfish at
 (2026-08-17); before it, positions were labelled with NeraChess's own search,
 and that had a ceiling — a network trained on its own search chases itself, and
 generation 42 is roughly where it stopped improving. Generations 58, 60, and 61
-were produced after that change, and generation 61 is this network's parent.
+were produced after that change, and generation 61 is where the binpack runs
+below started from.
 
 ### How this one was made
 
-Two runs, both warm-started, both at learning rate 1e-4 with 1000 warmup steps,
+Four runs, all warm-started, all at learning rate 1e-4 with 1000 warmup steps,
 loss scaling 626.1, and source scores multiplied by 0.480769.
 
 `binpack-warm-001` started from generation 61 and ran 8 epochs of 100M
@@ -54,17 +56,49 @@ and ran 20 epochs of 500M positions (10B total) before being stopped short of
 its 90-epoch schedule, because validation had flattened. Together that is
 16.8B positions, a little over one full pass through the corpus.
 
-Validation is 50,000 positions reservoir-sampled from 64 chunks reserved by
-seed and scattered across the whole file, held fixed across both runs so the
-numbers compare: 0.003550 at the start of run 001, 0.002829 at its end,
-0.002458 at epoch 24 of run 002, 0.002362 at epoch 20 of run 003.
+`binpack-mirrored-004` is this network, and it is the first trained under
+feature set 2. It ran 22 epochs of 500M positions (11B, one more full pass)
+with lambda continuing run 003's anneal from 0.797, and was stopped at epoch 22
+by the rule described below. Its best epoch is 17, at 8.5B positions into the
+run.
 
-Run 003 is where it stopped paying. Its first sixteen epochs moved the running
-minimum from 0.002458 to 0.002365; its last four moved it to 0.002362, about
-1e-6 per epoch against epoch-to-epoch swings of 15e-6. At that ratio a new
-"best" is what tracking the minimum of a noisy series produces on its own, so
-the run was stopped rather than left to spend another 68 hours on it. The
-plausible limit is capacity -- 394,753 parameters -- rather than data.
+**The warm start crossed a feature-set boundary.** Horizontal canonicalization
+renumbered every feature without changing a dimension, so run 003's network
+could not be loaded directly. `NNUETraining/scripts/port_feature_set.py`
+re-headered it: the payload is byte-identical and only the architecture hash
+differs. That reinterprets the weights rather than converting them, and no
+conversion exists -- for a perspective whose king is on files e-h the numbering
+did not change, and for one on files a-d the new network reads the old
+network's weights for the reflected square, which horizontal symmetry makes
+approximately the same answer. The seed therefore started near run 003's
+strength rather than at run 003's strength, and the first epochs are the
+network reconciling the difference.
+
+Validation is 50,000 positions reservoir-sampled from 64 chunks reserved by
+seed and scattered across the whole file. Run 004 reuses `--seed 1`, so it
+holds out the *same* chunks as run 003 and the two curves compare directly:
+0.003550 at the start of run 001, 0.002829 at its end, 0.002458 at epoch 24 of
+run 002, 0.002362 at epoch 20 of run 003, **0.002262 at epoch 17 of run 004**.
+
+Run 003 is where the unmirrored network stopped paying. Its first sixteen
+epochs moved the running minimum from 0.002458 to 0.002365; its last four moved
+it to 0.002362, about 1e-6 per epoch against epoch-to-epoch swings of 15e-6. At
+that ratio a new "best" is what tracking the minimum of a noisy series produces
+on its own, so the run was stopped rather than left to spend another 68 hours
+on it.
+
+Run 004 recovered that endpoint in a single epoch -- 0.002353 after 500M
+positions, already below run 003's final 0.002362 -- and went on to 0.002262,
+4.2% below it, on identical data and an identical parameter count. Sharing one
+representation between a pattern and its horizontal mirror is the only thing
+that changed, so that is what the 4.2% is attributable to.
+
+Run 004 was stopped at epoch 22 on the same kind of evidence that stopped run
+003, applied as a written rule rather than by eye: a floor of one full pass
+over the corpus, then stop once the running minimum has improved by less than
+0.15% over five epochs with at least three of them setting no new best. Epochs
+18-22 set no new best at all and moved the minimum by 0.000%. The plausible
+limit remains capacity -- 394,753 parameters -- rather than data.
 
 One avoidable cost is recorded because it is easy to repeat: run 002 was
 started with the default `--lambda-start 1.0` rather than continuing run 001's
@@ -140,12 +174,6 @@ and no current measurement places generation 61 on the scale used in
   claim this entry replaces. The search's pruning margins are denominated in
   centipawns, so this changes what they mean; that is a reason to retune them,
   and a reason not to read a strength result here as isolating the data change.
-- **Trained for feature-set version 1, which no longer exists.** This network
-  predates the horizontal canonicalization described in
-  [NNUE.md](NNUE.md#horizontal-canonicalization). Its weights were learned
-  against the old numbering, so the engine now refuses it with
-  `ArchitectureMismatch` rather than reading them under a mapping they were
-  never trained for. A replacement has to be trained; there is no conversion.
 - **No king buckets and one output head.** The smallest architecture worth
   training, chosen for simplicity over strength.
 - **Strength is unmeasured against any external reference** since the NNUE
