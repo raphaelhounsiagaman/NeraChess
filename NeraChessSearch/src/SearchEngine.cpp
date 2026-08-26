@@ -441,7 +441,15 @@ namespace NeraChessSearch
             return SCORE_DRAW;
         const bool inCheck = board.IsInCheck();
         if (ply >= MAX_PLY - 1)
+        {
+            // The horizon is deep enough that reaching it at all is exceptional
+            // (a long forcing sequence of checks/extensions), but a move list is
+            // still required to tell an ordinary position from checkmate/stalemate
+            // here -- there is no cutoff left to defer it behind.
+            if (board.GetLegalMoves().size() == 0)
+                return inCheck ? -SCORE_MATE + ply : SCORE_DRAW;
             return EvaluateNode(board);
+        }
 
         alpha = std::max(alpha, -SCORE_MATE + ply);
         beta = std::min(beta, SCORE_MATE - ply - 1);
@@ -678,7 +686,13 @@ namespace NeraChessSearch
             return SCORE_DRAW;
         const bool inCheck = board.IsInCheck();
         if (ply >= MAX_PLY - 1)
+        {
+            // See the matching comment in PrincipalVariationSearch: the horizon
+            // has no cutoff left to defer this behind.
+            if (board.GetLegalMoves().size() == 0)
+                return inCheck ? -SCORE_MATE + ply : SCORE_DRAW;
             return EvaluateNode(board);
+        }
 
         alpha = std::max(alpha, -SCORE_MATE + ply);
         beta = std::min(beta, SCORE_MATE - ply - 1);
