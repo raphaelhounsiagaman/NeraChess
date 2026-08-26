@@ -143,8 +143,23 @@ in, the network is verifiable by checksum but not reproducible.
 
 ## Promotion evidence
 
-Generation 61 was promoted on a match against generation 60 with the search
+**This network has not been promoted.** It was measured against the commit
+`main` was at before horizontal mirroring, over 1,000 games with the search
 identical on both sides:
+
+| Games | Result | Score | Elo | 95% CI |
+| --- | --- | --- | --- | --- |
+| 1000 | 307-286-407 | 0.5105 | +7.3 | [-7.5, +22.2] |
+
+The interval contains zero, so by the bar below this is inconclusive, and it
+ships as a candidate on that basis: the shipped network had to change anyway,
+because the feature set it was trained under no longer exists. What the match
+establishes is the absence of a regression, not a gain. See
+[NNUE_PROGRESS.md](NNUE_PROGRESS.md#2026-08-27--horizontal-mirroring-measured)
+for the conditions, which differ from every earlier row.
+
+Generation 61, the last network promoted on its own evidence, cleared the bar
+against generation 60 with the search identical on both sides:
 
 | Games | Result | Score | Elo | 95% CI | LOS |
 | --- | --- | --- | --- | --- | --- |
@@ -178,6 +193,11 @@ and no current measurement places generation 61 on the scale used in
   training, chosen for simplicity over strength.
 - **Strength is unmeasured against any external reference** since the NNUE
   migration.
+- **Its own measured gain is inconclusive.** +7.3 Elo over 1,000 games with an
+  interval spanning zero. Horizontal mirroring was trained on the corpus that
+  had already flattened for its parent, so there was little left for it to
+  convert into strength; the symmetry it exploits should matter more on a
+  larger network or on data this one has not already exhausted.
 
 ## License
 
