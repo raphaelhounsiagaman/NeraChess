@@ -1,5 +1,5 @@
 {
-  "architectureHash": 1407766679,
+  "architectureHash": 1184502749,
   "perspectiveInputSize": 768,
   "positions": [
     { "fen": "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1", "perspective": "white", "features": [8, 9, 10, 11, 12, 13, 14, 15, 65, 70, 130, 133, 192, 199, 259, 324, 432, 433, 434, 435, 436, 437, 438, 439, 505, 510, 570, 573, 632, 639, 699, 764] },
@@ -10,7 +10,13 @@
     { "fen": "4k3/8/8/3p4/8/8/8/4K3 b - - 0 1", "perspective": "black", "features": [27, 324, 764] },
     { "fen": "r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq - 0 1", "perspective": "white", "features": [8, 9, 10, 13, 14, 15, 28, 35, 82, 100, 139, 140, 192, 199, 277, 324, 407, 409, 428, 430, 432, 434, 435, 437, 489, 493, 552, 566, 632, 639, 692, 764] },
     { "fen": "r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq - 0 1", "perspective": "black", "features": [8, 10, 11, 13, 20, 22, 33, 47, 81, 85, 142, 144, 192, 199, 268, 324, 411, 420, 432, 433, 434, 437, 438, 439, 476, 490, 563, 564, 632, 639, 685, 764] },
-    { "fen": "8/2p5/3p4/KP5r/1R3p1k/8/4P1P1/8 w - - 0 1", "perspective": "white", "features": [12, 14, 33, 217, 352, 413, 427, 434, 615, 735] },
-    { "fen": "8/2p5/3p4/KP5r/1R3p1k/8/4P1P1/8 w - - 0 1", "perspective": "black", "features": [10, 19, 37, 223, 359, 409, 436, 438, 609, 728] }
+    { "fen": "8/2p5/3p4/KP5r/1R3p1k/8/4P1P1/8 w - - 0 1", "perspective": "white", "features": [9, 11, 38, 222, 359, 410, 428, 437, 608, 728] },
+    { "fen": "8/2p5/3p4/KP5r/1R3p1k/8/4P1P1/8 w - - 0 1", "perspective": "black", "features": [10, 19, 37, 223, 359, 409, 436, 438, 609, 728] },
+    { "fen": "2kr3r/pp3ppp/8/8/8/8/PPP2PPP/2KR3R w - - 0 1", "perspective": "white", "features": [8, 9, 10, 13, 14, 15, 192, 196, 325, 432, 433, 434, 438, 439, 632, 636, 765] },
+    { "fen": "2kr3r/pp3ppp/8/8/8/8/PPP2PPP/2KR3R w - - 0 1", "perspective": "black", "features": [8, 9, 10, 14, 15, 192, 196, 325, 432, 433, 434, 437, 438, 439, 632, 636, 765] },
+    { "fen": "r6k/1p6/8/8/3K4/8/6P1/R7 w - - 0 1", "perspective": "white", "features": [9, 199, 348, 438, 639, 760] },
+    { "fen": "r6k/1p6/8/8/3K4/8/6P1/R7 w - - 0 1", "perspective": "black", "features": [9, 192, 327, 438, 632, 739] },
+    { "fen": "3k2r1/4pp1p/8/8/8/1N6/PP4PP/R4K2 b - - 0 1", "perspective": "white", "features": [8, 9, 14, 15, 81, 192, 325, 436, 437, 439, 638, 763] },
+    { "fen": "3k2r1/4pp1p/8/8/8/1N6/PP4PP/R4K2 b - - 0 1", "perspective": "black", "features": [8, 10, 11, 193, 324, 432, 433, 438, 439, 494, 639, 762] }
   ]
 }

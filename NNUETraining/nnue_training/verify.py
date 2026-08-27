@@ -29,13 +29,18 @@ from . import serialize
 from .engine import UciEngine
 
 #: Positions covering an opening, a lone-pawn endgame and its mirror, a dense
-#: middlegame, and an unbalanced endgame.
+#: middlegame, and an unbalanced endgame -- plus every combination of the two
+#: horizontal orientations, since a disagreement about which side of the d/e
+#: boundary a king is on would otherwise show up only for some positions.
 DEFAULT_POSITIONS = [
     "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1",
     "4k3/8/8/8/3P4/8/8/4K3 w - - 0 1",
     "4k3/8/8/3p4/8/8/8/4K3 b - - 0 1",
     "r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq - 0 1",
     "8/2p5/3p4/KP5r/1R3p1k/8/4P1P1/8 w - - 0 1",
+    "2kr3r/pp3ppp/8/8/8/8/PPP2PPP/2KR3R w - - 0 1",
+    "r6k/1p6/8/8/3K4/8/6P1/R7 w - - 0 1",
+    "3k2r1/4pp1p/8/8/8/1N6/PP4PP/R4K2 b - - 0 1",
 ]
 
 

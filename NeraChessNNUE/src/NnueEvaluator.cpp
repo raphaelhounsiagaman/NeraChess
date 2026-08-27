@@ -134,6 +134,9 @@ namespace NeraChessNNUE::Evaluator
             assert(reference.values == accumulator.values &&
                 "incrementally updated accumulator diverged from a full refresh; "
                 "the dirty-piece list for some move is wrong");
+            assert(reference.views == accumulator.views &&
+                "an accumulator half is tagged with a view the position does not "
+                "imply; a king crossing the d/e boundary went unnoticed");
         }
 #endif
 

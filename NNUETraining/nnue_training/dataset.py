@@ -119,7 +119,13 @@ def load_text_samples(path: str | Path) -> list[Sample]:
 
 
 PACK_MAGIC = b"NERAPACK"
-PACK_VERSION = 1
+
+#: Bumped when the feature indices a pack holds come to mean something else.
+#: A pack stores extracted indices rather than positions, and carries no
+#: architecture hash to catch that, so an old pack read under a new feature set
+#: would train happily on the wrong inputs. Version 2 is the first to hold
+#: horizontally mirrored features (``arch.FEATURE_SET_VERSION`` 2).
+PACK_VERSION = 2
 
 
 class FeatureCache:

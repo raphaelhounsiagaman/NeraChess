@@ -44,6 +44,7 @@ Unless a row says otherwise:
 | 2026-08-17 | gen58 | `verified` | previous verified net | `verified` | 400 | 185-116-99 (0.5863) | +60.5 | [+31.1, +90.9] | 100.0% |
 | 2026-08-18 | gen60 | `verified` | previous verified net | `verified` | 400 | 168-82-150 (0.6075) | +75.9 | [+49.1, +103.6] | 100.0% |
 | 2026-08-21 | gen61 | `verified` | previous verified net | `verified` | 700 | 218-131-351 (0.5621) | +43.4 | [+25.3, +61.7] | 100.0% |
+| 2026-08-27 | binpack-mirrored-004 ep17 | `859ec03` | pre-mirroring main | `2daf702` | 1000 | 307-286-407 (0.5105) | +7.3 | [-7.5, +22.2] | n/a |
 
 <!-- New rows go directly above this line, inside the table: a blank line
      between rows ends the table and everything below it stops rendering as
@@ -74,6 +75,40 @@ interval excludes zero, though only just.
 The gen43-gen46 gate failures recorded in the training loop's history are
 NNUE-versus-NNUE regressions. They say nothing about NNUE versus classical, and
 they were produced by the pre-merge search.
+
+### 2026-08-27 — horizontal mirroring, measured
+
+The first row not produced under the conditions above. It comes from the
+`Strength test` GitHub Actions workflow rather than from a local `cutechess-cli`
+run: `fastchess`, 10+0.1, 128 MB hash, one thread per engine, openings from
+`UHO_4060_v4.epd`, 1,000 games split across four shards with fixed seeds. The
+harness reports an approximate paired 95% interval and no LOS, hence the `n/a`.
+Numbers from this workflow and numbers from the local runner are not
+interchangeable.
+
+The candidate is the branch that introduced horizontal feature canonicalization
+together with the first network trained under it; the baseline is the commit
+`main` was at when that branch was cut. Search is byte-identical on both sides,
+so this is an evaluation-versus-evaluation comparison — but it moves the feature
+set and the network together and cannot separate them.
+
+**+7.3 Elo, [-7.5, +22.2].** The interval contains zero, so this does not clear
+the bar for promotion and is not being read as a gain. What it does exclude is a
+regression worse than about 8 Elo, which is the question that mattered here:
+the feature set changed underneath the network, and the network was retrained on
+the same corpus that had already stopped paying, so the plausible bad outcome
+was losing ground rather than gaining it. That did not happen.
+
+Validation moved further than the games did — 0.002362 to 0.002262, 4.2% on the
+same held-out chunks — which is the usual reminder that validation loss and Elo
+are different quantities. The training-side reasoning is in
+[MODEL_CARD.md](MODEL_CARD.md#how-this-one-was-made).
+
+Worth separating from the Elo figure: mirroring halves the distinct positions
+the network has to learn from, since a position and its reflection are now one
+input. The corpus was already exhausted at this capacity, so that saving has
+nothing left to buy here. It should matter on a larger network or fresh data,
+and this run cannot say whether it does.
 
 ### 2026-08-15 — the parity gate is met
 

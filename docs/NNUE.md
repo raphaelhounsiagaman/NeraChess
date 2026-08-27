@@ -40,8 +40,9 @@ and only for what actually changed.
 
 | Property | Value | Why |
 | --- | --- | --- |
-| Features per perspective | 768 | `(relative colour, piece type, relative square)` = 2 x 6 x 64 |
-| Input buckets | 1 | King-independent, so a king move never forces a refresh |
+| Features per perspective | 768 | `(relative colour, piece type, canonical square)` = 2 x 6 x 64 |
+| Feature set version | 2 | Squares canonicalized horizontally on the own king |
+| Input buckets | 1 | Every king square indexes the same weight matrix |
 | Hidden size | 512 per perspective | 1024 values reach the output layer |
 | Output buckets | 1 | One head for every position |
 | Activation | Squared clipped ReLU | `clamp(x, 0, 1)^2` |
@@ -57,9 +58,9 @@ mirrored in
 
 It is the smallest architecture worth training. A perspective network with no
 king bucketing gets most of the strength of a full HalfKP or HalfKA network
-while being dramatically simpler: no refresh logic, no bucket transitions, and
-a feature index that fits in three lines of arithmetic. Getting a weak network
-playing end to end is worth more right now than getting a strong architecture
+while being dramatically simpler: no bucket transitions, and a feature index
+that fits in a handful of lines of arithmetic. Getting a weak network playing
+end to end is worth more right now than getting a strong architecture
 half-built.
 
 The bucket dimensions already exist in the code with a count of 1, so adding
@@ -75,8 +76,67 @@ mirror produce mirrored feature sets and evaluate identically. The output layer
 always reads the side to move first, so the network never has to learn the same
 pattern twice.
 
-This is tested from both directions: `TestNnueFeatureIndexing` in the C++ suite
-and `test_mirrored_positions_produce_mirrored_features` in the Python one.
+### Horizontal canonicalization
+
+On top of that flip, each perspective reads the board so that **its own king
+always stands on files e--h**. A perspective whose own king is on files a--d
+reflects every square it reads:
+
+```
+a <-> h    b <-> g    c <-> f    d <-> e
+```
+
+which is `square ^ 7` in the engine's square numbering, where `a1` is 0 and
+`h1` is 7. The convention to remember is that **d mirrors and e does not**.
+
+The two perspectives decide independently, each following its own king, so one
+half of the accumulator regularly reads the board reflected while the other
+does not. The result is that a position and its complete horizontal reflection
+canonicalize to exactly the same features, so a pattern and its mirror image
+share one learned representation instead of being two unrelated inputs. Whether
+that buys strength is a question for a training run, not for this document.
+
+`FeatureSet::View` bundles what a perspective's numbering depends on -- its
+orientation and its input bucket -- so nothing outside `FeatureSet.h` reasons
+about king files.
+
+### Accumulator invalidation
+
+Horizontal canonicalization is the first thing in this feature set that makes
+the numbering depend on where a king stands, and that has a cost: when a king
+crosses the d/e boundary, *every* feature of its own half is renumbered, and no
+dirty-piece delta from the parent position applies to it.
+
+`AccumulatorStack::Push` therefore compares the view each half was built under
+with the one the new position implies:
+
+* view unchanged — the ordinary incremental delta, which is the overwhelming
+  majority of moves, king moves within one half included;
+* view changed — that half alone is refreshed from scratch.
+
+Only the side whose own king moved across the boundary is refreshed. The other
+side still takes its normal delta: from its point of view an enemy king simply
+changed square, and its own orientation is untouched. Popping a move is still
+free, because a parent's entry is never written to.
+
+Debug builds re-derive every accumulator and assert both its values and its
+views against a full refresh, so a missed transition fails loudly rather than
+quietly evaluating some positions as though the pieces stood elsewhere.
+
+### Feature-set version
+
+`Architecture::FeatureSetVersion` says what a feature index *means*, as opposed
+to how many of them there are. Horizontal canonicalization changed the meaning
+while leaving every dimension identical, so version 2 is mixed into the
+architecture hash and networks trained under version 1 are refused at load time
+with `ArchitectureMismatch`. The `.nnue` container itself did not change: its
+format version covers the container, and the architecture hash covers what the
+weights mean.
+
+This is tested from both directions: `TestNnueFeatureIndexing`,
+`TestNnueHorizontalMirroring` and `TestNnueOrientationRefresh` in the C++ suite,
+and `SquareMirroringTest`, `KingOrientationTest` and
+`HorizontalCanonicalizationTest` in the Python one.
 
 ---
 
@@ -336,8 +396,9 @@ under both the Clang and GCC frontends.
 
 ## Testing
 
-The C++ suite covers the format, feature indexing, accumulator updates against
-a full refresh, and the evaluator:
+The C++ suite covers the format, feature indexing and its horizontal
+canonicalization, accumulator updates against a full refresh -- including the
+refresh a king crossing the d/e boundary forces -- and the evaluator:
 
 ```bash
 ./bin/Release/NeraChessTests/NeraChessTests
