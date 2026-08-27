@@ -1,5 +1,6 @@
 #include "ChessBoard.h"
 
+#include <algorithm>
 #include <array>
 #include <charconv>
 #include <cstdint>
@@ -682,6 +683,17 @@ namespace NeraChessEngine
 	uint64_t ChessBoard::GetRepetitionKey() const
 	{
 		return GetZobristKey();
+	}
+
+	std::size_t ChessBoard::GetRepetitionPlies() const
+	{
+		return m_RepetitionTable.Size();
+	}
+
+	bool ChessBoard::RepeatsWithin(std::size_t distance) const
+	{
+		return m_RepetitionTable.GetRepetitionCount(GetRepetitionKey(),
+			std::min<std::size_t>(distance, m_HalfMoveClock)) >= 2;
 	}
 
 	uint8_t ChessBoard::GetZobristEnPassantFile() const
