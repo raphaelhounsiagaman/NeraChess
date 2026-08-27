@@ -47,6 +47,11 @@ namespace NeraChessEngine
 
         MoveList<218> GetLegalMoves() const;
 
+	    // Same legal moves as GetLegalMoves(), without the ~880-byte copy -- for
+	    // callers that only read the list (e.g. filtering into a shorter list) and
+	    // never hold onto it past the next move made on this board.
+	    const MoveList<218>& GetLegalMovesRef() const;
+
         void MakeMove(Move move, bool gameMove = false);
 	    void UndoMove(Move move);
 
@@ -59,7 +64,17 @@ namespace NeraChessEngine
 	    uint16_t GetFullMoveClock() const { return m_FullMoves; }
 
         Piece GetPiece(const uint8_t square) const;
+
+	    // Attack-table lookup: whether the side to move's king is attacked, without
+	    // generating the legal move list. Existing callers relied on IsInCheck() to
+	    // force move generation as a side effect; none of them need that list at the
+	    // point they call it, so this is a strict improvement rather than a behavior
+	    // change.
         bool IsInCheck() const;
+
+	    // Reference implementation of IsInCheck(), kept only so the attack-table
+	    // version above can be verified against it exhaustively in tests.
+	    bool IsInCheckByMoveGeneration() const;
 
 	    // Reports whether a legal move would check the opponent, without making it.
 	    // Making the move and calling IsInCheck() answers the same question but forces
@@ -68,6 +83,12 @@ namespace NeraChessEngine
 	    bool GivesCheck(Move move) const;
 
         uint16_t GetGameOver(bool gameCheck = true) const;
+
+	    // Reports the draw conditions that do not require a legal move list: the
+	    // 50-move rule, threefold repetition, and insufficient material. Does not
+	    // detect checkmate or stalemate -- a caller needing those still has to
+	    // generate moves and check for an empty list.
+	    bool IsRuleDraw() const;
 
         uint64_t GetZobristKey() const;
 		uint8_t GetZobristEnPassantFile() const;

@@ -430,11 +430,26 @@ namespace NeraChessSearch
         m_SelectiveDepth = std::max(m_SelectiveDepth, ply);
         m_PvLength[ply] = ply;
 
-        Score terminalScore;
-        if (IsDrawOrTerminal(board, terminalScore, ply))
-            return terminalScore;
+        // Cheap draw test first: it needs no move list, unlike checkmate/stalemate
+        // detection below. This must run regardless of check status -- a position
+        // can be in check, have legal replies, and still be a repetition or
+        // 50-move draw, and that is the common case for a repeated check. The only
+        // conflict with checkmate is a mating move landing exactly on halfmove
+        // 100, which this reports as a draw; that is deliberately accepted rather
+        // than paying for a move list on every node to rule it out.
+        if (board.IsRuleDraw())
+            return SCORE_DRAW;
+        const bool inCheck = board.IsInCheck();
         if (ply >= MAX_PLY - 1)
+        {
+            // The horizon is deep enough that reaching it at all is exceptional
+            // (a long forcing sequence of checks/extensions), but a move list is
+            // still required to tell an ordinary position from checkmate/stalemate
+            // here -- there is no cutoff left to defer it behind.
+            if (board.GetLegalMoves().size() == 0)
+                return inCheck ? -SCORE_MATE + ply : SCORE_DRAW;
             return EvaluateNode(board);
+        }
 
         alpha = std::max(alpha, -SCORE_MATE + ply);
         beta = std::min(beta, SCORE_MATE - ply - 1);
@@ -462,7 +477,6 @@ namespace NeraChessSearch
             }
         }
 
-        const bool inCheck = board.IsInCheck();
         const bool mateBounds = beta <= -SCORE_MATE + MAX_PLY ||
             beta >= SCORE_MATE - MAX_PLY;
 
@@ -522,6 +536,8 @@ namespace NeraChessSearch
 
         const Score originalAlpha = alpha;
         MoveList<218> moves = board.GetLegalMoves();
+        if (moves.size() == 0)
+            return inCheck ? -SCORE_MATE + ply : SCORE_DRAW;
         SortMoves(board, moves, ply, ttMove, previousMove);
 
         Score bestScore = -SCORE_INF;
@@ -666,11 +682,17 @@ namespace NeraChessSearch
         m_SelectiveDepth = std::max(m_SelectiveDepth, ply);
         m_PvLength[ply] = ply;
 
-        Score terminalScore;
-        if (IsDrawOrTerminal(board, terminalScore, ply))
-            return terminalScore;
+        if (board.IsRuleDraw())
+            return SCORE_DRAW;
+        const bool inCheck = board.IsInCheck();
         if (ply >= MAX_PLY - 1)
+        {
+            // See the matching comment in PrincipalVariationSearch: the horizon
+            // has no cutoff left to defer this behind.
+            if (board.GetLegalMoves().size() == 0)
+                return inCheck ? -SCORE_MATE + ply : SCORE_DRAW;
             return EvaluateNode(board);
+        }
 
         alpha = std::max(alpha, -SCORE_MATE + ply);
         beta = std::min(beta, SCORE_MATE - ply - 1);
@@ -697,7 +719,6 @@ namespace NeraChessSearch
         }
 
         const Score originalAlpha = alpha;
-        const bool inCheck = board.IsInCheck();
         Score bestScore = -SCORE_INF;
         Move bestMove = 0;
         Score standPat = -SCORE_INF;
@@ -717,8 +738,12 @@ namespace NeraChessSearch
             alpha = std::max(alpha, bestScore);
         }
 
+        const MoveList<218>& legalMoves = board.GetLegalMovesRef();
+        if (legalMoves.size() == 0)
+            return inCheck ? -SCORE_MATE + ply : SCORE_DRAW;
+
         MoveList<218> candidates;
-        for (const Move move : board.GetLegalMoves())
+        for (const Move move : legalMoves)
         {
             if (inCheck || !IsQuiet(move))
                 candidates.push(move);

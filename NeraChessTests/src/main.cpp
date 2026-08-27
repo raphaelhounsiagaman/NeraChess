@@ -163,28 +163,38 @@ namespace
         ChessBoard checkmate("7k/6Q1/6K1/8/8/8/8/8 b - - 0 1");
         const uint16_t mateFlags = checkmate.GetGameOver();
         Require((mateFlags & IS_CHECKMATE) != 0, "checkmate was not detected");
+        Require(checkmate.IsInCheck(), "fast IsInCheck missed the checking side of a checkmate");
 
         ChessBoard stalemate("7k/5Q2/6K1/8/8/8/8/8 b - - 0 1");
         const uint16_t staleFlags = stalemate.GetGameOver();
         Require((staleFlags & IS_STALEMATE) != 0, "stalemate was not detected");
+        Require(!stalemate.IsInCheck(), "fast IsInCheck flagged a stalemate as check");
+        Require(!stalemate.IsRuleDraw(),
+            "IsRuleDraw fired on stalemate, which needs move generation to detect");
 
         ChessBoard insufficient("7k/8/8/8/8/8/8/K7 w - - 0 1");
         const uint16_t materialFlags = insufficient.GetGameOver();
         Require((materialFlags & IS_INSUFFICIENT_MATERIAL) != 0, "insufficient material was not detected");
+        Require(insufficient.IsRuleDraw(), "IsRuleDraw missed insufficient material");
 
         ChessBoard sameColorBishops("7k/8/8/8/5b2/8/3B4/K7 w - - 0 1");
         Require((sameColorBishops.GetGameOver() & IS_INSUFFICIENT_MATERIAL) != 0,
             "same-color bishop dead position was not detected");
+        Require(sameColorBishops.IsRuleDraw(), "IsRuleDraw missed a same-color-bishop dead position");
 
         ChessBoard oppositeColorBishops("7k/8/8/8/4b3/8/3B4/K7 w - - 0 1");
         Require((oppositeColorBishops.GetGameOver() & IS_INSUFFICIENT_MATERIAL) == 0,
             "opposite-color bishops were incorrectly declared insufficient");
+        Require(!oppositeColorBishops.IsRuleDraw(),
+            "IsRuleDraw incorrectly declared opposite-color bishops insufficient");
 
         ChessBoard notYetFifty("7k/8/8/8/8/8/R7/K7 w - - 99 1");
         Require((notYetFifty.GetGameOver() & IS_50MOVE_RULE) == 0, "50-move draw was declared one ply early");
+        Require(!notYetFifty.IsRuleDraw(), "IsRuleDraw fired on the 50-move rule one ply early");
         const auto quietMove = notYetFifty.GetLegalMoves()[0];
         notYetFifty.MakeMove(quietMove);
         Require((notYetFifty.GetGameOver() & IS_50MOVE_RULE) != 0, "50-move draw was not declared at 100 halfmoves");
+        Require(notYetFifty.IsRuleDraw(), "IsRuleDraw did not fire at 100 halfmoves");
     }
 
     NeraChessEngine::Move FindMove(const ChessBoard& board, std::string_view uci)
@@ -209,6 +219,7 @@ namespace
                 board.MakeMove(FindMove(board, uci), true);
         }
         Require((board.GetGameOver(true) & IS_REPETITION) != 0, "threefold repetition was not detected");
+        Require(board.IsRuleDraw(), "IsRuleDraw missed threefold repetition");
 
         ChessBoard rights("r3k2r/8/8/8/8/8/8/R3K2R w KQkq - 0 1");
         static constexpr std::string_view rookCycle[] = { "h1h2", "h8h7", "h2h1", "h7h8" };
@@ -219,6 +230,8 @@ namespace
         }
         Require((rights.GetGameOver(true) & IS_REPETITION) == 0,
             "positions with different castling rights were treated as repetitions");
+        Require(!rights.IsRuleDraw(),
+            "IsRuleDraw treated positions with different castling rights as repetitions");
 
         ChessBoard irrelevantEp("4k3/8/8/8/4P3/8/8/4K3 b - e3 0 1");
         ChessBoard noEp("4k3/8/8/8/4P3/8/8/4K3 b - - 0 1");
@@ -294,6 +307,53 @@ namespace
         {
             ChessBoard board{ std::string(fen) };
             CompareGivesCheckAgainstMakeMove(board, 3);
+        }
+    }
+
+    // ChessBoard::IsInCheck() is an attack-table lookup that answers the same
+    // question as the move generator's own InCheck() flag, without generating the
+    // legal move list. The search relies on the two never disagreeing -- a
+    // disagreement would silently break checkmate detection or the pruning that
+    // is gated on being in check -- so it is compared against
+    // IsInCheckByMoveGeneration() (the old, move-generation-based implementation,
+    // kept only for this) over every position of a small tree.
+    void CompareFastInCheckAgainstMoveGeneration(ChessBoard& board, int depth)
+    {
+        Require(board.IsInCheck() == board.IsInCheckByMoveGeneration(),
+            "fast IsInCheck disagreed with the move-generation reference");
+        if (depth <= 0)
+            return;
+        for (const auto move : board.GetLegalMoves())
+        {
+            board.MakeMove(move);
+            Require(board.IsInCheck() == board.IsInCheckByMoveGeneration(),
+                "fast IsInCheck disagreed with the move-generation reference");
+            CompareFastInCheckAgainstMoveGeneration(board, depth - 1);
+            board.UndoMove(move);
+        }
+    }
+
+    void TestFastInCheck()
+    {
+        static constexpr std::string_view positions[] = {
+            "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1",
+            "r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq - 0 1",
+            "8/2p5/3p4/KP5r/1R3p1k/8/4P1P1/8 w - - 0 1",
+            "r3k2r/Pppp1ppp/1b3nbN/nP6/BBP1P3/q4N2/Pp1P2PP/R2Q1RK1 w kq - 0 1",
+            // En passant, promotion and castling are the three cases where the board
+            // after the move differs from "piece moves from A to B".
+            "8/8/1k6/2b5/2pP4/8/5K2/8 b - d3 0 1",
+            "4k3/1P6/8/8/8/8/6p1/4K3 w - - 0 1",
+            "r3k2r/8/8/8/8/8/8/R3K2R w KQkq - 0 1",
+            "8/8/8/8/1k6/8/2P5/4K2R w K - 0 1",
+            "7k/6Q1/6K1/8/8/8/8/8 b - - 0 1",
+            "7k/5Q2/6K1/8/8/8/8/8 b - - 0 1",
+        };
+
+        for (const auto fen : positions)
+        {
+            ChessBoard board{ std::string(fen) };
+            CompareFastInCheckAgainstMoveGeneration(board, 3);
         }
     }
 
@@ -1848,6 +1908,7 @@ int main(int argc, char** argv)
         TestRepetition();
         TestIncrementalZobrist();
         TestGivesCheck();
+        TestFastInCheck();
         TestNullMoveState();
         TestTranspositionTable();
         TestConcurrentTranspositionTable();
