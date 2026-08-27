@@ -144,8 +144,11 @@ changes. Generation networks live under `NeraChessApp/Resources/NNUE/`, are
 loaded automatically by both the UCI engine and the desktop app at startup,
 and are read by the `EvalFile` UCI option.
 
-The bar for shipping a network is a match confidence interval that excludes
-zero, not merely a score above 50%.
+The bar for shipping a network is the strength test reaching
+**Accepted: improvement** — the sequential test in
+`.github/workflows/strength-test.yml` crossing its upper boundary — not merely a
+score above 50%, and not an interval that happens to clear zero. See
+`docs/Strength-Testing.md`.
 
 ## Notes specific to this repo
 

@@ -1,0 +1,65 @@
+name: Strength decision
+description: >
+  Combine every shard played so far and decide whether another stage is worth
+  running.
+
+inputs:
+  mode:
+    description: sequential or fixed
+    required: true
+  target_games:
+    description: Total games planned for the test
+    required: true
+  elo1:
+    description: Elo improvement the test is powered to detect
+    required: true
+  stage:
+    description: Stage that has just finished
+    required: true
+
+outputs:
+  continue:
+    description: true when another stage should be played
+    value: ${{ steps.summarize.outputs.continue }}
+
+runs:
+  using: composite
+  steps:
+    - name: Download every shard played so far
+      uses: actions/download-artifact@v7
+      with:
+        pattern: strength-shard-*
+        path: ${{ runner.temp }}/nerachess-strength-shards
+
+    - name: Apply the stopping rule
+      id: summarize
+      shell: bash
+      env:
+        MODE: ${{ inputs.mode }}
+        ELO1: ${{ inputs.elo1 }}
+        TARGET_GAMES: ${{ inputs.target_games }}
+      run: |
+        set -euo pipefail
+
+        python3 scripts/strength/Summarize-Results.py \
+          "$RUNNER_TEMP/nerachess-strength-shards" \
+          --mode "$MODE" \
+          --elo1 "$ELO1" \
+          --target-games "$TARGET_GAMES" \
+          --output "$RUNNER_TEMP/strength-summary.md" \
+          --decision-output "$RUNNER_TEMP/strength-decision.txt"
+
+        cat "$RUNNER_TEMP/strength-decision.txt" >> "$GITHUB_OUTPUT"
+
+        {
+          echo "### After stage ${{ inputs.stage }}"
+          echo
+          cat "$RUNNER_TEMP/strength-summary.md"
+        } >> "$GITHUB_STEP_SUMMARY"
+
+    - name: Upload running summary
+      uses: actions/upload-artifact@v7
+      with:
+        name: strength-summary-after-stage-${{ inputs.stage }}
+        path: ${{ runner.temp }}/strength-summary.md
+        retention-days: 30

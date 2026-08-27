@@ -27,6 +27,7 @@ max_pairs="${STRENGTH_MAX_PAIRS:-125}"
 hash_mb="${STRENGTH_HASH_MB:-128}"
 threads="${STRENGTH_THREADS:-1}"
 seed="${STRENGTH_SEED:-1}"
+stage="${STRENGTH_STAGE:-1}"
 allow_network_change="${ALLOW_NETWORK_CHANGE:-false}"
 
 candidate="${candidate_directory}/NeraChessUCI"
@@ -57,7 +58,8 @@ for name_and_value in \
   "max pairs:${max_pairs}" \
   "hash size:${hash_mb}" \
   "threads:${threads}" \
-  "seed:${seed}"; do
+  "seed:${seed}" \
+  "stage:${stage}"; do
   name="${name_and_value%%:*}"
   value="${name_and_value#*:}"
   if [[ ! "${value}" =~ ${positive_integer} ]]; then
@@ -110,7 +112,7 @@ results_directory="$(realpath "${results_directory}")"
   echo "max_pairs=${max_pairs}"
   echo "threads=${threads}"
   echo "hash_mb=${hash_mb}"
-  echo "test=fixed_games"
+  echo "stage=${stage}"
   echo "opening_seed=${seed}"
   "${fastchess_bin}" -version 2>&1 | sed 's/^/fastchess=/'
 } | tee "${results_directory}/configuration.txt"

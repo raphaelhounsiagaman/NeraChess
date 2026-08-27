@@ -1,0 +1,107 @@
+name: Strength stage
+
+# One stage of a strength test: four shards playing the same number of opening
+# pairs in parallel, each with its own opening seed. The calling workflow runs
+# these one after another and decides between them whether to keep going.
+
+on:
+  workflow_call:
+    inputs:
+      candidate_sha:
+        required: true
+        type: string
+      baseline_sha:
+        required: true
+        type: string
+      time_control:
+        required: true
+        type: string
+      allow_network_change:
+        required: true
+        type: boolean
+      stage:
+        description: Stage number, used to name artifacts and pick seeds
+        required: true
+        type: number
+      pairs:
+        description: Opening pairs each shard plays in this stage
+        required: true
+        type: number
+
+permissions:
+  contents: read
+
+jobs:
+  match:
+    name: Stage ${{ inputs.stage }} shard ${{ matrix.shard }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 350
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3, 4]
+
+    env:
+      STRENGTH_TC: ${{ inputs.time_control }}
+      STRENGTH_CONCURRENCY: "2"
+      STRENGTH_MAX_PAIRS: ${{ inputs.pairs }}
+      STRENGTH_HASH_MB: "128"
+      STRENGTH_THREADS: "1"
+      STRENGTH_STAGE: ${{ inputs.stage }}
+      STRENGTH_SHARD: ${{ matrix.shard }}
+      ALLOW_NETWORK_CHANGE: ${{ inputs.allow_network_change }}
+
+    steps:
+      - name: Check out test harness
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Choose the opening seed
+        run: |
+          # Every stage draws a fresh block of seeds, so no stage replays the
+          # openings another stage has already played.
+          echo "STRENGTH_SEED=$((1000 * STRENGTH_STAGE + STRENGTH_SHARD))" \
+            >> "$GITHUB_ENV"
+
+      - name: Prepare Fastchess and openings
+        run: |
+          bash scripts/strength/Prepare-Tools.sh "$RUNNER_TEMP/nerachess-strength-tools"
+          echo "FASTCHESS_BIN=$RUNNER_TEMP/nerachess-strength-tools/bin/fastchess" >> "$GITHUB_ENV"
+          echo "OPENING_BOOK=$RUNNER_TEMP/nerachess-strength-tools/books/UHO_4060_v4.epd" >> "$GITHUB_ENV"
+
+      - name: Create isolated source trees
+        run: |
+          git worktree add --detach "$RUNNER_TEMP/nerachess-candidate-source" \
+            "${{ inputs.candidate_sha }}"
+          git worktree add --detach "$RUNNER_TEMP/nerachess-baseline-source" \
+            "${{ inputs.baseline_sha }}"
+
+      - name: Build candidate
+        run: |
+          bash scripts/strength/Build-Engine.sh \
+            "$RUNNER_TEMP/nerachess-candidate-source" \
+            "$RUNNER_TEMP/nerachess-candidate-build"
+
+      - name: Build baseline
+        run: |
+          bash scripts/strength/Build-Engine.sh \
+            "$RUNNER_TEMP/nerachess-baseline-source" \
+            "$RUNNER_TEMP/nerachess-baseline-build"
+
+      - name: Play ${{ inputs.pairs }} opening pairs
+        run: |
+          bash scripts/strength/Run-Match.sh \
+            "$RUNNER_TEMP/nerachess-candidate-build" \
+            "$RUNNER_TEMP/nerachess-baseline-build" \
+            "$OPENING_BOOK" \
+            "$RUNNER_TEMP/nerachess-strength-results"
+
+      - name: Upload shard results
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: strength-shard-${{ inputs.stage }}-${{ matrix.shard }}
+          path: ${{ runner.temp }}/nerachess-strength-results
+          if-no-files-found: error
+          retention-days: 30
