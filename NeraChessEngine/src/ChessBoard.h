@@ -90,6 +90,18 @@ namespace NeraChessEngine
 	    // generate moves and check for an empty list.
 	    bool IsRuleDraw() const;
 
+	    // Number of positions recorded for repetition detection so far (see
+	    // RepetitionTable::Size). Search uses this, rather than its own ply
+	    // counter, to measure distance back to its root.
+	    std::size_t GetRepetitionPlies() const;
+
+	    // Whether the current position has occurred at least once more within
+	    // `distance` plies before it (same side to move, i.e. every second ply),
+	    // counting the current position itself. This is the in-tree "twofold"
+	    // test the search uses to score a repetition as a draw before a
+	    // game-rule threefold (see GetGameOver) would fire.
+	    bool RepeatsWithin(std::size_t distance) const;
+
         uint64_t GetZobristKey() const;
 		uint8_t GetZobristEnPassantFile() const;
         std::string GetFENString() const;

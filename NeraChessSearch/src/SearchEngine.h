@@ -116,6 +116,11 @@ namespace NeraChessSearch
 
         bool ShouldStop();
         bool IsDrawOrTerminal(const NeraChessEngine::ChessBoard& board, Score& terminalScore, int ply) const;
+        // In-tree repetition test: whether `board` has already occurred once since
+        // the search root, scored as a draw rather than waiting for the game-rule
+        // threefold. See the definition for why distance to root is measured off
+        // the repetition-key stack rather than `ply`.
+        bool IsInTreeRepetition(const NeraChessEngine::ChessBoard& board, int ply) const;
         static Score ScoreToTT(Score score, int ply);
         static Score ScoreFromTT(Score score, int ply);
         static int PieceValue(NeraChessEngine::Piece piece);
@@ -144,6 +149,9 @@ namespace NeraChessSearch
         uint64_t m_Nodes = 0;
         uint64_t m_UnflushedNodes = 0;
         int m_SelectiveDepth = 0;
+        // Repetition-key stack size at the search root, recorded once per
+        // SearchWorker call. See IsInTreeRepetition.
+        std::size_t m_RootRepetitionPlies = 0;
 
         // One NNUE accumulator per ply, private to this worker, updated
         // incrementally as the search makes and unmakes moves.

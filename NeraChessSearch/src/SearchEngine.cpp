@@ -234,6 +234,7 @@ namespace NeraChessSearch
         }
 
         ChessBoard board = position;
+        m_RootRepetitionPlies = board.GetRepetitionPlies();
         m_Network = &NeraChessNNUE::Evaluator::GetNetwork();
         m_Accumulators.Reset(*m_Network, board.GetBoardState());
 
@@ -436,8 +437,11 @@ namespace NeraChessSearch
         // 50-move draw, and that is the common case for a repeated check. The only
         // conflict with checkmate is a mating move landing exactly on halfmove
         // 100, which this reports as a draw; that is deliberately accepted rather
-        // than paying for a move list on every node to rule it out.
-        if (board.IsRuleDraw())
+        // than paying for a move list on every node to rule it out. The in-tree
+        // repetition test runs first: it scores a cycle as a draw the first time
+        // it repeats since the root, rather than waiting for IsRuleDraw's
+        // game-rule threefold.
+        if (IsInTreeRepetition(board, ply) || board.IsRuleDraw())
             return SCORE_DRAW;
         const bool inCheck = board.IsInCheck();
         if (ply >= MAX_PLY - 1)
@@ -682,7 +686,9 @@ namespace NeraChessSearch
         m_SelectiveDepth = std::max(m_SelectiveDepth, ply);
         m_PvLength[ply] = ply;
 
-        if (board.IsRuleDraw())
+        // See the matching comment in PrincipalVariationSearch for the in-tree
+        // repetition test.
+        if (IsInTreeRepetition(board, ply) || board.IsRuleDraw())
             return SCORE_DRAW;
         const bool inCheck = board.IsInCheck();
         if (ply >= MAX_PLY - 1)
@@ -943,6 +949,30 @@ namespace NeraChessSearch
             ? -SCORE_MATE + ply
             : SCORE_DRAW;
         return true;
+    }
+
+    bool SearchEngine::IsInTreeRepetition(const ChessBoard& board, int ply) const
+    {
+        // The root itself is never a draw just because the position has occurred
+        // before -- only a repetition that happens again inside the tree counts.
+        if (ply <= 0)
+            return false;
+
+        // Distance from `board` back to the search root, measured off the
+        // repetition-key stack rather than `ply`: MakeNullMove pushes no key, so
+        // after a null move the two diverge and a ply-derived bound would read
+        // past the root.
+        const std::size_t plies = board.GetRepetitionPlies();
+        if (plies <= m_RootRepetitionPlies + 1)
+            return false;
+
+        // Bounding the scan to pliesSinceRoot - 1 (rather than pliesSinceRoot)
+        // excludes the root's own occurrence from the match: repeating the root
+        // once is not yet the in-tree cycle this is meant to catch, and still
+        // needs an ordinary threefold. RepeatsWithin itself requires a second,
+        // earlier occurrence of the current position within that window --
+        // i.e. a genuine repetition, not just distance from the root.
+        return board.RepeatsWithin(plies - m_RootRepetitionPlies - 1);
     }
 
     Score SearchEngine::ScoreToTT(Score score, int ply)

@@ -243,6 +243,26 @@ namespace
         ChessBoard capturableNoEp("4k3/8/8/8/3pP3/8/8/4K3 b - - 0 1");
         Require(capturableEp.GetZobristKey() != capturableNoEp.GetZobristKey(),
             "capturable en passant was omitted from position identity");
+
+        // GetRepetitionPlies / RepeatsWithin are the primitives the search uses to
+        // detect an in-tree twofold before a game-rule threefold (see issue #18).
+        ChessBoard twofold;
+        Require(twofold.GetRepetitionPlies() == 1,
+            "a freshly constructed board did not record its own position");
+
+        twofold.MakeMove(FindMove(twofold, "g1f3"), true);
+        twofold.MakeMove(FindMove(twofold, "g8f6"), true);
+        twofold.MakeMove(FindMove(twofold, "f3g1"), true);
+        Require(!twofold.RepeatsWithin(2),
+            "RepeatsWithin fired before the cycle had actually repeated");
+
+        twofold.MakeMove(FindMove(twofold, "f6g8"), true);
+        Require(twofold.GetRepetitionPlies() == 5,
+            "GetRepetitionPlies did not track four moves on top of the starting position");
+        Require(twofold.RepeatsWithin(4),
+            "RepeatsWithin missed a position repeating exactly at its distance bound");
+        Require(!twofold.RepeatsWithin(2),
+            "RepeatsWithin found a repetition outside the distance it was given");
     }
 
     void TestIncrementalZobrist()
@@ -1798,6 +1818,41 @@ namespace
         const auto bestMove = search.Search(tactical, limits).bestMove;
         Require(bestMove == FindMove(tactical, "d5e6") || bestMove == FindMove(tactical, "e2a6"),
             "search missed both top tactical continuations in the benchmark");
+
+        // In-tree twofold repetition (issue #18). White is down a queen and two
+        // rooks with nothing but a perpetual check (Qe6+/Qh3+) to save the game.
+        // The game-rule draw test needs a genuine threefold -- the cycle walked
+        // twice -- to see this, so at a depth deep enough to find the perpetual
+        // but not yet a third occurrence, it still reported a large score for the
+        // side about to be perpetually checked. This fails on that older
+        // behavior (score 51) and passes once a position repeating once since the
+        // root is scored a draw immediately.
+        search.NewGame();
+        ChessBoard perpetual("rr3bk1/6p1/8/8/q7/3B4/4Q3/6K1 w - - 0 1");
+        SearchLimits perpetualLimits;
+        perpetualLimits.maxDepth = 12;
+        const SearchResult perpetualResult = search.Search(perpetual, perpetualLimits);
+        Require(perpetualResult.score == SCORE_DRAW,
+            "in-tree repetition of a forced perpetual was not scored as a draw");
+
+        // Same defect, conversion phase: a won Q+N vs R+R endgame whose reported
+        // principal variation cycles back to a position it has already passed
+        // through, which a correct search should never prefer over progress.
+        search.NewGame();
+        ChessBoard endgame("8/8/2n5/1k6/1p2q3/8/1R5K/1R6 b - - 7 55");
+        SearchLimits endgameLimits;
+        endgameLimits.maxDepth = 13;
+        const SearchResult endgameResult = search.Search(endgame, endgameLimits);
+        std::vector<uint64_t> pvKeys{ endgame.GetZobristKey() };
+        ChessBoard pvWalker = endgame;
+        for (const NeraChessEngine::Move pvMove : endgameResult.principalVariation)
+        {
+            pvWalker.MakeMove(pvMove, true);
+            const uint64_t key = pvWalker.GetZobristKey();
+            Require(std::find(pvKeys.begin(), pvKeys.end(), key) == pvKeys.end(),
+                "principal variation of a won endgame repeated a position it had already passed through");
+            pvKeys.push_back(key);
+        }
     }
 
     // Writes a network of deterministic pseudo-random weights.
