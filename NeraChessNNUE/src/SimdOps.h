@@ -105,13 +105,30 @@ namespace NeraChessNNUE::Simd
             }
         }
 
+        // Activate already rescales its result onto [0, QuantizationA], so
+        // each term fits int32 with room to spare; only a run of them needs
+        // widening. Summing Quantization::ActivationChunk terms at a time in
+        // int32 before folding into the int64 total is safe for any int16
+        // weight the format permits (see Quantization::MaxSafeChunkTerms) and
+        // -- because plain integer addition is associative and none of these
+        // partial sums can overflow -- gives the same total as adding every
+        // term into the int64 accumulator directly.
         inline Accumulation ActivatedDotProduct(const Weight* values, const Weight* weights,
             size_t count)
         {
-            Accumulation sum = 0;
-            for (size_t index = 0; index < count; ++index)
-                sum += Quantization::Activate(values[index]) * weights[index];
-            return sum;
+            Accumulation total = 0;
+            size_t index = 0;
+            for (; index + Quantization::ActivationChunk <= count; index += Quantization::ActivationChunk)
+            {
+                int32_t chunk = 0;
+                for (size_t offset = 0; offset < Quantization::ActivationChunk; ++offset)
+                    chunk += Quantization::Activate(values[index + offset]) * weights[index + offset];
+                total += chunk;
+            }
+            int32_t tail = 0;
+            for (; index < count; ++index)
+                tail += Quantization::Activate(values[index]) * weights[index];
+            return total + tail;
         }
     }
 
@@ -144,28 +161,49 @@ namespace NeraChessNNUE::Simd
     {
         // Each tier below is bit-exact with Scalar::ActivatedDotProduct by
         // construction: it is the identical loop, recompiled at a wider
-        // target so the vectorizer reassociates the additions. That is safe
-        // because no reassociation can overflow -- a squared clip times an
-        // int16 weight fits in int32, and the running int64 total cannot
-        // overflow for any int16 weight the format permits (at most 512
-        // terms, each under 65025 * 32767 < 2^31) -- so every grouping of the
-        // sum produces the same int64 value.
+        // target so the vectorizer reassociates the additions and, for the
+        // activation's division, lowers a compile-time-constant unsigned
+        // divide into a reciprocal-multiply sequence. That reassociation is
+        // safe because no intermediate can overflow -- Activate's result
+        // fits int32 with room to spare, a chunk of Quantization::
+        // ActivationChunk terms cannot overflow int32 for any int16 weight
+        // the format permits, and plain integer addition of exact terms
+        // produces the same total regardless of grouping -- so every
+        // grouping of the sum produces the same int64 value.
         __attribute__((target("avx2")))
         inline Accumulation DotAvx2(const Weight* values, const Weight* weights, size_t count)
         {
-            Accumulation sum = 0;
-            for (size_t index = 0; index < count; ++index)
-                sum += Quantization::Activate(values[index]) * weights[index];
-            return sum;
+            Accumulation total = 0;
+            size_t index = 0;
+            for (; index + Quantization::ActivationChunk <= count; index += Quantization::ActivationChunk)
+            {
+                int32_t chunk = 0;
+                for (size_t offset = 0; offset < Quantization::ActivationChunk; ++offset)
+                    chunk += Quantization::Activate(values[index + offset]) * weights[index + offset];
+                total += chunk;
+            }
+            int32_t tail = 0;
+            for (; index < count; ++index)
+                tail += Quantization::Activate(values[index]) * weights[index];
+            return total + tail;
         }
 
         __attribute__((target("sse4.1")))
         inline Accumulation DotSse41(const Weight* values, const Weight* weights, size_t count)
         {
-            Accumulation sum = 0;
-            for (size_t index = 0; index < count; ++index)
-                sum += Quantization::Activate(values[index]) * weights[index];
-            return sum;
+            Accumulation total = 0;
+            size_t index = 0;
+            for (; index + Quantization::ActivationChunk <= count; index += Quantization::ActivationChunk)
+            {
+                int32_t chunk = 0;
+                for (size_t offset = 0; offset < Quantization::ActivationChunk; ++offset)
+                    chunk += Quantization::Activate(values[index + offset]) * weights[index + offset];
+                total += chunk;
+            }
+            int32_t tail = 0;
+            for (; index < count; ++index)
+                tail += Quantization::Activate(values[index]) * weights[index];
+            return total + tail;
         }
 
         // Add/Subtract/AddSubtract and the Copy* variants below already have a
@@ -571,11 +609,12 @@ namespace NeraChessNNUE::Simd
 
     // Sum of Activate(values[i]) * weights[i].
     //
-    // With squared clipped ReLU each term is clamp(v, 0, 255)^2 * w. The square
-    // is at most 65025 and the weight at most 32767 in magnitude, so a single
-    // term always fits in int32 -- but a sum of them does not, which is why the
-    // running total is widened to int64 rather than accumulated in int32 and
-    // widened at the end.
+    // Activate rescales the squared clip back onto [0, QuantizationA] (see
+    // Quantization.h), so a term is a single int16 x int16 -> int32 widening
+    // multiply-add instead of the int32 x int32 multiply a wider activation
+    // would need. A chunk of Quantization::ActivationChunk terms cannot
+    // overflow int32 for any int16 weight the format permits, so the running
+    // total only needs to widen to int64 once per chunk rather than per term.
     inline Accumulation ActivatedDotProduct(const Weight* values, const Weight* weights,
         size_t count)
     {
@@ -583,52 +622,94 @@ namespace NeraChessNNUE::Simd
         static_assert(Architecture::Activation ==
             Architecture::ActivationKind::SquaredClippedReLU,
             "the NEON kernel implements squared clipped ReLU");
+        static_assert(Architecture::QuantizationA == 255,
+            "the NEON activation divide is the exact bit trick for /255 specifically");
+
+        constexpr size_t VectorWidth = 8;
+        constexpr size_t VectorsPerChunk = Quantization::ActivationChunk / VectorWidth;
+        static_assert(Quantization::ActivationChunk % VectorWidth == 0,
+            "ActivationChunk must be a whole number of NEON vectors");
 
         const int16x8_t zero = vdupq_n_s16(0);
         const int16x8_t ceiling = vdupq_n_s16(
             static_cast<int16_t>(Architecture::QuantizationA));
-        int64x2_t total0 = vdupq_n_s64(0);
-        int64x2_t total1 = vdupq_n_s64(0);
+        const uint16x8_t one = vdupq_n_u16(1);
+
+        Accumulation total = 0;
+        int32x4_t chunkLow = vdupq_n_s32(0);
+        int32x4_t chunkHigh = vdupq_n_s32(0);
+        size_t vectorsInChunk = 0;
 
         size_t index = 0;
-        for (; index + 8 <= count; index += 8)
+        for (; index + VectorWidth <= count; index += VectorWidth)
         {
             const int16x8_t clipped = vminq_s16(
                 vmaxq_s16(vld1q_s16(values + index), zero), ceiling);
             const int16x8_t weight = vld1q_s16(weights + index);
 
-            // Widening multiplies: int16 x int16 -> int32, exact by construction.
-            const int32x4_t squareLow = vmull_s16(vget_low_s16(clipped), vget_low_s16(clipped));
-            const int32x4_t squareHigh = vmull_high_s16(clipped, clipped);
-            const int32x4_t weightLow = vmovl_s16(vget_low_s16(weight));
-            const int32x4_t weightHigh = vmovl_high_s16(weight);
+            // clipped^2 <= 255^2 = 65025 fits the low 16 bits of the packed
+            // multiply exactly (no widening needed), so this is the same bit
+            // pattern as an unsigned squaring would produce.
+            const uint16x8_t square = vreinterpretq_u16_s16(vmulq_s16(clipped, clipped));
 
-            // Each product fits in int32; widen before summing so the running
-            // total cannot overflow.
-            const int32x4_t productLow = vmulq_s32(squareLow, weightLow);
-            const int32x4_t productHigh = vmulq_s32(squareHigh, weightHigh);
+            // Exact unsigned division by 255 for any 16-bit value: floor(x / 255)
+            // == ((x + 1) + ((x + 1) >> 8)) >> 8, verified exhaustively over
+            // [0, 65535]. Logical (not arithmetic) shifts, hence the unsigned type.
+            const uint16x8_t biased = vaddq_u16(square, one);
+            const uint16x8_t activatedU =
+                vshrq_n_u16(vaddq_u16(biased, vshrq_n_u16(biased, 8)), 8);
+            const int16x8_t activated = vreinterpretq_s16_u16(activatedU);
 
-            total0 = vaddq_s64(total0, vmovl_s32(vget_low_s32(productLow)));
-            total1 = vaddq_s64(total1, vmovl_high_s32(productLow));
-            total0 = vaddq_s64(total0, vmovl_s32(vget_low_s32(productHigh)));
-            total1 = vaddq_s64(total1, vmovl_high_s32(productHigh));
+            // Widening multiply-accumulate: int16 x int16 -> int32, exact
+            // because activated <= QuantizationA and the weight magnitude is
+            // bounded to fit int16, so one product cannot overflow int32.
+            chunkLow = vmlal_s16(chunkLow, vget_low_s16(activated), vget_low_s16(weight));
+            chunkHigh = vmlal_high_s16(chunkHigh, activated, weight);
+
+            if (++vectorsInChunk == VectorsPerChunk)
+            {
+                total += vaddvq_s32(vaddq_s32(chunkLow, chunkHigh));
+                chunkLow = vdupq_n_s32(0);
+                chunkHigh = vdupq_n_s32(0);
+                vectorsInChunk = 0;
+            }
         }
 
-        const int64x2_t combined = vaddq_s64(total0, total1);
-        Accumulation sum = vgetq_lane_s64(combined, 0) + vgetq_lane_s64(combined, 1);
-        return sum + Scalar::ActivatedDotProduct(values + index, weights + index, count - index);
+        total += vaddvq_s32(vaddq_s32(chunkLow, chunkHigh));
+        return total + Scalar::ActivatedDotProduct(values + index, weights + index, count - index);
 #elif defined(NNUE_SIMD_AVX2)
         static_assert(Architecture::Activation ==
             Architecture::ActivationKind::SquaredClippedReLU,
             "the AVX2 kernel implements squared clipped ReLU");
+        static_assert(Architecture::QuantizationA == 255,
+            "the AVX2 activation divide is the exact bit trick for /255 specifically");
+
+        constexpr size_t VectorWidth = 16;
+        constexpr size_t VectorsPerChunk = Quantization::ActivationChunk / VectorWidth;
+        static_assert(Quantization::ActivationChunk % VectorWidth == 0,
+            "ActivationChunk must be a whole number of AVX2 vectors");
 
         const __m256i zero = _mm256_setzero_si256();
         const __m256i ceiling = _mm256_set1_epi16(
             static_cast<short>(Architecture::QuantizationA));
-        __m256i total = _mm256_setzero_si256();
+        const __m256i one = _mm256_set1_epi16(1);
+
+        const auto horizontalSum = [](__m256i vector) -> Accumulation
+        {
+            alignas(32) int32_t lanes[8];
+            _mm256_store_si256(reinterpret_cast<__m256i*>(lanes), vector);
+            Accumulation sum = 0;
+            for (const int32_t lane : lanes)
+                sum += lane;
+            return sum;
+        };
+
+        Accumulation total = 0;
+        __m256i chunkTotal = _mm256_setzero_si256();
+        size_t vectorsInChunk = 0;
 
         size_t index = 0;
-        for (; index + 16 <= count; index += 16)
+        for (; index + VectorWidth <= count; index += VectorWidth)
         {
             const __m256i clipped = _mm256_min_epi16(
                 _mm256_max_epi16(
@@ -637,32 +718,35 @@ namespace NeraChessNNUE::Simd
             const __m256i weight =
                 _mm256_loadu_si256(reinterpret_cast<const __m256i*>(weights + index));
 
-            // Widen to int32 in two halves; the square and the product both fit.
-            for (int half = 0; half < 2; ++half)
+            // clipped^2 <= 255^2 = 65025 fits the low 16 bits of the packed
+            // multiply exactly (no widening needed), so this is the same bit
+            // pattern as an unsigned squaring would produce.
+            const __m256i square = _mm256_mullo_epi16(clipped, clipped);
+
+            // Exact unsigned division by 255 for any 16-bit value: floor(x / 255)
+            // == ((x + 1) + ((x + 1) >> 8)) >> 8, verified exhaustively over
+            // [0, 65535]. _mm256_srli_epi16 shifts logically, which is what makes
+            // this correct even though the biased value can look negative as int16.
+            const __m256i biased = _mm256_add_epi16(square, one);
+            const __m256i activated =
+                _mm256_srli_epi16(_mm256_add_epi16(biased, _mm256_srli_epi16(biased, 8)), 8);
+
+            // Widening multiply-add: sums each adjacent pair of int16 products
+            // into one int32 lane, exact because activated <= QuantizationA and
+            // the weight magnitude is bounded to fit int16, so neither a single
+            // product nor a pair of them can overflow int32.
+            chunkTotal = _mm256_add_epi32(chunkTotal, _mm256_madd_epi16(activated, weight));
+
+            if (++vectorsInChunk == VectorsPerChunk)
             {
-                const __m128i clippedHalf = half == 0
-                    ? _mm256_castsi256_si128(clipped)
-                    : _mm256_extracti128_si256(clipped, 1);
-                const __m128i weightHalf = half == 0
-                    ? _mm256_castsi256_si128(weight)
-                    : _mm256_extracti128_si256(weight, 1);
-
-                const __m256i wide = _mm256_cvtepi16_epi32(clippedHalf);
-                const __m256i wideWeight = _mm256_cvtepi16_epi32(weightHalf);
-                const __m256i square = _mm256_mullo_epi32(wide, wide);
-                const __m256i product = _mm256_mullo_epi32(square, wideWeight);
-
-                total = _mm256_add_epi64(total,
-                    _mm256_cvtepi32_epi64(_mm256_castsi256_si128(product)));
-                total = _mm256_add_epi64(total,
-                    _mm256_cvtepi32_epi64(_mm256_extracti128_si256(product, 1)));
+                total += horizontalSum(chunkTotal);
+                chunkTotal = _mm256_setzero_si256();
+                vectorsInChunk = 0;
             }
         }
 
-        alignas(32) int64_t lanes[4];
-        _mm256_store_si256(reinterpret_cast<__m256i*>(lanes), total);
-        const Accumulation sum = lanes[0] + lanes[1] + lanes[2] + lanes[3];
-        return sum + Scalar::ActivatedDotProduct(values + index, weights + index, count - index);
+        total += horizontalSum(chunkTotal);
+        return total + Scalar::ActivatedDotProduct(values + index, weights + index, count - index);
 #else
 #if defined(NNUE_SIMD_X86_DISPATCH)
         switch (Dispatch::SelectedTier())

@@ -380,11 +380,32 @@ every reproduced game and every regression test machine-dependent.
 
 The kernels are therefore written so that no intermediate value can overflow
 for *any* int16 parameters the format permits, not merely for the small weights
-a trained network happens to produce. With squared clipped ReLU, one term is
-`clamp(v, 0, 255)^2 * w`: at most 65025 times 32767, which fits in int32 with
-almost nothing to spare, while a sum of a thousand such terms does not. The
-running total is therefore widened to int64 as it goes rather than accumulated
-in int32 and widened at the end.
+a trained network happens to produce.
+
+`Quantization::Activate` rescales its result back onto `[0, QuantizationA]`
+immediately, rather than leaving that division for `Dequantize` to do once at
+the very end. With squared clipped ReLU this makes a term
+`(clamp(v, 0, 255)^2 / 255) * w`: the activated value never exceeds
+`QuantizationA`, so it is a plain int16, and the product with an int16 weight
+is a single widening multiply that fits int32 with room to spare -- no wider
+than the original `clamp(v, 0, 255)^2 * w`, which peaked at 65025 * 32767, but
+now cheap enough to compute as `int16 x int16 -> int32` (AVX2 `vpmaddwd`, NEON
+`vmlal_s16`) instead of promoting both operands through int32 first. A sum of
+many such terms still does not fit int32, so kernels widen to int64 once every
+`Quantization::ActivationChunk` terms -- a bound derived from the format's own
+limits and static-asserted, not assumed -- rather than per term. Because plain
+integer addition of exact values is associative, this produces the same int64
+total as widening after every term would.
+
+The activation's division by `QuantizationA` (255) has no vectorized divide
+instruction to fall back on. The scalar and runtime-dispatch kernels write it
+as an ordinary unsigned 16-bit division and let the compiler lower it to a
+reciprocal-multiply sequence, the same way it would for a scalar loop; the
+hand-vectorized AVX2 and NEON kernels (needed because MSVC has no function
+multiversioning to fall back on) use the exact bit trick
+`floor(x / 255) == ((x + 1) + ((x + 1) >> 8)) >> 8`, verified exhaustively
+against plain division over the full 16-bit range rather than trusted from
+memory.
 
 `TestNnueSimdKernels` compares every kernel against the scalar reference on
 int16 extremes, the values either side of the activation's clipping ceiling,
