@@ -17,6 +17,25 @@ on:
         required: true
         default: 10+0.1
         type: string
+      games:
+        description: >-
+          Fixed number of games to play. Leave at 0 to play until the result is
+          decisive instead.
+        required: true
+        default: "0"
+        type: string
+      max_games:
+        description: >-
+          Ceiling on a decisive test. Reached without a decision, the test
+          reports as inconclusive.
+        required: true
+        default: "12000"
+        type: string
+      elo1:
+        description: Elo improvement the test is powered to detect
+        required: true
+        default: "5"
+        type: string
       allow_network_change:
         description: Allow candidate and baseline to use different NNUE files
         required: true
@@ -25,6 +44,7 @@ on:
 
 permissions:
   contents: read
+  actions: read
 
 concurrency:
   group: nerachess-strength
@@ -32,11 +52,20 @@ concurrency:
 
 jobs:
   prepare:
-    name: Resolve revisions
+    name: Resolve revisions and plan stages
     runs-on: ubuntu-24.04
     outputs:
       candidate_sha: ${{ steps.revisions.outputs.candidate_sha }}
       baseline_sha: ${{ steps.revisions.outputs.baseline_sha }}
+      mode: ${{ steps.plan.outputs.mode }}
+      total_games: ${{ steps.plan.outputs.total_games }}
+      pairs_1: ${{ steps.plan.outputs.pairs_1 }}
+      pairs_2: ${{ steps.plan.outputs.pairs_2 }}
+      pairs_3: ${{ steps.plan.outputs.pairs_3 }}
+      pairs_4: ${{ steps.plan.outputs.pairs_4 }}
+      pairs_5: ${{ steps.plan.outputs.pairs_5 }}
+      pairs_6: ${{ steps.plan.outputs.pairs_6 }}
+      pairs_7: ${{ steps.plan.outputs.pairs_7 }}
 
     steps:
       - name: Check out test harness
@@ -79,103 +108,320 @@ jobs:
           echo "Candidate: $candidate_sha"
           echo "Baseline:  $baseline_sha"
 
-  match:
-    name: Match shard ${{ matrix.shard }}
+      - name: Plan the stages
+        id: plan
+        env:
+          GAMES: ${{ inputs.games }}
+          MAX_GAMES: ${{ inputs.max_games }}
+          ELO1: ${{ inputs.elo1 }}
+        run: |
+          set -euo pipefail
+
+          non_negative_integer='^(0|[1-9][0-9]*)$'
+          positive_number='^[0-9]+([.][0-9]+)?$'
+          if [[ ! "$GAMES" =~ $non_negative_integer ]]; then
+            echo "games must be a whole number, not '$GAMES'." >&2
+            exit 1
+          fi
+          if [[ ! "$MAX_GAMES" =~ $non_negative_integer ]]; then
+            echo "max_games must be a whole number, not '$MAX_GAMES'." >&2
+            exit 1
+          fi
+          if [[ ! "$ELO1" =~ $positive_number ]]; then
+            echo "elo1 must be a positive number, not '$ELO1'." >&2
+            exit 1
+          fi
+
+          if [[ "$GAMES" -gt 0 ]]; then
+            mode=fixed
+            target="$GAMES"
+          else
+            mode=sequential
+            target="$MAX_GAMES"
+          fi
+          echo "mode=$mode" >> "$GITHUB_OUTPUT"
+
+          python3 scripts/strength/Plan-Stages.py \
+            --games "$target" --output "$GITHUB_OUTPUT"
+
+  stage_1:
+    name: Stage 1
     needs: prepare
+    if: ${{ needs.prepare.outputs.pairs_1 != '0' }}
+    uses: ./.github/workflows/strength-stage.yml
+    with:
+      candidate_sha: ${{ needs.prepare.outputs.candidate_sha }}
+      baseline_sha: ${{ needs.prepare.outputs.baseline_sha }}
+      time_control: ${{ inputs.time_control }}
+      allow_network_change: ${{ inputs.allow_network_change }}
+      stage: 1
+      pairs: ${{ fromJSON(needs.prepare.outputs.pairs_1) }}
+
+  decide_1:
+    name: Decide after stage 1
+    needs: [prepare, stage_1]
+    # A shard whose runner dies loses its own games, not the whole test: decide
+    # on whatever did come back rather than throwing the earlier stages away.
+    if: ${{ always() && needs.stage_1.result != 'skipped' && needs.stage_1.result != 'cancelled' }}
     runs-on: ubuntu-24.04
-    timeout-minutes: 350
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - shard: 1
-            seed: 1001
-          - shard: 2
-            seed: 1002
-          - shard: 3
-            seed: 1003
-          - shard: 4
-            seed: 1004
-
-    env:
-      STRENGTH_TC: ${{ inputs.time_control }}
-      STRENGTH_CONCURRENCY: "2"
-      STRENGTH_MAX_PAIRS: "125"
-      STRENGTH_HASH_MB: "128"
-      STRENGTH_THREADS: "1"
-      STRENGTH_SEED: ${{ matrix.seed }}
-      ALLOW_NETWORK_CHANGE: ${{ inputs.allow_network_change }}
-
+    outputs:
+      continue: ${{ steps.decision.outputs.continue }}
     steps:
       - name: Check out test harness
         uses: actions/checkout@v7
+
+      - name: Combine and decide
+        id: decision
+        uses: ./.github/actions/strength-decision
         with:
-          fetch-depth: 0
+          mode: ${{ needs.prepare.outputs.mode }}
+          target_games: ${{ needs.prepare.outputs.total_games }}
+          elo1: ${{ inputs.elo1 }}
+          stage: 1
 
-      - name: Prepare Fastchess and openings
-        run: |
-          bash scripts/strength/Prepare-Tools.sh "$RUNNER_TEMP/nerachess-strength-tools"
-          echo "FASTCHESS_BIN=$RUNNER_TEMP/nerachess-strength-tools/bin/fastchess" >> "$GITHUB_ENV"
-          echo "OPENING_BOOK=$RUNNER_TEMP/nerachess-strength-tools/books/UHO_4060_v4.epd" >> "$GITHUB_ENV"
+  stage_2:
+    name: Stage 2
+    needs: [prepare, decide_1]
+    if: ${{ needs.decide_1.outputs.continue == 'true' && needs.prepare.outputs.pairs_2 != '0' }}
+    uses: ./.github/workflows/strength-stage.yml
+    with:
+      candidate_sha: ${{ needs.prepare.outputs.candidate_sha }}
+      baseline_sha: ${{ needs.prepare.outputs.baseline_sha }}
+      time_control: ${{ inputs.time_control }}
+      allow_network_change: ${{ inputs.allow_network_change }}
+      stage: 2
+      pairs: ${{ fromJSON(needs.prepare.outputs.pairs_2) }}
 
-      - name: Create isolated source trees
-        run: |
-          git worktree add --detach "$RUNNER_TEMP/nerachess-candidate-source" \
-            "${{ needs.prepare.outputs.candidate_sha }}"
-          git worktree add --detach "$RUNNER_TEMP/nerachess-baseline-source" \
-            "${{ needs.prepare.outputs.baseline_sha }}"
+  decide_2:
+    name: Decide after stage 2
+    needs: [prepare, stage_2]
+    # A shard whose runner dies loses its own games, not the whole test: decide
+    # on whatever did come back rather than throwing the earlier stages away.
+    if: ${{ always() && needs.stage_2.result != 'skipped' && needs.stage_2.result != 'cancelled' }}
+    runs-on: ubuntu-24.04
+    outputs:
+      continue: ${{ steps.decision.outputs.continue }}
+    steps:
+      - name: Check out test harness
+        uses: actions/checkout@v7
 
-      - name: Build candidate
-        run: |
-          bash scripts/strength/Build-Engine.sh \
-            "$RUNNER_TEMP/nerachess-candidate-source" \
-            "$RUNNER_TEMP/nerachess-candidate-build"
-
-      - name: Build baseline
-        run: |
-          bash scripts/strength/Build-Engine.sh \
-            "$RUNNER_TEMP/nerachess-baseline-source" \
-            "$RUNNER_TEMP/nerachess-baseline-build"
-
-      - name: Play 250 games
-        run: |
-          bash scripts/strength/Run-Match.sh \
-            "$RUNNER_TEMP/nerachess-candidate-build" \
-            "$RUNNER_TEMP/nerachess-baseline-build" \
-            "$OPENING_BOOK" \
-            "$RUNNER_TEMP/nerachess-strength-results"
-
-      - name: Upload shard results
-        if: always()
-        uses: actions/upload-artifact@v7
+      - name: Combine and decide
+        id: decision
+        uses: ./.github/actions/strength-decision
         with:
-          name: strength-shard-${{ matrix.shard }}
-          path: ${{ runner.temp }}/nerachess-strength-results
-          if-no-files-found: error
-          retention-days: 30
+          mode: ${{ needs.prepare.outputs.mode }}
+          target_games: ${{ needs.prepare.outputs.total_games }}
+          elo1: ${{ inputs.elo1 }}
+          stage: 2
+
+  stage_3:
+    name: Stage 3
+    needs: [prepare, decide_2]
+    if: ${{ needs.decide_2.outputs.continue == 'true' && needs.prepare.outputs.pairs_3 != '0' }}
+    uses: ./.github/workflows/strength-stage.yml
+    with:
+      candidate_sha: ${{ needs.prepare.outputs.candidate_sha }}
+      baseline_sha: ${{ needs.prepare.outputs.baseline_sha }}
+      time_control: ${{ inputs.time_control }}
+      allow_network_change: ${{ inputs.allow_network_change }}
+      stage: 3
+      pairs: ${{ fromJSON(needs.prepare.outputs.pairs_3) }}
+
+  decide_3:
+    name: Decide after stage 3
+    needs: [prepare, stage_3]
+    # A shard whose runner dies loses its own games, not the whole test: decide
+    # on whatever did come back rather than throwing the earlier stages away.
+    if: ${{ always() && needs.stage_3.result != 'skipped' && needs.stage_3.result != 'cancelled' }}
+    runs-on: ubuntu-24.04
+    outputs:
+      continue: ${{ steps.decision.outputs.continue }}
+    steps:
+      - name: Check out test harness
+        uses: actions/checkout@v7
+
+      - name: Combine and decide
+        id: decision
+        uses: ./.github/actions/strength-decision
+        with:
+          mode: ${{ needs.prepare.outputs.mode }}
+          target_games: ${{ needs.prepare.outputs.total_games }}
+          elo1: ${{ inputs.elo1 }}
+          stage: 3
+
+  stage_4:
+    name: Stage 4
+    needs: [prepare, decide_3]
+    if: ${{ needs.decide_3.outputs.continue == 'true' && needs.prepare.outputs.pairs_4 != '0' }}
+    uses: ./.github/workflows/strength-stage.yml
+    with:
+      candidate_sha: ${{ needs.prepare.outputs.candidate_sha }}
+      baseline_sha: ${{ needs.prepare.outputs.baseline_sha }}
+      time_control: ${{ inputs.time_control }}
+      allow_network_change: ${{ inputs.allow_network_change }}
+      stage: 4
+      pairs: ${{ fromJSON(needs.prepare.outputs.pairs_4) }}
+
+  decide_4:
+    name: Decide after stage 4
+    needs: [prepare, stage_4]
+    # A shard whose runner dies loses its own games, not the whole test: decide
+    # on whatever did come back rather than throwing the earlier stages away.
+    if: ${{ always() && needs.stage_4.result != 'skipped' && needs.stage_4.result != 'cancelled' }}
+    runs-on: ubuntu-24.04
+    outputs:
+      continue: ${{ steps.decision.outputs.continue }}
+    steps:
+      - name: Check out test harness
+        uses: actions/checkout@v7
+
+      - name: Combine and decide
+        id: decision
+        uses: ./.github/actions/strength-decision
+        with:
+          mode: ${{ needs.prepare.outputs.mode }}
+          target_games: ${{ needs.prepare.outputs.total_games }}
+          elo1: ${{ inputs.elo1 }}
+          stage: 4
+
+  stage_5:
+    name: Stage 5
+    needs: [prepare, decide_4]
+    if: ${{ needs.decide_4.outputs.continue == 'true' && needs.prepare.outputs.pairs_5 != '0' }}
+    uses: ./.github/workflows/strength-stage.yml
+    with:
+      candidate_sha: ${{ needs.prepare.outputs.candidate_sha }}
+      baseline_sha: ${{ needs.prepare.outputs.baseline_sha }}
+      time_control: ${{ inputs.time_control }}
+      allow_network_change: ${{ inputs.allow_network_change }}
+      stage: 5
+      pairs: ${{ fromJSON(needs.prepare.outputs.pairs_5) }}
+
+  decide_5:
+    name: Decide after stage 5
+    needs: [prepare, stage_5]
+    # A shard whose runner dies loses its own games, not the whole test: decide
+    # on whatever did come back rather than throwing the earlier stages away.
+    if: ${{ always() && needs.stage_5.result != 'skipped' && needs.stage_5.result != 'cancelled' }}
+    runs-on: ubuntu-24.04
+    outputs:
+      continue: ${{ steps.decision.outputs.continue }}
+    steps:
+      - name: Check out test harness
+        uses: actions/checkout@v7
+
+      - name: Combine and decide
+        id: decision
+        uses: ./.github/actions/strength-decision
+        with:
+          mode: ${{ needs.prepare.outputs.mode }}
+          target_games: ${{ needs.prepare.outputs.total_games }}
+          elo1: ${{ inputs.elo1 }}
+          stage: 5
+
+  stage_6:
+    name: Stage 6
+    needs: [prepare, decide_5]
+    if: ${{ needs.decide_5.outputs.continue == 'true' && needs.prepare.outputs.pairs_6 != '0' }}
+    uses: ./.github/workflows/strength-stage.yml
+    with:
+      candidate_sha: ${{ needs.prepare.outputs.candidate_sha }}
+      baseline_sha: ${{ needs.prepare.outputs.baseline_sha }}
+      time_control: ${{ inputs.time_control }}
+      allow_network_change: ${{ inputs.allow_network_change }}
+      stage: 6
+      pairs: ${{ fromJSON(needs.prepare.outputs.pairs_6) }}
+
+  decide_6:
+    name: Decide after stage 6
+    needs: [prepare, stage_6]
+    # A shard whose runner dies loses its own games, not the whole test: decide
+    # on whatever did come back rather than throwing the earlier stages away.
+    if: ${{ always() && needs.stage_6.result != 'skipped' && needs.stage_6.result != 'cancelled' }}
+    runs-on: ubuntu-24.04
+    outputs:
+      continue: ${{ steps.decision.outputs.continue }}
+    steps:
+      - name: Check out test harness
+        uses: actions/checkout@v7
+
+      - name: Combine and decide
+        id: decision
+        uses: ./.github/actions/strength-decision
+        with:
+          mode: ${{ needs.prepare.outputs.mode }}
+          target_games: ${{ needs.prepare.outputs.total_games }}
+          elo1: ${{ inputs.elo1 }}
+          stage: 6
+
+  stage_7:
+    name: Stage 7
+    needs: [prepare, decide_6]
+    if: ${{ needs.decide_6.outputs.continue == 'true' && needs.prepare.outputs.pairs_7 != '0' }}
+    uses: ./.github/workflows/strength-stage.yml
+    with:
+      candidate_sha: ${{ needs.prepare.outputs.candidate_sha }}
+      baseline_sha: ${{ needs.prepare.outputs.baseline_sha }}
+      time_control: ${{ inputs.time_control }}
+      allow_network_change: ${{ inputs.allow_network_change }}
+      stage: 7
+      pairs: ${{ fromJSON(needs.prepare.outputs.pairs_7) }}
+
+  decide_7:
+    name: Decide after stage 7
+    needs: [prepare, stage_7]
+    # A shard whose runner dies loses its own games, not the whole test: decide
+    # on whatever did come back rather than throwing the earlier stages away.
+    if: ${{ always() && needs.stage_7.result != 'skipped' && needs.stage_7.result != 'cancelled' }}
+    runs-on: ubuntu-24.04
+    outputs:
+      continue: ${{ steps.decision.outputs.continue }}
+    steps:
+      - name: Check out test harness
+        uses: actions/checkout@v7
+
+      - name: Combine and decide
+        id: decision
+        uses: ./.github/actions/strength-decision
+        with:
+          mode: ${{ needs.prepare.outputs.mode }}
+          target_games: ${{ needs.prepare.outputs.total_games }}
+          elo1: ${{ inputs.elo1 }}
+          stage: 7
 
   summarize:
-    name: Combine 1,000 games
-    needs: [prepare, match]
-    if: ${{ always() && needs.match.result == 'success' }}
+    name: Final result
+    needs: [prepare, decide_1, decide_2, decide_3, decide_4, decide_5, decide_6, decide_7]
+    if: ${{ always() && needs.prepare.result == 'success' }}
     runs-on: ubuntu-24.04
 
     steps:
       - name: Check out test harness
         uses: actions/checkout@v7
 
-      - name: Download shard results
+      - name: Download every shard
         uses: actions/download-artifact@v7
         with:
           pattern: strength-shard-*
           path: ${{ runner.temp }}/nerachess-strength-shards
 
-      - name: Calculate combined result
+      - name: Calculate the combined result
+        env:
+          MODE: ${{ needs.prepare.outputs.mode }}
+          ELO1: ${{ inputs.elo1 }}
+          TARGET_GAMES: ${{ needs.prepare.outputs.total_games }}
         run: |
           python3 scripts/strength/Summarize-Results.py \
             "$RUNNER_TEMP/nerachess-strength-shards" \
+            --mode "$MODE" \
+            --elo1 "$ELO1" \
+            --target-games "$TARGET_GAMES" \
             --output "$RUNNER_TEMP/strength-summary.md"
-          cat "$RUNNER_TEMP/strength-summary.md" >> "$GITHUB_STEP_SUMMARY"
+          {
+            echo "### Final result"
+            echo
+            cat "$RUNNER_TEMP/strength-summary.md"
+          } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Upload combined summary
         uses: actions/upload-artifact@v7

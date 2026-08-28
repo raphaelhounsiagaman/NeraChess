@@ -79,6 +79,11 @@ jobs:
           cd NNUETraining
           python3 -m unittest discover -s tests -t .
 
+      - name: Run strength test statistics tests
+        run: |
+          python3 -m unittest discover \
+            -s scripts/strength/tests -t scripts/strength/tests
+
       - name: Verify the engine and trainer agree on a network
         run: |
           cd NNUETraining
