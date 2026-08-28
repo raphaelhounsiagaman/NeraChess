@@ -155,21 +155,19 @@ def activate(value: int) -> int:
 
     Reference implementation of ``Quantization::Activate``; used by
     :mod:`nnue_training.verify` to reproduce the engine's arithmetic exactly.
+    Rescaled back onto ``[0, QUANTIZATION_A]`` immediately (rather than once
+    at the end, in ``dequantize``) so the result fits int16, matching the
+    engine's output-layer kernels.
     """
     clipped = max(0, min(arch.QUANTIZATION_A, value))
     if arch.ACTIVATION == arch.Activation.SQUARED_CLIPPED_RELU:
-        return clipped * clipped
+        return (clipped * clipped) // arch.QUANTIZATION_A
     return clipped
 
 
 def dequantize(weighted_sum: int, output_bias: int) -> int:
     """Weighted sum of activations to centipawns, matching ``Dequantize``."""
-    activation_scale = (
-        arch.QUANTIZATION_A
-        if arch.ACTIVATION == arch.Activation.SQUARED_CLIPPED_RELU
-        else 1
-    )
-    normalized = _truncating_div(weighted_sum, activation_scale) + output_bias
+    normalized = weighted_sum + output_bias
     return _truncating_div(
         normalized * arch.EVAL_SCALE, arch.QUANTIZATION_A * arch.QUANTIZATION_B
     )
