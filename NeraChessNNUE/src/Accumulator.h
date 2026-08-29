@@ -79,6 +79,65 @@ namespace NeraChessNNUE
     // than overflowing if a search ever exceeds it.
     inline constexpr size_t MaxAccumulatorPly = 160;
 
+    // Last accumulator half computed for each view, kept so that a refresh can
+    // start from a related position instead of from the bias vector.
+    //
+    // A refresh sums one weight column per piece on the board -- up to 32 --
+    // where an incremental update touches two or three. King buckets make that
+    // matter: every king move that changes bucket forces one, where before
+    // only a king crossing the d/e boundary did. Measured on this machine, the
+    // eight-bucket feature set cost about 5% of nodes per second without this
+    // cache.
+    //
+    // The trick is that a view fixes the whole numbering -- perspective,
+    // bucket and orientation -- so within one slot a feature index depends
+    // only on (piece, square). Two positions that share a view therefore
+    // differ by exactly the pieces whose bitboards differ, however many moves
+    // apart they are. A search returning to a bucket it has visited before
+    // usually finds the board nearly unchanged, so the diff is small.
+    //
+    // This is a cache in the strict sense: dropping any entry changes only
+    // speed. Entries are per-thread, because they are reached only through an
+    // AccumulatorStack, which is itself per-thread.
+    struct RefreshCache
+    {
+        struct Entry
+        {
+            alignas(64) std::array<Weight, Architecture::HiddenSize> values{};
+
+            // The position those values were summed from. Compared piece
+            // bitboard by piece bitboard to find what to add and remove.
+            std::array<NeraChessEngine::Bitboard, 12> pieces{};
+
+            // False until the entry has been filled once, after which the
+            // stored values are the accumulator for `pieces` under this slot's
+            // view. There is no way to invalidate an entry and no need for
+            // one: it is only ever read as a starting point to diff from.
+            bool populated = false;
+        };
+
+        // One entry per (perspective, bucket, orientation). Both orientations
+        // are kept because a bucket is reached in both, and a slot holding
+        // the wrong orientation would have to be rebuilt on every alternation.
+        std::array<std::array<std::array<Entry, 2>, Architecture::InputBucketCount>,
+            PerspectiveCount>
+            entries{};
+
+        Entry& Slot(const FeatureSet::View& view)
+        {
+            return entries[Index(view.perspective)][view.inputBucket]
+                          [view.orientation == FeatureSet::Orientation::Mirrored ? 1u : 0u];
+        }
+
+        void Clear();
+
+        // Brings `target` up to date for `state` under `view`, using the
+        // matching entry as a starting point and refreshing from the bias
+        // vector when there is none. Updates the entry to match `state`.
+        void RefreshInto(const Network& network, const NeraChessEngine::BoardState& state,
+            const FeatureSet::View& view, Weight* target);
+    };
+
     // Per-thread stack of accumulators, one entry per ply, mirroring the
     // search's make/unmake pairs.
     //
@@ -121,6 +180,12 @@ namespace NeraChessNNUE
     private:
         size_t Slot() const { return m_Top < MaxAccumulatorPly ? m_Top : MaxAccumulatorPly - 1; }
 
+        // Refreshes one half of `entry` through the cache. Same result as
+        // Accumulator::RefreshPerspective, reached by a cheaper route.
+        void RefreshPerspectiveCached(const Network& network,
+            const NeraChessEngine::BoardState& state, Accumulator& entry,
+            Perspective perspective);
+
     private:
         using Entries = std::array<Accumulator, MaxAccumulatorPly>;
 
@@ -130,6 +195,10 @@ namespace NeraChessNNUE
         // constructed on a thread's stack overflow it, which is a crash a
         // caller has no way to anticipate from the class's interface.
         std::unique_ptr<Entries> m_Entries;
+
+        // Heap allocated for the same reason as the entries: one per
+        // perspective, bucket and orientation comes to a few hundred KB.
+        std::unique_ptr<RefreshCache> m_RefreshCache;
         size_t m_Top = 0;
     };
 }

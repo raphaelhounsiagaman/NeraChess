@@ -77,19 +77,28 @@ class FeatureIndexingTest(unittest.TestCase):
             for square in range(64):
                 for perspective in feat.Perspective:
                     for orientation in feat.Orientation:
-                        view = feat.View(perspective, orientation, 0)
-                        index = feat.feature_index(view, piece, square)
-                        self.assertGreaterEqual(index, 0)
-                        self.assertLess(index, arch.TOTAL_INPUT_SIZE)
+                        for bucket in range(arch.INPUT_BUCKET_COUNT):
+                            view = feat.View(perspective, orientation, bucket)
+                            index = feat.feature_index(view, piece, square)
+                            self.assertGreaterEqual(index, 0)
+                            self.assertLess(index, arch.TOTAL_INPUT_SIZE)
 
     def test_every_feature_is_reachable_exactly_once(self) -> None:
-        seen = set()
-        for piece in range(12):
-            for square in range(64):
-                seen.add(
-                    feat.feature_index(direct(feat.Perspective.WHITE), piece, square)
-                )
-        self.assertEqual(len(seen), arch.PERSPECTIVE_INPUT_SIZE)
+        # Each bucket owns a contiguous, disjoint block of PERSPECTIVE_INPUT_SIZE
+        # indices, and between them they tile the whole input space. If two
+        # buckets overlapped, training one would quietly corrupt the other.
+        seen: set[int] = set()
+        for bucket in range(arch.INPUT_BUCKET_COUNT):
+            view = feat.View(feat.Perspective.WHITE, feat.Orientation.DIRECT, bucket)
+            within_bucket = {
+                feat.feature_index(view, piece, square)
+                for piece in range(12)
+                for square in range(64)
+            }
+            self.assertEqual(len(within_bucket), arch.PERSPECTIVE_INPUT_SIZE)
+            self.assertTrue(within_bucket.isdisjoint(seen))
+            seen |= within_bucket
+        self.assertEqual(len(seen), arch.TOTAL_INPUT_SIZE)
 
     def test_black_perspective_flips_the_board(self) -> None:
         # a1 seen by White is the same index as a8 seen by Black.
@@ -270,6 +279,91 @@ class FenParsingTest(unittest.TestCase):
     def test_rejects_an_unknown_piece(self) -> None:
         with self.assertRaises(ValueError):
             feat.parse_fen_pieces("xnbqkbnr/8/8/8/8/8/8/8 w - - 0 1")
+
+
+class KingBucketTest(unittest.TestCase):
+    """The bucket map, and the properties the engine's copy also asserts."""
+
+    def test_every_king_square_maps_into_the_bucket_range(self) -> None:
+        for perspective in feat.Perspective:
+            for square in range(64):
+                bucket = feat.view_of_king(perspective, square).input_bucket
+                self.assertGreaterEqual(bucket, 0)
+                self.assertLess(bucket, arch.INPUT_BUCKET_COUNT)
+
+    def test_the_map_only_ever_sees_canonical_squares(self) -> None:
+        # Mirroring puts the own king on files e-h, so the table's domain is
+        # 32 squares. Anything else reaching it would index the wrong row.
+        for perspective in feat.Perspective:
+            for square in range(64):
+                canonical = feat.canonical_king_square(perspective, square)
+                self.assertGreaterEqual(canonical % 8, 4)
+
+    def test_reflected_king_squares_share_a_bucket(self) -> None:
+        # This is the property that makes buckets and mirroring compose. A
+        # bucket read off the raw square instead of the canonical one would
+        # split a position and its reflection apart, undoing the mirroring.
+        for perspective in feat.Perspective:
+            for square in range(64):
+                with self.subTest(perspective=perspective.name, square=square):
+                    self.assertEqual(
+                        feat.view_of_king(perspective, square).input_bucket,
+                        feat.view_of_king(
+                            perspective, feat.mirrored_square(square)
+                        ).input_bucket,
+                    )
+
+    def test_the_two_perspectives_agree_on_their_own_king(self) -> None:
+        # White's king on e1 and Black's on e8 stand in the same place
+        # relative to their own side, so they must select the same matrix.
+        for square in range(64):
+            self.assertEqual(
+                feat.view_of_king(feat.Perspective.WHITE, square).input_bucket,
+                feat.view_of_king(
+                    feat.Perspective.BLACK, feat.relative_square(feat.Perspective.BLACK, square)
+                ).input_bucket,
+            )
+
+    def test_every_bucket_is_reachable_from_some_king_square(self) -> None:
+        reached = {
+            feat.view_of_king(feat.Perspective.WHITE, square).input_bucket
+            for square in range(64)
+        }
+        self.assertEqual(reached, set(range(arch.INPUT_BUCKET_COUNT)))
+
+    def test_a_position_without_a_king_reads_bucket_zero(self) -> None:
+        # Matches FeatureSet::ViewOf, which makes the same choice.
+        pieces = feat.parse_fen_pieces("8/8/8/3p4/8/8/8/8 w - - 0 1")
+        self.assertEqual(
+            feat.view_of(pieces, feat.Perspective.WHITE).input_bucket, 0
+        )
+
+    def test_the_known_layout(self) -> None:
+        # Pins the actual map, so re-tuning it is a deliberate edit here and
+        # in FeatureSet.h rather than a silent change of what a net means.
+        cases = {
+            "e1": (4, 0), "f1": (5, 0), "g1": (6, 1), "h1": (7, 1),
+            "e2": (12, 2), "g2": (14, 3),
+            "e4": (28, 4), "g4": (30, 5),
+            "e6": (44, 6), "h7": (55, 7),
+        }
+        for name, (square, bucket) in cases.items():
+            with self.subTest(square=name):
+                self.assertEqual(
+                    feat.view_of_king(feat.Perspective.WHITE, square).input_bucket,
+                    bucket,
+                )
+
+    def test_moving_the_king_between_buckets_renumbers_quiet_pieces(self) -> None:
+        # A rook that did not move still changes index, which is exactly why
+        # the accumulator has to refresh that half rather than take a delta.
+        on_first_rank = feat.active_features(
+            "4k3/8/8/8/8/8/8/R3K3 w - - 0 1", feat.Perspective.WHITE
+        )
+        on_second_rank = feat.active_features(
+            "4k3/8/8/8/8/8/4K3/R7 w - - 0 1", feat.Perspective.WHITE
+        )
+        self.assertNotEqual(on_first_rank, on_second_rank)
 
 
 if __name__ == "__main__":

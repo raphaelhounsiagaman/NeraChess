@@ -32,6 +32,11 @@ from .engine import UciEngine
 #: middlegame, and an unbalanced endgame -- plus every combination of the two
 #: horizontal orientations, since a disagreement about which side of the d/e
 #: boundary a king is on would otherwise show up only for some positions.
+#:
+#: The last five carry the kings through the input buckets the first eight do
+#: not reach, for the same reason: the engine and the trainer each choose a
+#: bucket independently, and a disagreement about one of them is invisible
+#: until a king actually stands there.
 DEFAULT_POSITIONS = [
     "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1",
     "4k3/8/8/8/3P4/8/8/4K3 w - - 0 1",
@@ -41,6 +46,11 @@ DEFAULT_POSITIONS = [
     "2kr3r/pp3ppp/8/8/8/8/PPP2PPP/2KR3R w - - 0 1",
     "r6k/1p6/8/8/3K4/8/6P1/R7 w - - 0 1",
     "3k2r1/4pp1p/8/8/8/1N6/PP4PP/R4K2 b - - 0 1",
+    "4k3/8/8/8/8/8/4K3/8 w - - 0 1",
+    "8/7k/8/8/8/8/6K1/8 w - - 0 1",
+    "8/8/8/1k6/6K1/8/8/8 w - - 0 1",
+    "8/8/8/8/8/3k4/8/1K6 w - - 0 1",
+    "8/7K/8/8/8/8/k7/8 w - - 0 1",
 ]
 
 

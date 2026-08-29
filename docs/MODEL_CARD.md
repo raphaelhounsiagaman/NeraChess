@@ -9,16 +9,24 @@ duplication is what let the repository carry two contradictory accounts at once.
 | Field | Value |
 | --- | --- |
 | Path | [`NeraChessApp/Resources/NNUE/nera.nnue`](../NeraChessApp/Resources/NNUE/nera.nnue) |
-| SHA-256 | `29c972d839c0795affb5dc26ae4e50e2cdbbba6e3539b9d74c4e7d1aa2982c9a` |
-| Size | 789,554 bytes |
-| Generation | binpack-mirrored-004, epoch 17 |
-| Shipped in | candidate, not yet promoted |
-| Architecture | `(768 -> 512)x2 -> 1`, 1 input bucket, 1 output bucket |
-| Feature set | 2 — horizontally canonicalized on the perspective's own king |
-| Architecture hash | `0x469a13dd` |
+| SHA-256 | `1ba5f087c6a609240f52b50142c4c6ec4b0753a6f03940b0bfa51cdf75d66efe` |
+| Size | 6,294,578 bytes |
+| Generation | binpack-mirrored-004 epoch 17, expanded across king buckets |
+| Shipped in | **warm-start seed, not a trained network** |
+| Architecture | `(768x8 -> 512)x2 -> 1`, 8 input buckets, 1 output bucket |
+| Feature set | 3 — horizontally canonicalized, then bucketed on the own king |
+| Architecture hash | `0x30346d9d` |
 | Quantization | QA 255, QB 64, eval scale 400 |
 | Activation | Squared clipped ReLU |
-| Parent | binpack-long-003 epoch 20, reinterpreted into feature set 2 (see below) |
+| Parent | binpack-mirrored-004 epoch 17, tiled into feature set 3 (see below) |
+
+> **This file is a seed.** Every one of its eight buckets holds the same
+> weights, so it evaluates exactly as its one-bucket parent did and has none of
+> the capacity the buckets exist to provide. It is committed so that the
+> feature-set change ships with a network the build can load — CI runs the test
+> suite with `--eval-file`, and a commit whose engine and network disagree is a
+> red build. Replace it with a network actually trained under feature set 3
+> before reading any strength result as being about king buckets.
 
 Verify the file you have is the file described here:
 
@@ -189,8 +197,11 @@ and no current measurement places generation 61 on the scale used in
   claim this entry replaces. The search's pruning margins are denominated in
   centipawns, so this changes what they mean; that is a reason to retune them,
   and a reason not to read a strength result here as isolating the data change.
-- **No king buckets and one output head.** The smallest architecture worth
-  training, chosen for simplicity over strength.
+- **One output head.** Output buckets by material count remain unbuilt; the
+  dimension exists with a count of 1.
+- **The shipped file is an untrained seed.** Its eight buckets are eight copies
+  of a one-bucket network, so it has 3,147,265 parameters and the expressive
+  power of 394,753 of them.
 - **Strength is unmeasured against any external reference** since the NNUE
   migration.
 - **Its own measured gain is inconclusive.** +7.3 Elo over 1,000 games with an

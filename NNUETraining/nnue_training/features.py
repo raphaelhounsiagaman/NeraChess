@@ -110,16 +110,72 @@ def orientation_of_king(relative_king_square: int) -> Orientation:
     return Orientation.DIRECT
 
 
-def king_bucket(perspective: Perspective, king_square: int) -> int:
+def canonical_king_square(perspective: Perspective, king_square: int) -> int:
+    """Canonical square of a perspective's own king.
+
+    The square the view's own numbering puts it on. Mirroring means this is
+    always on files e-h, so only 32 of the 64 squares can come out of it.
+    Mirrors ``NeraChessNNUE::FeatureSet::CanonicalKingSquare``.
+    """
+    relative = relative_square(perspective, king_square)
+    if orientation_of_king(relative) == Orientation.MIRRORED:
+        return mirrored_square(relative)
+    return relative
+
+
+#: Feature-transformer matrix each canonical king square selects, indexed by
+#: :func:`canonical_king_bucket_slot`. Rows run from the king's own first rank
+#: upwards; columns are canonical files e, f, g, h::
+#:
+#:                 file:  e  f  g  h
+#:        relative rank 1:  0  0  1  1
+#:        relative rank 2:  2  2  3  3
+#:        relative rank 3:  4  4  5  5
+#:        relative rank 4:  4  4  5  5
+#:        relative rank 5:  6  6  7  7
+#:        relative rank 6:  6  6  7  7
+#:        relative rank 7:  6  6  7  7
+#:        relative rank 8:  6  6  7  7
+#:
+#: Mirrors ``NeraChessNNUE::FeatureSet::KingBucketTable``, which carries the
+#: reasoning behind the layout.
+KING_BUCKET_TABLE: tuple[int, ...] = (
+    0, 0, 1, 1,  # rank 1
+    2, 2, 3, 3,  # rank 2
+    4, 4, 5, 5,  # rank 3
+    4, 4, 5, 5,  # rank 4
+    6, 6, 7, 7,  # rank 5
+    6, 6, 7, 7,  # rank 6
+    6, 6, 7, 7,  # rank 7
+    6, 6, 7, 7,  # rank 8
+)
+
+# The table and INPUT_BUCKET_COUNT are two statements of the same fact, and a
+# network's size depends on the constant while its meaning depends on the
+# table. The C++ side asserts this at compile time; here it runs at import.
+assert len(KING_BUCKET_TABLE) == 32, "the canonical king square has 32 values"
+assert set(KING_BUCKET_TABLE) == set(
+    range(arch.INPUT_BUCKET_COUNT)
+), "KING_BUCKET_TABLE must map into [0, INPUT_BUCKET_COUNT) and use every bucket"
+
+
+def canonical_king_bucket_slot(canonical_king_square: int) -> int:
+    """Where a canonical king square sits in :data:`KING_BUCKET_TABLE`.
+
+    Canonical files are e-h, so subtracting 4 packs the four of them into a row.
+    """
+    rank, file = divmod(canonical_king_square, 8)
+    return rank * 4 + (file - 4)
+
+
+def king_bucket(canonical_king_square: int) -> int:
     """Feature-transformer matrix selected by the perspective's own king.
 
-    Always 0 while ``INPUT_BUCKET_COUNT`` is 1. Kept as a function so that
-    adding king buckets changes this module in one place, exactly as it does
-    on the C++ side.
+    Takes the canonical square, not the raw one. Deriving the bucket from the
+    raw square would put a position and its horizontal reflection in different
+    buckets, which is exactly what the mirroring above exists to prevent.
     """
-    del perspective, king_square
-    assert arch.INPUT_BUCKET_COUNT == 1, "king buckets need a real mapping here"
-    return 0
+    return KING_BUCKET_TABLE[canonical_king_bucket_slot(canonical_king_square)]
 
 
 @dataclass(frozen=True)
@@ -143,7 +199,7 @@ def view_of_king(perspective: Perspective, king_square: int) -> View:
     return View(
         perspective,
         orientation_of_king(relative),
-        king_bucket(perspective, king_square),
+        king_bucket(canonical_king_square(perspective, king_square)),
     )
 
 

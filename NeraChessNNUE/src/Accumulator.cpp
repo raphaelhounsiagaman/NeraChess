@@ -3,6 +3,8 @@
 #include "Network.h"
 #include "SimdOps.h"
 
+#include "ChessUtil.h"
+
 #include <algorithm>
 #include <cassert>
 
@@ -117,15 +119,109 @@ namespace NeraChessNNUE
         }
     }
 
+    void RefreshCache::Clear()
+    {
+        for (auto& perspectiveEntries : entries)
+            for (auto& bucketEntries : perspectiveEntries)
+                for (Entry& entry : bucketEntries)
+                    entry.populated = false;
+    }
+
+    void RefreshCache::RefreshInto(const Network& network, const BoardState& state,
+        const FeatureSet::View& view, Weight* target)
+    {
+        Entry& entry = Slot(view);
+
+        if (!entry.populated)
+        {
+            // Nothing to diff against yet, so pay for one full sum and keep
+            // the result. Every later visit to this view amortizes it.
+            Simd::Copy(entry.values.data(), network.FeatureBias(), Architecture::HiddenSize);
+
+            FeatureSet::ActiveFeatures active;
+            FeatureSet::CollectActiveFeatures(state, view.perspective, active);
+            for (size_t index = 0; index < active.count; ++index)
+            {
+                Simd::Add(entry.values.data(), network.FeatureColumn(active.indices[index]),
+                    Architecture::HiddenSize);
+            }
+
+            entry.pieces = state.pieceBitboards;
+            entry.populated = true;
+            Simd::Copy(target, entry.values.data(), Architecture::HiddenSize);
+            return;
+        }
+
+        // The view fixes the numbering, so a piece contributes the same
+        // feature in both positions and only the squares that differ matter.
+        // Walking the two bitboards for each piece type gives exactly the
+        // columns to add and to remove, with no move history involved.
+        for (size_t piece = 0; piece < entry.pieces.size(); ++piece)
+        {
+            const Bitboard cached = entry.pieces[piece];
+            const Bitboard current = state.pieceBitboards[piece];
+            if (cached == current)
+                continue;
+
+            const Piece kind{ static_cast<uint8_t>(piece) };
+
+            Bitboard added = current & ~cached;
+            while (added)
+            {
+                const uint8_t square = BitUtil::GetLSBIndex(added);
+                added &= added - 1;
+                Simd::Add(entry.values.data(),
+                    network.FeatureColumn(FeatureSet::FeatureIndexOf(view, kind, square)),
+                    Architecture::HiddenSize);
+            }
+
+            Bitboard removed = cached & ~current;
+            while (removed)
+            {
+                const uint8_t square = BitUtil::GetLSBIndex(removed);
+                removed &= removed - 1;
+                Simd::Subtract(entry.values.data(),
+                    network.FeatureColumn(FeatureSet::FeatureIndexOf(view, kind, square)),
+                    Architecture::HiddenSize);
+            }
+        }
+
+        entry.pieces = state.pieceBitboards;
+        Simd::Copy(target, entry.values.data(), Architecture::HiddenSize);
+    }
+
     AccumulatorStack::AccumulatorStack()
         : m_Entries(std::make_unique<Entries>())
+        , m_RefreshCache(std::make_unique<RefreshCache>())
     {
+    }
+
+    void AccumulatorStack::RefreshPerspectiveCached(const Network& network,
+        const BoardState& state, Accumulator& entry, Perspective perspective)
+    {
+        if (!network.IsLoaded())
+            return;
+
+        const FeatureSet::View view = FeatureSet::ViewOf(state, perspective);
+        m_RefreshCache->RefreshInto(network, state, view, entry[perspective]);
+        entry.views[Index(perspective)] = view;
     }
 
     void AccumulatorStack::Reset(const Network& network, const BoardState& state)
     {
         m_Top = 0;
-        (*m_Entries)[m_Top].Refresh(network, state);
+
+        // A new root is a new game or a new search, and the cached positions
+        // belong to the old one. They would still be *correct* to diff from --
+        // the diff is over bitboards, not history -- but an unrelated position
+        // makes for a large one, so the first refresh of each view would cost
+        // more than the full sum it replaced.
+        m_RefreshCache->Clear();
+
+        Accumulator& root = (*m_Entries)[m_Top];
+        RefreshPerspectiveCached(network, state, root, Perspective::White);
+        RefreshPerspectiveCached(network, state, root, Perspective::Black);
+        root.computed = network.IsLoaded();
     }
 
     void AccumulatorStack::PushStale()
@@ -175,7 +271,7 @@ namespace NeraChessNNUE
                 // did not move, so its view still stands and it takes the
                 // ordinary delta below: it sees the king move the way it sees
                 // any other enemy piece move.
-                child.RefreshPerspective(network, state, perspective);
+                RefreshPerspectiveCached(network, state, child, perspective);
                 continue;
             }
 

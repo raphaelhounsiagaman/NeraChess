@@ -93,15 +93,94 @@ namespace NeraChessNNUE::FeatureSet
         return (relativeKingSquare & 7u) < 4u ? Orientation::Mirrored : Orientation::Direct;
     }
 
-    // Feature-transformer weight matrix selected by the perspective's own king.
-    // With Architecture::InputBucketCount == 1 this is always 0; the parameter
-    // is kept so that king-bucketed feature sets only change this function.
-    constexpr size_t KingBucket(Perspective, uint8_t)
+    // Canonical square of a perspective's own king: the square the view's own
+    // numbering puts it on. Mirroring means this is always on files e..h, so
+    // only 32 of the 64 squares can ever come out of it.
+    constexpr uint8_t CanonicalKingSquare(Perspective perspective, uint8_t kingSquare)
     {
-        static_assert(Architecture::InputBucketCount == 1,
-            "KingBucket must map king squares to buckets once buckets exist");
-        return 0;
+        const uint8_t relative = RelativeSquare(perspective, kingSquare);
+        return OrientationOfKing(relative) == Orientation::Mirrored ? MirroredSquare(relative)
+                                                                   : relative;
     }
+
+    // Feature-transformer weight matrix each canonical king square selects,
+    // indexed by CanonicalKingBucketSlot below. Rows run from the king's own
+    // first rank upwards; columns are canonical files e, f, g, h.
+    //
+    //             file:  e  f  g  h
+    //    relative rank 1:  0  0  1  1
+    //    relative rank 2:  2  2  3  3
+    //    relative rank 3:  4  4  5  5
+    //    relative rank 4:  4  4  5  5
+    //    relative rank 5:  6  6  7  7
+    //    relative rank 6:  6  6  7  7
+    //    relative rank 7:  6  6  7  7
+    //    relative rank 8:  6  6  7  7
+    //
+    // Two things shape this. Buckets are spent where the positions are: a king
+    // on its own first two ranks is the overwhelmingly common case, so those
+    // get four of the eight. And adjacent files are paired so that the king
+    // shuffles that happen most -- g1<->h1, e1<->f1 -- stay inside a bucket
+    // and cost no refresh. Kg1-g2 and castling e1->g1 do cross, deliberately:
+    // those are real changes of king safety, which is what buckets are for.
+    inline constexpr std::array<uint8_t, 32> KingBucketTable = { {
+        0, 0, 1, 1, // rank 1
+        2, 2, 3, 3, // rank 2
+        4, 4, 5, 5, // rank 3
+        4, 4, 5, 5, // rank 4
+        6, 6, 7, 7, // rank 5
+        6, 6, 7, 7, // rank 6
+        6, 6, 7, 7, // rank 7
+        6, 6, 7, 7, // rank 8
+    } };
+
+    // Where a canonical king square sits in KingBucketTable. Canonical files
+    // are e..h, so subtracting 4 packs the four of them into a row.
+    constexpr size_t CanonicalKingBucketSlot(uint8_t canonicalKingSquare)
+    {
+        const size_t rank = canonicalKingSquare / 8u;
+        const size_t file = canonicalKingSquare % 8u;
+        return rank * 4u + (file - 4u);
+    }
+
+    // Feature-transformer weight matrix selected by the perspective's own king.
+    //
+    // Takes the canonical square, not the raw one. Deriving the bucket from
+    // the raw square would put a position and its horizontal reflection in
+    // different buckets, which is exactly what the mirroring above exists to
+    // prevent.
+    constexpr size_t KingBucket(uint8_t canonicalKingSquare)
+    {
+        return KingBucketTable[CanonicalKingBucketSlot(canonicalKingSquare)];
+    }
+
+    // The table and Architecture::InputBucketCount are two statements of the
+    // same fact, and a network's size depends on the constant while its
+    // meaning depends on the table. Checking that every bucket is both in
+    // range and actually used is what stops them drifting apart: a layout that
+    // leaves a bucket empty would silently ship weights nothing can reach.
+    namespace Detail
+    {
+        constexpr bool EveryBucketIsUsed()
+        {
+            std::array<bool, Architecture::InputBucketCount> seen{};
+            for (const uint8_t bucket : KingBucketTable)
+            {
+                if (bucket >= Architecture::InputBucketCount)
+                    return false;
+                seen[bucket] = true;
+            }
+            for (const bool used : seen)
+            {
+                if (!used)
+                    return false;
+            }
+            return true;
+        }
+    }
+
+    static_assert(Detail::EveryBucketIsUsed(),
+        "KingBucketTable must map into [0, InputBucketCount) and use every bucket");
 
     // Everything that decides how one perspective's features are numbered:
     // which weight matrix they index, and which way round the board is read.
@@ -124,7 +203,7 @@ namespace NeraChessNNUE::FeatureSet
     constexpr View ViewOfKing(Perspective perspective, uint8_t kingSquare)
     {
         return View{ perspective, OrientationOfKing(RelativeSquare(perspective, kingSquare)),
-            static_cast<uint8_t>(KingBucket(perspective, kingSquare)) };
+            static_cast<uint8_t>(KingBucket(CanonicalKingSquare(perspective, kingSquare))) };
     }
 
     // View a perspective's half of the accumulator must be built with. A
@@ -143,8 +222,8 @@ namespace NeraChessNNUE::FeatureSet
 
     // Whether moving the perspective's own king from one square to another
     // renumbers that perspective's features, which invalidates its half of the
-    // accumulator and forces a full refresh of it. True exactly when the king
-    // crosses the d/e boundary, or changes input bucket once buckets exist.
+    // accumulator and forces a full refresh of it. True when the king crosses
+    // the d/e boundary, and when it changes input bucket.
     constexpr bool RequiresRefresh(Perspective perspective, uint8_t fromKingSquare,
         uint8_t toKingSquare)
     {

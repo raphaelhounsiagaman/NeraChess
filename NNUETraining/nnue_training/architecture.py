@@ -31,22 +31,30 @@ PERSPECTIVE_COUNT = 2
 #: 2. Adds horizontal mirroring: a perspective's squares are reflected when its
 #:    own king stands on files a-d, so that its king is always seen on files
 #:    e-h.
+#: 3. Adds king buckets: the canonical square of a perspective's own king
+#:    selects which feature-transformer matrix its features index, via
+#:    :data:`nnue_training.features.KING_BUCKET_TABLE`.
 #:
 #: Bumped whenever a feature index comes to mean something new while every
 #: dimension stays the same. Mixed into :func:`architecture_hash`, so a network
 #: trained under an older feature set is rejected by the engine rather than
 #: read as though nothing changed. Must match
 #: ``NeraChessNNUE::Architecture::FeatureSetVersion``.
-FEATURE_SET_VERSION = 2
+#:
+#: Note that INPUT_BUCKET_COUNT is a dimension and is caught on its own. This
+#: version is what distinguishes two *layouts* with the same bucket count.
+FEATURE_SET_VERSION = 3
 
 #: Features per perspective: (relative colour, piece type, canonical square).
 PERSPECTIVE_INPUT_SIZE = PERSPECTIVE_COUNT * PIECE_TYPE_COUNT * SQUARE_COUNT
 
 #: Feature-transformer matrices selected by the perspective's own king square.
-#: One bucket means every king square indexes the same matrix; a king move can
-#: still force a refresh of its own half by flipping its horizontal
-#: orientation.
-INPUT_BUCKET_COUNT = 1
+#: A king move forces a refresh of its own half whenever it changes that half's
+#: bucket, on top of the refresh it already forces by flipping the half's
+#: horizontal orientation. Mirroring canonicalizes the own king onto files e-h,
+#: so the mapping's domain is 32 squares;
+#: :data:`nnue_training.features.KING_BUCKET_TABLE` is what divides them.
+INPUT_BUCKET_COUNT = 8
 
 TOTAL_INPUT_SIZE = INPUT_BUCKET_COUNT * PERSPECTIVE_INPUT_SIZE
 

@@ -882,22 +882,31 @@ namespace
         // trained before it still matches this build's. The architecture hash
         // is the only thing that tells the two apart, and it has to: loading
         // those weights under the new feature numbering would evaluate
-        // plausible-looking nonsense.
+        // plausible-looking nonsense. King buckets did move dimensions, so
+        // the sizes would catch a pre-bucket network on their own -- but the
+        // hash is still what such a file carries, and pinning both values is
+        // what proves no past generation can be read as the present one.
         static constexpr uint32_t PreMirroringArchitectureHash = 1'407'766'679u;
+        static constexpr uint32_t PreKingBucketArchitectureHash = 1'184'502'749u;
         static_assert(PreMirroringArchitectureHash != Nnue::Architecture::ArchitectureHash(),
             "the feature set changed but the architecture hash did not; networks "
             "trained under the previous feature semantics would still load");
+        static_assert(PreKingBucketArchitectureHash != Nnue::Architecture::ArchitectureHash(),
+            "the feature set changed but the architecture hash did not; networks "
+            "trained under the previous feature semantics would still load");
+        for (const uint32_t previousHash :
+            { PreMirroringArchitectureHash, PreKingBucketArchitectureHash })
         {
             std::vector<std::byte> previousFeatureSet = file;
             for (size_t byte = 0; byte < sizeof(uint32_t); ++byte)
             {
                 previousFeatureSet[12 + byte] = static_cast<std::byte>(
-                    (PreMirroringArchitectureHash >> (byte * 8)) & 0xFFu);
+                    (previousHash >> (byte * 8)) & 0xFFu);
             }
             Nnue::Network candidate;
             Require(candidate.LoadFromMemory(previousFeatureSet) ==
                 Nnue::NetworkFormat::Status::ArchitectureMismatch,
-                "a network built for the pre-mirroring feature set was accepted");
+                "a network built for an older feature set was accepted");
             Require(!candidate.IsLoaded(), "a rejected network was left loaded");
         }
 
@@ -1161,31 +1170,48 @@ namespace
                     for (const Orientation orientation :
                         { Orientation::Direct, Orientation::Mirrored })
                     {
-                        const View view{ perspective, orientation, 0 };
-                        const Nnue::FeatureIndex index =
-                            Nnue::FeatureSet::FeatureIndexOf(view, Piece(piece), square);
-                        Require(index < Nnue::Architecture::TotalInputSize,
-                            "a feature index fell outside the input space");
+                        for (uint8_t bucket = 0; bucket < Nnue::Architecture::InputBucketCount;
+                            ++bucket)
+                        {
+                            const View view{ perspective, orientation, bucket };
+                            const Nnue::FeatureIndex index =
+                                Nnue::FeatureSet::FeatureIndexOf(view, Piece(piece), square);
+                            Require(index < Nnue::Architecture::TotalInputSize,
+                                "a feature index fell outside the input space");
+                        }
                     }
                 }
             }
         }
 
-        // Every feature of a perspective's input space must be reachable, and
-        // reachable only once, or weights would go unused or be shared by two
-        // different meanings.
+        // Every feature of every bucket must be reachable, and reachable only
+        // once, or weights would go unused or be shared by two different
+        // meanings. Each bucket owns a disjoint block of the input space and
+        // between them they tile it: if two overlapped, training a position
+        // with the king in one bucket would quietly corrupt another.
         std::set<Nnue::FeatureIndex> reached;
-        for (uint8_t piece = 0; piece < 12; ++piece)
+        for (uint8_t bucket = 0; bucket < Nnue::Architecture::InputBucketCount; ++bucket)
         {
-            for (uint8_t square = 0; square < 64; ++square)
+            std::set<Nnue::FeatureIndex> withinBucket;
+            for (uint8_t piece = 0; piece < 12; ++piece)
             {
-                reached.insert(Nnue::FeatureSet::FeatureIndexOf(
-                    View{ Nnue::Perspective::White, Orientation::Direct, 0 }, Piece(piece),
-                    square));
+                for (uint8_t square = 0; square < 64; ++square)
+                {
+                    withinBucket.insert(Nnue::FeatureSet::FeatureIndexOf(
+                        View{ Nnue::Perspective::White, Orientation::Direct, bucket },
+                        Piece(piece), square));
+                }
+            }
+            Require(withinBucket.size() == Nnue::Architecture::PerspectiveInputSize,
+                "the feature indexer does not cover one bucket exactly once");
+            for (const Nnue::FeatureIndex index : withinBucket)
+            {
+                Require(reached.insert(index).second,
+                    "two input buckets share a feature index");
             }
         }
-        Require(reached.size() == Nnue::Architecture::PerspectiveInputSize,
-            "the feature indexer does not cover its input space exactly once");
+        Require(reached.size() == Nnue::Architecture::TotalInputSize,
+            "the input buckets do not tile the input space exactly once");
 
         // The two perspectives of one position must differ, otherwise the
         // network sees the same input for both sides.
@@ -1206,17 +1232,32 @@ namespace
         Require(SortedActiveFeatures(mirrored, Nnue::Perspective::Black) == whiteIndices,
             "mirrored positions did not produce mirrored features");
 
-        // A king move that stays on one side of the d/e boundary keeps the
-        // half it belongs to valid; one that crosses does not.
+        // A king move keeps its half valid only while it leaves both halves
+        // of the view alone: the same horizontal orientation and the same
+        // input bucket. e1-f1 changes neither.
         Require(!Nnue::FeatureSet::RequiresRefresh(Nnue::Perspective::White,
-            Square::e1, Square::h8),
-            "a king move within one horizontal half demanded a refresh");
+            Square::e1, Square::f1),
+            "a king move within one view demanded a refresh");
         Require(Nnue::FeatureSet::RequiresRefresh(Nnue::Perspective::White,
             Square::e1, Square::d1),
             "a king move across the d/e boundary did not demand a refresh");
         Require(Nnue::FeatureSet::RequiresRefresh(Nnue::Perspective::Black,
             Square::d8, Square::e8),
             "a black king move across the d/e boundary did not demand a refresh");
+
+        // Crossing a bucket boundary invalidates the half just as surely as
+        // crossing the d/e one, even though the orientation is untouched:
+        // e1 and h8 are both read direct, but sit in buckets 0 and 7.
+        Require(Nnue::FeatureSet::ViewOfKing(Nnue::Perspective::White, Square::e1).orientation
+                == Nnue::FeatureSet::ViewOfKing(
+                       Nnue::Perspective::White, Square::h8).orientation,
+            "e1 and h8 should be read with the same orientation");
+        Require(Nnue::FeatureSet::RequiresRefresh(Nnue::Perspective::White,
+            Square::e1, Square::h8),
+            "a king move into another input bucket did not demand a refresh");
+        Require(Nnue::FeatureSet::RequiresRefresh(Nnue::Perspective::Black,
+            Square::e8, Square::h1),
+            "a black king move into another input bucket did not demand a refresh");
     }
 
     // Horizontal canonicalization: each perspective reads the board so that
@@ -1383,6 +1424,134 @@ namespace
         }
     }
 
+    // King buckets: the canonical square of a perspective's own king chooses
+    // which of the InputBucketCount feature-transformer matrices that
+    // perspective's features index. The bucket is read off the *canonical*
+    // square, so it composes with the mirroring above rather than undoing it.
+    void TestNnueKingBuckets()
+    {
+        using namespace NeraChessEngine;
+        using Nnue::FeatureSet::Orientation;
+        using Nnue::Perspective;
+
+        // -- the map stays inside the matrices that exist ------------------
+        for (const Perspective perspective : { Perspective::White, Perspective::Black })
+        {
+            for (uint8_t square = 0; square < 64; ++square)
+            {
+                const Nnue::FeatureSet::View view =
+                    Nnue::FeatureSet::ViewOfKing(perspective, square);
+                Require(view.inputBucket < Nnue::Architecture::InputBucketCount,
+                    "a king square selected an input bucket that does not exist");
+            }
+        }
+
+        // -- the map only ever sees canonical squares ----------------------
+        // Mirroring puts the own king on files e..h, so the table's domain is
+        // 32 squares. Anything else reaching it would index the wrong row.
+        for (const Perspective perspective : { Perspective::White, Perspective::Black })
+        {
+            for (uint8_t square = 0; square < 64; ++square)
+            {
+                Require((Nnue::FeatureSet::CanonicalKingSquare(perspective, square) % 8u) >= 4u,
+                    "a canonical king square fell outside files e..h");
+            }
+        }
+
+        // -- reflected king squares share a bucket -------------------------
+        // This is the property that makes buckets and mirroring compose. A
+        // bucket read off the raw square instead of the canonical one would
+        // split a position and its reflection apart, undoing the mirroring
+        // the feature set exists to exploit.
+        for (const Perspective perspective : { Perspective::White, Perspective::Black })
+        {
+            for (uint8_t square = 0; square < 64; ++square)
+            {
+                Require(Nnue::FeatureSet::ViewOfKing(perspective, square).inputBucket ==
+                    Nnue::FeatureSet::ViewOfKing(
+                        perspective, Nnue::FeatureSet::MirroredSquare(square)).inputBucket,
+                    "a king square and its horizontal reflection chose different buckets");
+            }
+        }
+
+        // -- the two perspectives agree about their own king ---------------
+        // White's king on e1 and Black's on e8 stand in the same place
+        // relative to their own side, so they must select the same matrix.
+        for (uint8_t square = 0; square < 64; ++square)
+        {
+            Require(Nnue::FeatureSet::ViewOfKing(Perspective::White, square).inputBucket ==
+                Nnue::FeatureSet::ViewOfKing(Perspective::Black,
+                    Nnue::FeatureSet::RelativeSquare(Perspective::Black, square)).inputBucket,
+                "the perspectives disagree about where their own king stands");
+        }
+
+        // -- every bucket is reachable from some king square ---------------
+        // A bucket no king square selects would be weights nothing can reach.
+        std::set<uint8_t> reachable;
+        for (uint8_t square = 0; square < 64; ++square)
+            reachable.insert(Nnue::FeatureSet::ViewOfKing(Perspective::White, square).inputBucket);
+        Require(reachable.size() == Nnue::Architecture::InputBucketCount,
+            "some input bucket is unreachable from every king square");
+
+        // -- the known layout ----------------------------------------------
+        // Pins the actual map, so re-tuning it is a deliberate edit here and
+        // in features.py rather than a silent change of what a network means.
+        struct BucketCase
+        {
+            std::string_view name;
+            uint8_t square;
+            uint8_t bucket;
+        };
+        // Square only names ranks 1 and 8, so the rest are ordinals: a1 is 0
+        // and squares run a..h within a rank, so a square is rank * 8 + file.
+        static constexpr BucketCase layout[] = {
+            { "e1", Square::e1, 0 }, { "f1", Square::f1, 0 },
+            { "g1", Square::g1, 1 }, { "h1", Square::h1, 1 },
+            { "e2", 12, 2 }, { "g2", 14, 3 },
+            { "e4", 28, 4 }, { "g4", 30, 5 },
+            { "e6", 44, 6 }, { "h7", 55, 7 },
+        };
+        for (const BucketCase& testCase : layout)
+        {
+            Require(Nnue::FeatureSet::ViewOfKing(Perspective::White, testCase.square)
+                        .inputBucket == testCase.bucket,
+                "king bucket layout changed at " + std::string(testCase.name));
+        }
+
+        // -- a position with no king reads bucket zero ---------------------
+        // Malformed, but ViewOf and the Python indexer must not disagree
+        // about anything, including the cases no legal game reaches.
+        {
+            ChessBoard kingless("8/8/8/3p4/8/8/8/8 w - - 0 1");
+            Require(Nnue::FeatureSet::KingSquare(
+                        kingless.GetBoardState(), Perspective::White) == Nnue::NoSquare,
+                "the kingless position was read as holding a white king");
+            const Nnue::FeatureSet::View view =
+                Nnue::FeatureSet::ViewOf(kingless.GetBoardState(), Perspective::White);
+            Require(view.inputBucket == 0 && view.orientation == Orientation::Direct,
+                "a position without a king did not read bucket 0 and Direct");
+        }
+
+        // -- moving the king between buckets renumbers quiet pieces --------
+        // The rook does not move, and still changes index. That is exactly
+        // why the accumulator must refresh that half rather than take a
+        // delta, and it is the whole reason buckets buy anything: the same
+        // rook on the same square means something different to a network
+        // when the king it defends stands somewhere else.
+        {
+            ChessBoard onFirstRank("4k3/8/8/8/8/8/8/R3K3 w - - 0 1");
+            ChessBoard onSecondRank("4k3/8/8/8/8/8/4K3/R7 w - - 0 1");
+            Require(Nnue::FeatureSet::ViewOf(onFirstRank.GetBoardState(), Perspective::White)
+                        .inputBucket !=
+                    Nnue::FeatureSet::ViewOf(onSecondRank.GetBoardState(), Perspective::White)
+                        .inputBucket,
+                "the two king placements were expected to sit in different buckets");
+            Require(SortedActiveFeatures(onFirstRank, Perspective::White) !=
+                SortedActiveFeatures(onSecondRank, Perspective::White),
+                "a king bucket change left the other pieces' features untouched");
+        }
+    }
+
     void TestNnueAccumulatorUpdates()
     {
         using namespace NeraChessEngine;
@@ -1399,23 +1568,29 @@ namespace
             std::string_view move;
         };
         // Every case here must leave both perspectives' views alone, which is
-        // the precondition a plain delta has; the queenside castles that used
-        // to sit in this list cross the d/e boundary and now belong to
-        // TestNnueOrientationRefresh. Both horizontal orientations appear, so
-        // the delta path is covered mirrored as well as direct.
+        // the precondition a plain delta has. That is a narrower requirement
+        // than it once was: a view now changes on a king bucket boundary as
+        // well as on the d/e one, so the castles and the c1-b1 king step that
+        // used to sit in this list have moved to TestNnueOrientationRefresh.
+        // Both horizontal orientations appear, so the delta path is covered
+        // mirrored as well as direct.
         static constexpr DeltaCase cases[] = {
             { "quiet", "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1", "e2e4" },
             { "capture", "rnbqkbnr/ppp1pppp/8/3p4/4P3/8/PPPP1PPP/RNBQKBNR w KQkq - 0 2", "e4d5" },
             { "en passant", "8/8/1k6/8/3pP3/8/6K1/8 b - e3 0 1", "d4e3" },
             { "promotion", "7k/P7/8/8/8/8/8/K7 w - - 0 1", "a7a8q" },
             { "capture promotion", "1r5k/P7/8/8/8/8/8/K7 w - - 0 1", "a7b8q" },
-            { "white kingside castle", "4k3/8/8/8/8/8/8/4K2R w K - 0 1", "e1g1" },
-            { "black kingside castle", "4k2r/8/8/8/8/8/8/4K3 b k - 0 1", "e8g8" },
+            // King steps that stay inside their bucket, so the delta still
+            // applies even though the king itself is one of the dirty pieces.
+            // e1-f1 shares bucket 0 and g1-h1 shares bucket 1.
+            { "king step within a bucket", "4k3/8/8/8/8/8/8/4K3 w - - 0 1", "e1f1" },
+            { "king step within a castled bucket", "4k3/8/8/8/8/8/8/6K1 w - - 0 1",
+                "g1h1" },
             // Both kings on the queen side, so both halves read the board
             // mirrored while the pieces move.
             { "mirrored quiet", "2k5/1pp5/8/8/8/8/1PP5/2K5 w - - 0 1", "b2b4" },
             { "mirrored capture", "2k5/1p6/8/8/8/2n5/1P6/2K5 w - - 0 1", "b2c3" },
-            { "mirrored king step", "2k5/1pp5/8/8/8/8/1PP5/2K5 w - - 0 1", "c1b1" },
+            { "mirrored king step", "3k4/1pp5/8/8/8/8/1PP5/3K4 w - - 0 1", "d1c1" },
             { "mirrored promotion", "1k6/2P5/8/8/8/8/8/2K5 w - - 0 1", "c7c8q" },
             // One half mirrored and the other not, which is the case a shared
             // orientation would silently get wrong.
@@ -1492,10 +1667,24 @@ namespace
             { "Ke6-d6", "r7/1p6/4k3/8/8/8/6P1/R6K b - - 0 1", "e6d6", false, true },
             { "white queenside castle", "4k3/8/8/8/8/8/8/R3K3 w Q - 0 1", "e1c1", true, false },
             { "black queenside castle", "r3k3/8/8/8/8/8/8/4K3 b q - 0 1", "e8c8", false, true },
-            // The king moves without crossing, so neither half is renumbered
-            // and both must stay on the incremental path.
+            // Crossing a king bucket boundary invalidates a half exactly as
+            // the d/e boundary does, but for a different reason: the
+            // orientation is untouched and the whole matrix changes instead.
+            // A half that noticed only the orientation would take a delta
+            // here and read every one of its features out of the wrong
+            // weights, which is the same quiet wrongness in a new place.
+            { "white kingside castle", "4k3/8/8/8/8/8/8/4K2R w K - 0 1", "e1g1", true, false },
+            { "black kingside castle", "4k2r/8/8/8/8/8/8/4K3 b k - 0 1", "e8g8", false, true },
+            { "Ke1-e2", "4k3/8/8/8/8/8/8/4K3 w - - 0 1", "e1e2", true, false },
+            { "Kg1-g2", "4k3/8/8/8/8/8/8/6K1 w - - 0 1", "g1g2", true, false },
+            { "Ke4-e5", "r6k/1p6/8/8/4K3/8/6P1/R7 w - - 0 1", "e4e5", true, false },
+            // Mirrored, so the bucket changes while the half already reads
+            // the board reflected -- the two mechanisms have to compose.
+            { "mirrored Kc1-b1", "2k5/1pp5/8/8/8/8/1PP5/2K5 w - - 0 1", "c1b1", true, false },
+            // The king moves without changing orientation or bucket, so
+            // neither half is renumbered and both stay incremental.
             { "Ke4-f4", "r6k/1p6/8/8/4K3/8/6P1/R7 w - - 0 1", "e4f4", false, false },
-            { "Kc4-b4", "r6k/1p6/8/8/2K5/8/6P1/R7 w - - 0 1", "c4b4", false, false },
+            { "Kc4-d4", "r6k/1p6/8/8/2K5/8/6P1/R7 w - - 0 1", "c4d4", false, false },
         };
 
         for (const CrossingCase& testCase : cases)
@@ -1616,6 +1805,17 @@ namespace
             // only in the positions a test picked for it.
             { "kings crossing", "8/4k3/8/8/8/8/3K4/8 w - - 0 1", 4 },
             { "queenside castling", "r3k3/1p4p1/8/8/8/8/1P4P1/R3K3 w Qq - 0 1", 3 },
+            // The same, for king buckets. Kings on their own second rank can
+            // step to the first, the third or along it, which crosses three
+            // bucket boundaries in the branching part of the tree -- and the
+            // walk undoes every one of them, so Pop has to hand back a parent
+            // that was never written through.
+            { "kings changing bucket", "8/8/8/8/8/8/3KP1k1/8 w - - 0 1", 4 },
+            // Castling both ways from one position: e1-g1 and e1-c1 leave the
+            // king in different buckets, and only one of them also flips the
+            // orientation, so the two reasons for a refresh appear in the
+            // same tree and can be told apart if only one is implemented.
+            { "castling changes bucket", "r3k2r/1p4p1/8/8/8/8/1P4P1/R3K2R w KQkq - 0 1", 3 },
         };
 
         const std::vector<std::byte> file = BuildSyntheticNetwork(0x14057B7EF767814Full);
@@ -1999,6 +2199,15 @@ namespace
             "r6k/1p6/8/8/3K4/8/6P1/R7 w - - 0 1",
             // White direct, Black mirrored, and Black to move.
             "3k2r1/4pp1p/8/8/8/1N6/PP4PP/R4K2 b - - 0 1",
+            // The eight positions above only reach input buckets 0, 1, 4 and
+            // 7. These five carry the kings into the remaining four, in both
+            // orientations, so the fixture pins the bucket map and not only
+            // the square layout underneath it.
+            "4k3/8/8/8/8/8/4K3/8 w - - 0 1",     // White bucket 2, Black 0
+            "8/7k/8/8/8/8/6K1/8 w - - 0 1",      // both bucket 3, both direct
+            "8/8/8/1k6/6K1/8/8/8 w - - 0 1",     // both bucket 5, one mirrored
+            "8/8/8/8/8/3k4/8/1K6 w - - 0 1",     // White 1, Black 6, both mirrored
+            "8/7K/8/8/8/8/k7/8 w - - 0 1",       // both bucket 7, one mirrored
         };
 
         std::cout << "{\n  \"architectureHash\": "
@@ -2326,6 +2535,7 @@ int main(int argc, char** argv)
         TestNnueNetworkFormat();
         TestNnueFeatureIndexing();
         TestNnueHorizontalMirroring();
+        TestNnueKingBuckets();
         TestNnueAccumulatorUpdates();
         TestNnueOrientationRefresh();
         TestNnueAccumulatorStack();
