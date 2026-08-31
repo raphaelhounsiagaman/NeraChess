@@ -277,6 +277,16 @@ namespace NeraChessSearch
             Score alpha = window == SCORE_INF ? -SCORE_INF : previousScore - window;
             Score beta = window == SCORE_INF ? SCORE_INF : previousScore + window;
             RootResult iteration;
+            // A root fail-high (score >= beta) proves its move is worth at least beta
+            // at this depth, and by the time SearchRoot returns it,
+            // UpdatePrincipalVariation(0, move) has already filled m_PvTable[0] with a
+            // valid line for it. That evidence stays true even if the widened re-search
+            // below is interrupted, so it is kept separately: the re-search's own
+            // SearchRoot call clears m_PvLength[0] as soon as it starts, and an aborted
+            // `iteration` carries no move at all (SearchRoot returns early on abort,
+            // before folding the in-flight move into its result).
+            RootResult rootFailHigh;
+            std::vector<Move> rootFailHighPV;
 
             while (true)
             {
@@ -285,6 +295,13 @@ namespace NeraChessSearch
                     break;
                 if (iteration.score > alpha && iteration.score < beta)
                     break;
+
+                if (iteration.score >= beta)
+                {
+                    rootFailHigh = iteration;
+                    rootFailHighPV.assign(m_PvTable[0].begin(),
+                        m_PvTable[0].begin() + m_PvLength[0]);
+                }
 
                 window = std::min<Score>(SCORE_INF, window * 2);
                 alpha = window == SCORE_INF
@@ -296,7 +313,27 @@ namespace NeraChessSearch
             }
 
             if (m_Aborted)
+            {
+                // The clock cut off this depth's re-search, but a fail-high proved
+                // earlier at this same depth is still sound: keep it instead of
+                // falling back to the previous, shallower iteration's move.
+                if (rootFailHigh.move != 0)
+                {
+                    result.bestMove = rootFailHigh.move;
+                    result.score = rootFailHigh.score;
+                    result.completedDepth = depth;
+                    result.completed = true;
+                    result.principalVariation = std::move(rootFailHighPV);
+                    result.nodes = AggregateNodeCount();
+                    result.selectiveDepth = m_SelectiveDepth;
+                    result.hashFullPermill = m_TranspositionTable->HashFullPermill();
+                    result.elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
+                        std::chrono::steady_clock::now() - m_StartTime);
+                    if (m_Limits.iterationCallback)
+                        m_Limits.iterationCallback(result);
+                }
                 break;
+            }
 
             result.bestMove = iteration.move;
             result.score = iteration.score;
