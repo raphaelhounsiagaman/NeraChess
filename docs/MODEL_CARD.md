@@ -9,24 +9,16 @@ duplication is what let the repository carry two contradictory accounts at once.
 | Field | Value |
 | --- | --- |
 | Path | [`NeraChessApp/Resources/NNUE/nera.nnue`](../NeraChessApp/Resources/NNUE/nera.nnue) |
-| SHA-256 | `1ba5f087c6a609240f52b50142c4c6ec4b0753a6f03940b0bfa51cdf75d66efe` |
+| SHA-256 | `58202d2c2a3626b65a8111d3c57661c9d2e73b62b810d887929781c11e5d9ec8` |
 | Size | 6,294,578 bytes |
-| Generation | binpack-mirrored-004 epoch 17, expanded across king buckets |
-| Shipped in | **warm-start seed, not a trained network** |
+| Generation | binpack-kingbuckets-005, epoch 24 |
+| Shipped in | candidate, not yet promoted |
 | Architecture | `(768x8 -> 512)x2 -> 1`, 8 input buckets, 1 output bucket |
 | Feature set | 3 — horizontally canonicalized, then bucketed on the own king |
 | Architecture hash | `0x30346d9d` |
 | Quantization | QA 255, QB 64, eval scale 400 |
 | Activation | Squared clipped ReLU |
 | Parent | binpack-mirrored-004 epoch 17, tiled into feature set 3 (see below) |
-
-> **This file is a seed.** Every one of its eight buckets holds the same
-> weights, so it evaluates exactly as its one-bucket parent did and has none of
-> the capacity the buckets exist to provide. It is committed so that the
-> feature-set change ships with a network the build can load — CI runs the test
-> suite with `--eval-file`, and a commit whose engine and network disagree is a
-> red build. Replace it with a network actually trained under feature set 3
-> before reading any strength result as being about king buckets.
 
 Verify the file you have is the file described here:
 
@@ -64,13 +56,38 @@ and ran 20 epochs of 500M positions (10B total) before being stopped short of
 its 90-epoch schedule, because validation had flattened. Together that is
 16.8B positions, a little over one full pass through the corpus.
 
-`binpack-mirrored-004` is this network, and it is the first trained under
+`binpack-mirrored-004` is the first trained under
 feature set 2. It ran 22 epochs of 500M positions (11B, one more full pass)
 with lambda continuing run 003's anneal from 0.797, and was stopped at epoch 22
 by the rule described below. Its best epoch is 17, at 8.5B positions into the
 run.
 
-**The warm start crossed a feature-set boundary.** Horizontal canonicalization
+`binpack-kingbuckets-005` is this network, and it is the first trained under
+feature set 3. It ran 28 epochs of 500M positions (14B, a little over one more
+full pass) with lambda continuing run 004's anneal from 0.797, at the same
+learning rate 1e-4 as every run before it, and was stopped at epoch 28 by the
+rule described below. Its best epoch is 24, at 12B positions into the run.
+
+Every hyperparameter matches run 004's, so the architecture is the only
+variable between them and their validation curves compare directly. Run 005 is
+below run 004 at *every* epoch by roughly 3%: its epoch 1 (0.002279) already
+beat run 004's best-ever (0.002262), and its own best of 0.002171 is 4.0%
+below that. That is the capacity hypothesis behaving as predicted -- eight
+weight matrices where there was one -- and it is still only a loss number.
+
+**Run 005's warm start crossed a feature-set boundary, exactly.** King buckets
+change a dimension, so run 004's network could not be loaded directly.
+`NNUETraining/scripts/expand_king_buckets.py` tiled it: every bucket got the
+same weight matrix. Unlike the port below, that is an exact conversion -- a
+feature index is `bucket * 768 + within`, so identical blocks make the bucket
+term select the same row whichever bucket it names. The seed evaluated every
+position identically to run 004's epoch 17, which was verified before training
+started by comparing both engines' `eval` over a 36-position suite spanning all
+eight buckets and their depth-12 node counts. So run 005 began *at* run 004's
+strength, and its whole job was pulling the eight copies apart.
+
+**Run 004's warm start crossed a feature-set boundary too, inexactly.**
+Horizontal canonicalization
 renumbered every feature without changing a dimension, so run 003's network
 could not be loaded directly. `NNUETraining/scripts/port_feature_set.py`
 re-headered it: the payload is byte-identical and only the architecture hash
@@ -151,7 +168,13 @@ in, the network is verifiable by checksum but not reproducible.
 
 ## Promotion evidence
 
-**This network has not been promoted.** It was measured against the commit
+**This network has not been promoted.** Its strength test against `main` is
+running; until it returns a verdict, the only evidence for king buckets is a
+validation curve, and this project's own record is that validation loss and
+Elo are different quantities. Its parent moved validation 4.2% and the games
++7.3 Elo with an interval spanning zero.
+
+Its parent, `binpack-mirrored-004` epoch 17, was measured against the commit
 `main` was at before horizontal mirroring, over 1,000 games with the search
 identical on both sides:
 
@@ -159,10 +182,10 @@ identical on both sides:
 | --- | --- | --- | --- | --- |
 | 1000 | 307-286-407 | 0.5105 | +7.3 | [-7.5, +22.2] |
 
-The interval contains zero, so by the bar below this is inconclusive, and it
-ships as a candidate on that basis: the shipped network had to change anyway,
-because the feature set it was trained under no longer exists. What the match
-establishes is the absence of a regression, not a gain. See
+That interval contains zero, so it too was inconclusive; it shipped as a
+candidate because the shipped network had to change anyway, its feature set
+having ceased to exist. What that match established is the absence of a
+regression, not a gain. See
 [NNUE_PROGRESS.md](NNUE_PROGRESS.md#2026-08-27--horizontal-mirroring-measured)
 for the conditions, which differ from every earlier row.
 
@@ -199,16 +222,23 @@ and no current measurement places generation 61 on the scale used in
   and a reason not to read a strength result here as isolating the data change.
 - **One output head.** Output buckets by material count remain unbuilt; the
   dimension exists with a count of 1.
-- **The shipped file is an untrained seed.** Its eight buckets are eight copies
-  of a one-bucket network, so it has 3,147,265 parameters and the expressive
-  power of 394,753 of them.
 - **Strength is unmeasured against any external reference** since the NNUE
   migration.
-- **Its own measured gain is inconclusive.** +7.3 Elo over 1,000 games with an
-  interval spanning zero. Horizontal mirroring was trained on the corpus that
-  had already flattened for its parent, so there was little left for it to
-  convert into strength; the symmetry it exploits should matter more on a
-  larger network or on data this one has not already exhausted.
+- **Its own gain is unmeasured.** The strength test against `main` has not
+  returned. Everything currently known about king buckets is a 4.0% validation
+  improvement over the previous best, and the immediately preceding generation
+  is a standing reminder that a validation gain of that size bought an Elo
+  interval spanning zero.
+- **Rarely-visited buckets are barely trained.** A king reaches the far ranks
+  in a small fraction of positions, so buckets 6 and 7 saw far less gradient
+  than 0 and 1 and remain close to the tiled seed. The capacity is allocated
+  by the map, not by the data; re-tuning `KingBucketTable` is the lever, and
+  changing it needs a `FeatureSetVersion` bump.
+- **The run was slower than its schedule for reasons outside it.** Epoch times
+  roughly doubled over the run while CPU utilisation stayed constant. The host
+  was measured delivering 30-40% less throughput on identical fixed work with
+  the trainer paused, at full nominal clock and ~0 guest-visible steal. Nothing
+  in the training path accounts for it, and it affects wall-clock cost only.
 
 ## License
 

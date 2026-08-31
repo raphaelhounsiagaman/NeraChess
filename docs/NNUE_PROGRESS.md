@@ -50,6 +50,10 @@ Unless a row says otherwise:
      between rows ends the table and everything below it stops rendering as
      one. There is no script that inserts them; add them by hand. -->
 
+`binpack-kingbuckets-005 ep24` has no row yet: its strength test is running.
+Add one when it returns, and note that a sequential test reports a verdict and
+an LLR rather than the fixed-length interval the rows above carry.
+
 The third row is the first two combined, not a third match: two independent
 500-game runs under identical conditions with different opening seeds
 (`-srand 20260814` and `-srand 20260815`). They agree closely (+26.5 and
@@ -130,3 +134,39 @@ management did not distort the result.
 
 Raw match output and games: `/srv/nera-nnue/matches/phase0-baseline/` and
 `/srv/nera-nnue/matches/phase0-confirm/`.
+
+### 2026-08-31 — king buckets, trained
+
+`binpack-kingbuckets-005` is the first run under feature set 3: the own king's
+canonical square selects one of eight feature-transformer matrices, taking the
+network from 394,753 parameters to 3,147,265. It ran 28 epochs of 500M
+positions and was stopped by the rule in `MODEL_CARD.md`; best epoch 24.
+
+Its warm start was **exact** rather than approximate — every bucket seeded with
+the same matrix computes what the one-bucket parent computed — so the run began
+at its parent's strength rather than near it. This was verified before training
+by comparing the two engines' `eval` over a 36-position suite spanning all
+eight buckets, and their depth-12 searches, both of which matched exactly.
+
+Against `binpack-mirrored-004`, on the identical validation split:
+
+| | mirrored-004 | kingbuckets-005 |
+| --- | --- | --- |
+| epoch 1 | 0.002353 | **0.002279** |
+| best | 0.002262 (ep 17) | **0.002171 (ep 24)** |
+
+Run 005 is below run 004 at every epoch by roughly 3%, and its first epoch
+already beat run 004's best-ever. Its own best is 4.0% below that.
+
+**That is a loss number and nothing more.** The row immediately above this one
+records a 4.2% validation gain that produced +7.3 Elo with an interval spanning
+zero, which is the reason this section says so twice. The strength test is what
+decides, and it is what the next row will hold.
+
+Two notes for whoever runs the next one. The rarely-visited buckets — a king on
+the far ranks — saw comparatively little gradient and sit close to the seed, so
+the map allocates capacity that the data may not fill; `KingBucketTable` is the
+lever. And epoch times roughly doubled over the run at constant CPU
+utilisation, which was traced to the host delivering 30-40% less throughput on
+identical fixed work with the trainer paused, not to anything in the training
+path.
