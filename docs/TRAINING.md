@@ -21,6 +21,8 @@ document is the operational side.
 | `nnue_training.train` | Python | Trains a network and exports a `.nnue` |
 | `nnue_training.verify` | Python | Proves the engine evaluates it exactly as the trainer does |
 | `scripts/match.py` | Python | Plays two networks against each other to see which is better |
+| `scripts/port_feature_set.py` | Python | Re-headers a pre-mirroring network to seed a run |
+| `scripts/expand_king_buckets.py` | Python | Tiles a one-bucket network across king buckets to seed a run |
 
 Samples are plain text, one position per line:
 
@@ -123,6 +125,29 @@ change at all, and for one on files a-d the new network reads the old
 network's weights for the reflected square, which horizontal symmetry makes
 approximately the same answer. Training reconciles the rest. Ship a network
 that was actually trained under the current feature set, not the seed.
+
+Crossing the king-bucket boundary is the other such case, and
+`scripts/expand_king_buckets.py` is how:
+
+```sh
+python3 scripts/expand_king_buckets.py --input old.nnue --output seed.nnue
+```
+
+Unlike the port above, this one is an **exact conversion**. It gives every
+bucket the same weight matrix, and a feature index is `bucket * 768 + within`,
+so if the 768-row block is identical for every bucket then the bucket term
+selects the same row whichever bucket it names. The seed does not merely start
+near the source network's strength, it starts *at* it: the bucketed engine
+loaded with the seed evaluates every position identically to the pre-bucket
+engine loaded with the source, and training's whole job is to pull the eight
+copies apart.
+
+That exactness is worth spending. Before committing a run, compare the two
+engines' `eval` output over a position suite and their node counts at a fixed
+depth: they must match exactly. A subtle question — did the bucket map, the
+canonicalization and the accumulator refresh all land correctly? — becomes a
+byte comparison, answered in seconds rather than by a twenty-hour run that
+comes back weaker for reasons nobody can name.
 
 Sample packs cannot be ported: they store extracted feature indices, and
 `PACK_VERSION` was bumped so an old one is refused rather than trained on.

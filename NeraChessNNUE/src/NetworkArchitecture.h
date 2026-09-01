@@ -13,16 +13,16 @@
 // which makes previously serialized networks fail to load instead of being
 // silently misinterpreted.
 //
-// The current shape is the smallest architecture worth training:
+// The current shape is:
 //
-//     (768 -> 512)x2 -> 1
+//     (768x8 -> 512)x2 -> 1
 //
-// with one input bucket and one output bucket. Features are horizontally
-// canonicalized on the perspective's own king (see FeatureSetVersion below).
-// King-bucketed feature sets (HalfKP / HalfKA) and output buckets by material
-// count are the intended next steps; the bucket dimensions already exist so
-// that adding them does not require reshaping call sites. See docs/NNUE.md for
-// the upgrade path.
+// with eight input buckets and one output bucket. Features are horizontally
+// canonicalized on the perspective's own king, and that king's canonical
+// square then selects which of the eight feature-transformer matrices its
+// features index (see FeatureSetVersion below). Output buckets by material
+// count are the remaining intended step; that bucket dimension already exists
+// so that adding it does not require reshaping call sites. See docs/NNUE.md.
 
 namespace NeraChessNNUE::Architecture
 {
@@ -37,13 +37,21 @@ namespace NeraChessNNUE::Architecture
     //   2  adds horizontal mirroring: a perspective's squares are reflected
     //      when its own king stands on files a-d, so that its king is always
     //      seen on files e-h
+    //   3  adds king buckets: the canonical square of a perspective's own king
+    //      selects which feature-transformer matrix its features index, via
+    //      the table in FeatureSet::KingBucketTable
     //
     // Bumped whenever a feature index comes to mean something new while every
     // dimension stays the same. Dimensions are caught by the sizes below; this
     // is what catches a change the sizes cannot see. It is mixed into
     // ArchitectureHash(), so a network trained under an older feature set is
     // rejected at load time instead of being read as though nothing changed.
-    inline constexpr uint16_t FeatureSetVersion = 2;
+    //
+    // Note that InputBucketCount is a dimension and is caught on its own. This
+    // version is what distinguishes two *layouts* with the same bucket count:
+    // re-tuning KingBucketTable without changing how many buckets it uses
+    // leaves every size field identical, so it must bump this instead.
+    inline constexpr uint16_t FeatureSetVersion = 3;
 
     // Features are (relative colour, piece type, canonical square) triples, so
     // both perspectives share one weight matrix and a position and its mirror
@@ -52,10 +60,14 @@ namespace NeraChessNNUE::Architecture
         PerspectiveCount * PieceTypeCount * SquareCount; // 768
 
     // Number of separate feature-transformer weight matrices selected by the
-    // position of the perspective's own king. One bucket means every king
-    // square indexes the same matrix; a king move can still force a refresh of
-    // its own half by flipping that half's horizontal orientation.
-    inline constexpr size_t InputBucketCount = 1;
+    // position of the perspective's own king. A king move forces a refresh of
+    // its own half whenever it changes that half's bucket, on top of the
+    // refresh it already forces by flipping the half's horizontal orientation.
+    //
+    // Mirroring canonicalizes the own king onto files e-h, so the mapping's
+    // domain is 32 squares; FeatureSet::KingBucketTable is what divides them,
+    // and this must equal the number of distinct values in that table.
+    inline constexpr size_t InputBucketCount = 8;
 
     inline constexpr size_t TotalInputSize = InputBucketCount * PerspectiveInputSize;
 

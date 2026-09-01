@@ -9,16 +9,16 @@ duplication is what let the repository carry two contradictory accounts at once.
 | Field | Value |
 | --- | --- |
 | Path | [`NeraChessApp/Resources/NNUE/nera.nnue`](../NeraChessApp/Resources/NNUE/nera.nnue) |
-| SHA-256 | `29c972d839c0795affb5dc26ae4e50e2cdbbba6e3539b9d74c4e7d1aa2982c9a` |
-| Size | 789,554 bytes |
-| Generation | binpack-mirrored-004, epoch 17 |
-| Shipped in | candidate, not yet promoted |
-| Architecture | `(768 -> 512)x2 -> 1`, 1 input bucket, 1 output bucket |
-| Feature set | 2 — horizontally canonicalized on the perspective's own king |
-| Architecture hash | `0x469a13dd` |
+| SHA-256 | `58202d2c2a3626b65a8111d3c57661c9d2e73b62b810d887929781c11e5d9ec8` |
+| Size | 6,294,578 bytes |
+| Generation | binpack-kingbuckets-005, epoch 24 |
+| Shipped in | accepted by the strength test; see Promotion evidence |
+| Architecture | `(768x8 -> 512)x2 -> 1`, 8 input buckets, 1 output bucket |
+| Feature set | 3 — horizontally canonicalized, then bucketed on the own king |
+| Architecture hash | `0x30346d9d` |
 | Quantization | QA 255, QB 64, eval scale 400 |
 | Activation | Squared clipped ReLU |
-| Parent | binpack-long-003 epoch 20, reinterpreted into feature set 2 (see below) |
+| Parent | binpack-mirrored-004 epoch 17, tiled into feature set 3 (see below) |
 
 Verify the file you have is the file described here:
 
@@ -56,13 +56,38 @@ and ran 20 epochs of 500M positions (10B total) before being stopped short of
 its 90-epoch schedule, because validation had flattened. Together that is
 16.8B positions, a little over one full pass through the corpus.
 
-`binpack-mirrored-004` is this network, and it is the first trained under
+`binpack-mirrored-004` is the first trained under
 feature set 2. It ran 22 epochs of 500M positions (11B, one more full pass)
 with lambda continuing run 003's anneal from 0.797, and was stopped at epoch 22
 by the rule described below. Its best epoch is 17, at 8.5B positions into the
 run.
 
-**The warm start crossed a feature-set boundary.** Horizontal canonicalization
+`binpack-kingbuckets-005` is this network, and it is the first trained under
+feature set 3. It ran 28 epochs of 500M positions (14B, a little over one more
+full pass) with lambda continuing run 004's anneal from 0.797, at the same
+learning rate 1e-4 as every run before it, and was stopped at epoch 28 by the
+rule described below. Its best epoch is 24, at 12B positions into the run.
+
+Every hyperparameter matches run 004's, so the architecture is the only
+variable between them and their validation curves compare directly. Run 005 is
+below run 004 at *every* epoch by roughly 3%: its epoch 1 (0.002279) already
+beat run 004's best-ever (0.002262), and its own best of 0.002171 is 4.0%
+below that. That is the capacity hypothesis behaving as predicted -- eight
+weight matrices where there was one -- and it is still only a loss number.
+
+**Run 005's warm start crossed a feature-set boundary, exactly.** King buckets
+change a dimension, so run 004's network could not be loaded directly.
+`NNUETraining/scripts/expand_king_buckets.py` tiled it: every bucket got the
+same weight matrix. Unlike the port below, that is an exact conversion -- a
+feature index is `bucket * 768 + within`, so identical blocks make the bucket
+term select the same row whichever bucket it names. The seed evaluated every
+position identically to run 004's epoch 17, which was verified before training
+started by comparing both engines' `eval` over a 36-position suite spanning all
+eight buckets and their depth-12 node counts. So run 005 began *at* run 004's
+strength, and its whole job was pulling the eight copies apart.
+
+**Run 004's warm start crossed a feature-set boundary too, inexactly.**
+Horizontal canonicalization
 renumbered every feature without changing a dimension, so run 003's network
 could not be loaded directly. `NNUETraining/scripts/port_feature_set.py`
 re-headered it: the payload is byte-identical and only the architecture hash
@@ -143,7 +168,31 @@ in, the network is verifiable by checksum but not reproducible.
 
 ## Promotion evidence
 
-**This network has not been promoted.** It was measured against the commit
+**This network cleared the bar.** The sequential strength test against `main`
+returned *Accepted: improvement* after two of a possible seven stages:
+
+| Games | Result | Score | Elo | Interval | LLR |
+| --- | --- | --- | --- | --- | --- |
+| 2000 | 671-491-838 | 0.5450 | +31.4 | [+21.0, +41.7] | +5.26 |
+
+Candidate `4ff61df` against baseline `140fb22`, 10+0.1, one thread and 128 MiB
+hash per engine, `UHO_4060_v4.epd`, `allow_network_change: true`. Workflow run
+33430016147.
+
+The verdict is what carries the stated 5% error rate; the interval describes
+the games played and, because a sequential test inspects the data repeatedly,
+carries no guarantee on its own. LLR +5.26 against boundaries of ±2.94 is a
+clear crossing rather than a marginal one.
+
+A local match under different conditions agrees: 400 games at a fixed 20,000
+nodes per move, candidate 53.9%, +27 Elo [+6, +48] by pair bootstrap. That the
+two agree across different time models and openings is worth more than either
+figure alone.
+
+The gain is net of what buckets cost — roughly 2% of nodes per second even with
+the refresh cache — so the evaluation earned back more than the speed it spent.
+
+Its parent, `binpack-mirrored-004` epoch 17, was measured against the commit
 `main` was at before horizontal mirroring, over 1,000 games with the search
 identical on both sides:
 
@@ -151,10 +200,10 @@ identical on both sides:
 | --- | --- | --- | --- | --- |
 | 1000 | 307-286-407 | 0.5105 | +7.3 | [-7.5, +22.2] |
 
-The interval contains zero, so by the bar below this is inconclusive, and it
-ships as a candidate on that basis: the shipped network had to change anyway,
-because the feature set it was trained under no longer exists. What the match
-establishes is the absence of a regression, not a gain. See
+That interval contains zero, so it too was inconclusive; it shipped as a
+candidate because the shipped network had to change anyway, its feature set
+having ceased to exist. What that match established is the absence of a
+regression, not a gain. See
 [NNUE_PROGRESS.md](NNUE_PROGRESS.md#2026-08-27--horizontal-mirroring-measured)
 for the conditions, which differ from every earlier row.
 
@@ -189,15 +238,23 @@ and no current measurement places generation 61 on the scale used in
   claim this entry replaces. The search's pruning margins are denominated in
   centipawns, so this changes what they mean; that is a reason to retune them,
   and a reason not to read a strength result here as isolating the data change.
-- **No king buckets and one output head.** The smallest architecture worth
-  training, chosen for simplicity over strength.
+- **One output head.** Output buckets by material count remain unbuilt; the
+  dimension exists with a count of 1.
 - **Strength is unmeasured against any external reference** since the NNUE
   migration.
-- **Its own measured gain is inconclusive.** +7.3 Elo over 1,000 games with an
-  interval spanning zero. Horizontal mirroring was trained on the corpus that
-  had already flattened for its parent, so there was little left for it to
-  convert into strength; the symmetry it exploits should matter more on a
-  larger network or on data this one has not already exhausted.
+- **Its gain is measured against `main`, not against the world.** +31.4 Elo is
+  a statement about this engine's previous network under one time control, not
+  a rating. The bar it cleared is the project's own.
+- **Rarely-visited buckets are barely trained.** A king reaches the far ranks
+  in a small fraction of positions, so buckets 6 and 7 saw far less gradient
+  than 0 and 1 and remain close to the tiled seed. The capacity is allocated
+  by the map, not by the data; re-tuning `KingBucketTable` is the lever, and
+  changing it needs a `FeatureSetVersion` bump.
+- **The run was slower than its schedule for reasons outside it.** Epoch times
+  roughly doubled over the run while CPU utilisation stayed constant. The host
+  was measured delivering 30-40% less throughput on identical fixed work with
+  the trainer paused, at full nominal clock and ~0 guest-visible steal. Nothing
+  in the training path accounts for it, and it affects wall-clock cost only.
 
 ## License
 

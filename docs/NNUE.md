@@ -35,19 +35,23 @@ and only for what actually changed.
 ## Architecture
 
 ```
-(768 -> 512)x2 -> 1
+(768x8 -> 512)x2 -> 1
 ```
 
 | Property | Value | Why |
 | --- | --- | --- |
 | Features per perspective | 768 | `(relative colour, piece type, canonical square)` = 2 x 6 x 64 |
-| Feature set version | 2 | Squares canonicalized horizontally on the own king |
-| Input buckets | 1 | Every king square indexes the same weight matrix |
+| Feature set version | 3 | Horizontal canonicalization, then a king bucket |
+| Input buckets | 8 | The own king's canonical square picks the weight matrix |
 | Hidden size | 512 per perspective | 1024 values reach the output layer |
 | Output buckets | 1 | One head for every position |
 | Activation | Squared clipped ReLU | `clamp(x, 0, 1)^2` |
 | Quantization | QA 255, QB 64 | Feature weights at 255, output weights at 64 |
 | Eval scale | 400 | Maps the network output onto centipawns |
+
+That comes to 3,147,265 parameters and a 6,294,578-byte file: `8 x 768 x 512`
+feature weights, 512 feature biases shared across the buckets, 1024 output
+weights and one output bias, at two bytes each plus a 48-byte header.
 
 The single source of truth is
 [`NeraChessNNUE/src/NetworkArchitecture.h`](../NeraChessNNUE/src/NetworkArchitecture.h),
@@ -56,16 +60,62 @@ mirrored in
 
 ### Why this shape
 
-It is the smallest architecture worth training. A perspective network with no
-king bucketing gets most of the strength of a full HalfKP or HalfKA network
-while being dramatically simpler: no bucket transitions, and a feature index
-that fits in a handful of lines of arithmetic. Getting a weak network playing
-end to end is worth more right now than getting a strong architecture
-half-built.
+The network began as the smallest architecture worth training: 768 features,
+one weight matrix, 394,753 parameters. That got a network playing end to end,
+which was worth more at the time than a strong architecture half-built. It
+also ran into the ceiling that shape implies. `docs/MODEL_CARD.md` records the
+diagnosis after the mirroring run: *the plausible limit remains capacity, not
+data* -- eleven billion training positions moved validation loss 4% and the
+games barely at all.
 
-The bucket dimensions already exist in the code with a count of 1, so adding
-king buckets or material-based output heads later changes `FeatureSet::KingBucket`
-and `Network::OutputBucketOf` rather than every call site.
+King buckets are the standard answer, and they answer the right question. A
+rook on f1 means something different depending on whether the king it shields
+stands on g1 or has walked to e4, and a single weight matrix has to average
+those meanings together. Eight matrices let the network say eight different
+things, at eight times the feature-transformer parameters and no extra work
+per evaluation: a position still activates the same 32 features, they simply
+index a different block.
+
+The output-bucket dimension still exists with a count of 1, so adding
+material-based output heads later changes `Network::OutputBucketOf` rather
+than every call site.
+
+### The bucket map
+
+Horizontal canonicalization already puts a perspective's own king on files
+e-h, so the map's domain is 32 squares rather than 64, and the two mechanisms
+compose for free. `FeatureSet::KingBucketTable` divides them:
+
+```
+              file:  e  f  g  h
+   relative rank 1:  0  0  1  1
+   relative rank 2:  2  2  3  3
+   relative rank 3:  4  4  5  5
+   relative rank 4:  4  4  5  5
+   relative rank 5:  6  6  7  7
+   relative rank 6:  6  6  7  7
+   relative rank 7:  6  6  7  7
+   relative rank 8:  6  6  7  7
+```
+
+Two things shape it. Buckets are spent where the positions are -- a king on
+its own first two ranks is the overwhelmingly common case, so those take four
+of the eight -- and adjacent files are paired so the king shuffles that happen
+most, `g1-h1` and `e1-f1`, stay inside a bucket and cost no refresh. `Kg1-g2`
+and castling `e1-g1` do cross, deliberately: those are real changes of king
+safety, which is the thing buckets exist to distinguish.
+
+The bucket is read off the **canonical** square, never the raw one. Reading it
+off the raw square would put a position and its horizontal reflection in
+different buckets, undoing the mirroring the feature set exists to exploit;
+`TestNnueKingBuckets` asserts the reflection property directly.
+
+`InputBucketCount` and the table are two statements of one fact -- the count
+sizes the network, the table decides what the buckets mean -- so a
+`static_assert` requires the table to map into range and to leave no bucket
+unused. Re-tuning the table without changing how many buckets it uses leaves
+every size field identical, which is exactly the case `FeatureSetVersion`
+exists to catch: bump it.
 
 ### Perspectives
 
@@ -102,26 +152,55 @@ about king files.
 
 ### Accumulator invalidation
 
-Horizontal canonicalization is the first thing in this feature set that makes
-the numbering depend on where a king stands, and that has a cost: when a king
-crosses the d/e boundary, *every* feature of its own half is renumbered, and no
+Making the numbering depend on where a king stands has a cost: when a king
+changes its half's view -- by crossing the d/e boundary, or by moving into
+another bucket -- *every* feature of that half is renumbered, and no
 dirty-piece delta from the parent position applies to it.
 
 `AccumulatorStack::Push` therefore compares the view each half was built under
 with the one the new position implies:
 
 * view unchanged — the ordinary incremental delta, which is the overwhelming
-  majority of moves, king moves within one half included;
-* view changed — that half alone is refreshed from scratch.
+  majority of moves, king moves within one view included;
+* view changed — that half alone is refreshed.
 
-Only the side whose own king moved across the boundary is refreshed. The other
-side still takes its normal delta: from its point of view an enemy king simply
-changed square, and its own orientation is untouched. Popping a move is still
-free, because a parent's entry is never written to.
+Only the side whose own king moved is refreshed. The other side still takes its
+normal delta: from its point of view an enemy king simply changed square, and
+its own view is untouched. Popping a move is still free, because a parent's
+entry is never written to.
 
 Debug builds re-derive every accumulator and assert both its values and its
 views against a full refresh, so a missed transition fails loudly rather than
 quietly evaluating some positions as though the pieces stood elsewhere.
+
+### The refresh cache
+
+King buckets made refreshes common enough to be worth optimizing. With one
+bucket only a king crossing d/e forced one; with eight, so does any king move
+between buckets. Measured end to end on this machine, that cost about **5% of
+nodes per second**.
+
+`RefreshCache` closes most of that gap. It keeps, per `AccumulatorStack` and
+therefore per thread, the last accumulator half computed for each
+`(perspective, bucket, orientation)` together with the piece bitboards it was
+summed from. A refresh then diffs the current position against that stored one
+and applies the difference, instead of summing one column per piece from the
+bias vector.
+
+The reason this is sound is the same reason buckets need the refresh in the
+first place: a view fixes the entire numbering, so *within one slot* a feature
+index depends only on `(piece, square)`. Two positions sharing a view therefore
+differ by exactly the pieces whose bitboards differ, however many moves apart
+they are — no move history is involved, and there is nothing to invalidate. A
+search that returns to a bucket it has visited usually finds the board nearly
+unchanged, so the diff is a few columns rather than thirty-two.
+
+It is a cache in the strict sense: dropping any entry costs speed and nothing
+else. `Reset` clears it at a new root, not for correctness but because
+diffing against a position from a different game is likely to be *worse* than
+the full sum it replaced. With the cache the measured cost of eight buckets
+falls to about **2% of nodes per second**, which is what the capacity is bought
+with.
 
 ### Feature-set version
 
@@ -129,14 +208,20 @@ quietly evaluating some positions as though the pieces stood elsewhere.
 to how many of them there are. Horizontal canonicalization changed the meaning
 while leaving every dimension identical, so version 2 is mixed into the
 architecture hash and networks trained under version 1 are refused at load time
-with `ArchitectureMismatch`. The `.nnue` container itself did not change: its
-format version covers the container, and the architecture hash covers what the
-weights mean.
+with `ArchitectureMismatch`.
+
+King buckets are version 3. They *do* move dimensions, so the size fields would
+catch a pre-bucket network on their own — but the version still earns its keep,
+because re-tuning `KingBucketTable` without changing how many buckets it uses
+would leave every size identical and every weight meaning something else. The
+`.nnue` container has never changed: its format version covers the container,
+and the architecture hash covers what the weights mean.
 
 This is tested from both directions: `TestNnueFeatureIndexing`,
-`TestNnueHorizontalMirroring` and `TestNnueOrientationRefresh` in the C++ suite,
-and `SquareMirroringTest`, `KingOrientationTest` and
-`HorizontalCanonicalizationTest` in the Python one.
+`TestNnueHorizontalMirroring`, `TestNnueKingBuckets` and
+`TestNnueOrientationRefresh` in the C++ suite, and `SquareMirroringTest`,
+`KingOrientationTest`, `HorizontalCanonicalizationTest` and `KingBucketTest` in
+the Python one.
 
 ---
 
@@ -248,7 +333,7 @@ shipped network means overwriting that file.
    now a training input rather than an accident, but the search's pruning
    margins are still denominated in centipawns and have not been retuned against
    it.
-3. **Architecture growth** — king buckets, output buckets, a wider hidden layer
+3. **Architecture growth** — output buckets, a wider hidden layer
    — each worth A/B testing against the previous network rather than assuming.
 
 ---

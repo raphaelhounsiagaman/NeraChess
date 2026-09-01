@@ -45,10 +45,18 @@ Unless a row says otherwise:
 | 2026-08-18 | gen60 | `verified` | previous verified net | `verified` | 400 | 168-82-150 (0.6075) | +75.9 | [+49.1, +103.6] | 100.0% |
 | 2026-08-21 | gen61 | `verified` | previous verified net | `verified` | 700 | 218-131-351 (0.5621) | +43.4 | [+25.3, +61.7] | 100.0% |
 | 2026-08-27 | binpack-mirrored-004 ep17 | `859ec03` | pre-mirroring main | `2daf702` | 1000 | 307-286-407 (0.5105) | +7.3 | [-7.5, +22.2] | n/a |
+| 2026-09-01 | binpack-kingbuckets-005 ep24 | `4ff61df` | pre-bucket main | `140fb22` | **2000** | **671-491-838 (0.5450)** | **+31.4** | **[+21.0, +41.7]** | n/a |
 
 <!-- New rows go directly above this line, inside the table: a blank line
      between rows ends the table and everything below it stops rendering as
      one. There is no script that inserts them; add them by hand. -->
+
+The last row is the first **sequential** test in this table, so read it
+differently from the rest. Its verdict is *Accepted: improvement* at LLR +5.26
+against boundaries of ±2.94, and that verdict is what carries the 5% error
+rate. The interval beside it describes the 2,000 games that happened to be
+played; because a sequential test looks at the data repeatedly, the interval
+alone carries no guarantee. There is no LOS column entry for the same reason.
 
 The third row is the first two combined, not a third match: two independent
 500-game runs under identical conditions with different opening seeds
@@ -130,3 +138,74 @@ management did not distort the result.
 
 Raw match output and games: `/srv/nera-nnue/matches/phase0-baseline/` and
 `/srv/nera-nnue/matches/phase0-confirm/`.
+
+### 2026-08-31 — king buckets, trained
+
+`binpack-kingbuckets-005` is the first run under feature set 3: the own king's
+canonical square selects one of eight feature-transformer matrices, taking the
+network from 394,753 parameters to 3,147,265. It ran 28 epochs of 500M
+positions and was stopped by the rule in `MODEL_CARD.md`; best epoch 24.
+
+Its warm start was **exact** rather than approximate — every bucket seeded with
+the same matrix computes what the one-bucket parent computed — so the run began
+at its parent's strength rather than near it. This was verified before training
+by comparing the two engines' `eval` over a 36-position suite spanning all
+eight buckets, and their depth-12 searches, both of which matched exactly.
+
+Against `binpack-mirrored-004`, on the identical validation split:
+
+| | mirrored-004 | kingbuckets-005 |
+| --- | --- | --- |
+| epoch 1 | 0.002353 | **0.002279** |
+| best | 0.002262 (ep 17) | **0.002171 (ep 24)** |
+
+Run 005 is below run 004 at every epoch by roughly 3%, and its first epoch
+already beat run 004's best-ever. Its own best is 4.0% below that.
+
+**That was a loss number and nothing more** when it was written. The generation
+before this one recorded a 4.2% validation gain that produced +7.3 Elo with an
+interval spanning zero, which is why this section refused to read anything into
+it. The strength test has since returned, and this time the loss and the games
+agree.
+
+Two notes for whoever runs the next one. The rarely-visited buckets — a king on
+the far ranks — saw comparatively little gradient and sit close to the seed, so
+the map allocates capacity that the data may not fill; `KingBucketTable` is the
+lever. And epoch times roughly doubled over the run at constant CPU
+utilisation, which was traced to the host delivering 30-40% less throughput on
+identical fixed work with the trainer paused, not to anything in the training
+path.
+
+### 2026-09-01 — king buckets, measured
+
+**Accepted: improvement.** The sequential test crossed its upper boundary after
+two of a possible seven stages, LLR +5.26 against ±2.94, so the run stopped at
+2,000 games rather than continuing toward the 12,000 ceiling.
+
+| Games | Result | Score | Elo | Interval | Pentanomial |
+| --- | --- | --- | --- | --- | --- |
+| 2000 | 671-491-838 | 0.5450 | +31.4 | [+21.0, +41.7] | [34, 205, 380, 309, 72] |
+
+Candidate `4ff61df` against baseline `140fb22`, `allow_network_change: true`,
+10+0.1, one thread and 128 MiB hash per engine, `UHO_4060_v4.epd`, both sides
+built independently on each of eight shards. Workflow run 33430016147.
+
+This is the first network since generation 61 to clear the bar on its own
+evidence, and the first *ever* to do it through the sequential test — every
+earlier row is a fixed-length match reporting an interval, which is a weaker
+claim. The +31.4 is also net of what buckets cost: the eight-matrix feature
+transformer measured about 2% of nodes per second even with the refresh cache,
+so the evaluation gained more than that back.
+
+A local check run under different conditions agrees, which is worth recording
+because agreement across conditions is rarer than it should be: 400 games at a
+fixed 20,000 nodes per move via `NNUETraining/scripts/match.py`, candidate
+53.9% (+151 -120 =129), **+27 Elo [+6, +48]** by pair bootstrap. Different time
+model, different openings, different machine, same answer.
+
+Two caveats that the result does not dispose of. The rarely-visited buckets are
+still barely trained — a king reaches the far ranks in few positions, so
+buckets 6 and 7 sit close to the tiled seed, and `KingBucketTable` allocates
+capacity the corpus may not fill. And the corpus is now three full passes in
+across runs 003, 004 and 005; the capacity ceiling moved, but the data ceiling
+did not.

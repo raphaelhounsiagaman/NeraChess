@@ -124,8 +124,9 @@ PACK_MAGIC = b"NERAPACK"
 #: A pack stores extracted indices rather than positions, and carries no
 #: architecture hash to catch that, so an old pack read under a new feature set
 #: would train happily on the wrong inputs. Version 2 is the first to hold
-#: horizontally mirrored features (``arch.FEATURE_SET_VERSION`` 2).
-PACK_VERSION = 2
+#: horizontally mirrored features (``arch.FEATURE_SET_VERSION`` 2); version 3
+#: the first to hold king-bucketed ones (``arch.FEATURE_SET_VERSION`` 3).
+PACK_VERSION = 3
 
 
 class FeatureCache:
