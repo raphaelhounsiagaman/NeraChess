@@ -265,7 +265,7 @@ printf 'uci\nquit\n' | ./bin/Release/NeraChessUCI/NeraChessUCI | grep "info stri
 A loaded network reports its shape and kernels:
 
 ```text
-info string network nera.nnue 768x1 -> 512x2 -> 1x1 (qa 255, qb 64, scale 400), kernels neon
+info string network nera.nnue 768x8 -> 512x2 -> 1x8 (qa 255, qb 64, scale 400), kernels sse2 (dispatch: avx2)
 ```
 
 If instead you see `no network loaded`, the engine is evaluating every position

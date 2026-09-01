@@ -71,7 +71,9 @@ The search favors clear, testable engine techniques over platform-specific micro
 Evaluation is a trained NNUE network. The hand-tuned function it replaced has
 been removed.
 
-- `(768 -> 512)x2 -> 1` perspective network, int16-quantized
+- `(768x8 -> 512)x2 -> 1x8` perspective network, int16-quantized: eight
+  feature-transformer matrices selected by the perspective's own king, and
+  eight output heads selected by the total piece count
 - Self-describing `.nnue` format that rejects networks built for another shape
 - Per-ply accumulator stack updated incrementally as the search makes and
   unmakes moves, verified against full refreshes in Debug builds
