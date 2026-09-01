@@ -123,6 +123,7 @@ def train(config: TrainConfig) -> Path:
             torch.tensor(batch.their_offsets, dtype=torch.long, device=device),
             torch.tensor(batch.scores, dtype=torch.float32, device=device),
             torch.tensor(batch.results, dtype=torch.float32, device=device),
+            torch.tensor(batch.output_buckets, dtype=torch.long, device=device),
         )
 
     # Always measured at lambda_end, so it means the same thing every epoch and
@@ -139,8 +140,8 @@ def train(config: TrainConfig) -> Path:
         model.eval()
         total, count = 0.0, 0
         for batch in cache.batches(config.batch_size, indices=validation_indices):
-            own, own_off, their, their_off, scores, results = to_tensors(batch)
-            predictions = model(own, own_off, their, their_off)
+            own, own_off, their, their_off, scores, results, buckets = to_tensors(batch)
+            predictions = model(own, own_off, their, their_off, buckets)
             total += float(nnue_loss(predictions, scores, results, fixed_config).item())
             count += 1
         model.train()
@@ -178,9 +179,9 @@ def train(config: TrainConfig) -> Path:
             shuffle_seed=config.seed + epoch,
             indices=training_indices,
         ):
-            own, own_off, their, their_off, scores, results = to_tensors(batch)
+            own, own_off, their, their_off, scores, results, buckets = to_tensors(batch)
 
-            predictions = model(own, own_off, their, their_off)
+            predictions = model(own, own_off, their, their_off, buckets)
             loss = nnue_loss(predictions, scores, results, epoch_config)
 
             optimizer.zero_grad(set_to_none=True)

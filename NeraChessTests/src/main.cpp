@@ -882,20 +882,24 @@ namespace
         // trained before it still matches this build's. The architecture hash
         // is the only thing that tells the two apart, and it has to: loading
         // those weights under the new feature numbering would evaluate
-        // plausible-looking nonsense. King buckets did move dimensions, so
-        // the sizes would catch a pre-bucket network on their own -- but the
-        // hash is still what such a file carries, and pinning both values is
+        // plausible-looking nonsense. King buckets and output buckets did move
+        // dimensions, so the sizes would catch those on their own -- but the
+        // hash is still what such a file carries, and pinning every value is
         // what proves no past generation can be read as the present one.
         static constexpr uint32_t PreMirroringArchitectureHash = 1'407'766'679u;
         static constexpr uint32_t PreKingBucketArchitectureHash = 1'184'502'749u;
+        static constexpr uint32_t PreOutputBucketArchitectureHash = 808'742'301u;
         static_assert(PreMirroringArchitectureHash != Nnue::Architecture::ArchitectureHash(),
             "the feature set changed but the architecture hash did not; networks "
             "trained under the previous feature semantics would still load");
         static_assert(PreKingBucketArchitectureHash != Nnue::Architecture::ArchitectureHash(),
             "the feature set changed but the architecture hash did not; networks "
             "trained under the previous feature semantics would still load");
-        for (const uint32_t previousHash :
-            { PreMirroringArchitectureHash, PreKingBucketArchitectureHash })
+        static_assert(PreOutputBucketArchitectureHash != Nnue::Architecture::ArchitectureHash(),
+            "the output bucketing changed but the architecture hash did not; networks "
+            "trained against a single output head would still load");
+        for (const uint32_t previousHash : { PreMirroringArchitectureHash,
+                 PreKingBucketArchitectureHash, PreOutputBucketArchitectureHash })
         {
             std::vector<std::byte> previousFeatureSet = file;
             for (size_t byte = 0; byte < sizeof(uint32_t); ++byte)
@@ -1549,6 +1553,158 @@ namespace
             Require(SortedActiveFeatures(onFirstRank, Perspective::White) !=
                 SortedActiveFeatures(onSecondRank, Perspective::White),
                 "a king bucket change left the other pieces' features untouched");
+        }
+    }
+
+    // Output buckets: the total number of pieces on the board chooses which of
+    // the OutputBucketCount copies of the output layer reads the finished
+    // accumulator. Nothing before the output layer changes, which is what makes
+    // this cheap -- and also what makes it easy to get silently wrong, since a
+    // head read from the wrong offset still produces a plausible number.
+    void TestNnueOutputBuckets()
+    {
+        using namespace NeraChessEngine;
+        using NeraChessSearch::SearchEngine;
+
+        // -- the map stays inside the heads that exist ---------------------
+        for (size_t pieces = 0; pieces <= 64; ++pieces)
+        {
+            Require(Nnue::Network::OutputBucketOfPieceCount(pieces) <
+                    Nnue::Architecture::OutputBucketCount,
+                "a piece count selected an output bucket that does not exist");
+        }
+
+        // -- the divisions are where the trainer thinks they are -----------
+        // The trainer mirrors this table entry for entry, so a disagreement
+        // here is a network trained to answer questions it is never asked.
+        // Checking the arithmetic rather than the table restates the intent
+        // independently of the literal, which is the point of writing it out.
+        for (size_t pieces = 2; pieces <= 32; ++pieces)
+        {
+            Require(Nnue::Network::OutputBucketOfPieceCount(pieces) == (pieces - 1) / 4,
+                "the output bucket table stopped agreeing with (pieces - 1) / 4");
+        }
+
+        // -- more material never selects an earlier head -------------------
+        // Not required for correctness, but a map that was not monotone would
+        // mean the heads no longer correspond to a phase, and every statement
+        // in the documentation about endgames and openings would be wrong.
+        for (size_t pieces = 1; pieces <= 32; ++pieces)
+        {
+            Require(Nnue::Network::OutputBucketOfPieceCount(pieces) >=
+                    Nnue::Network::OutputBucketOfPieceCount(pieces - 1),
+                "the output bucket table is not monotone in the piece count");
+        }
+
+        // -- a position's bucket is its piece count's bucket ----------------
+        // Two ways of asking the same question: the popcount of the occupancy,
+        // and the number of features a perspective activates. The trainer only
+        // has the second, so they had better agree.
+        struct BucketCase
+        {
+            std::string_view fen;
+            size_t pieces;
+        };
+        static constexpr BucketCase bucketCases[] = {
+            { "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1", 32 },
+            { "rnbqkbnr/3ppppp/8/8/8/8/PPPPPPPP/RNBQKBNR b KQkq - 0 1", 29 },
+            { "rnbqkbnr/4pppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1", 28 },
+            { "r3k2r/pp3ppp/8/8/8/8/PP3PPP/R3K2R w KQkq - 0 1", 16 },
+            { "r3k2r/pp3ppp/8/8/8/8/5PPP/4K2R b Kkq - 0 1", 13 },
+            { "8/2p5/3p4/KP5r/1R3p1k/8/4P1P1/8 w - - 0 1", 10 },
+            { "4k3/4pp2/8/8/8/8/5P2/4K3 w - - 0 1", 5 },
+            { "4k3/5p2/8/8/8/8/5P2/4K3 b - - 0 1", 4 },
+            { "4k3/8/8/8/8/8/4K3/8 w - - 0 1", 2 },
+        };
+        for (const BucketCase& testCase : bucketCases)
+        {
+            ChessBoard board{ std::string(testCase.fen) };
+            Nnue::FeatureSet::ActiveFeatures active;
+            Nnue::FeatureSet::CollectActiveFeatures(
+                board.GetBoardState(), Nnue::Perspective::White, active);
+            Require(active.count == testCase.pieces,
+                "a position activated a number of features other than its piece count");
+            Require(Nnue::Network::OutputBucketOf(board.GetBoardState()) ==
+                    Nnue::Network::OutputBucketOfPieceCount(testCase.pieces),
+                "a position's output bucket disagreed with its piece count's");
+        }
+
+        // -- every head is reachable from a legal position ------------------
+        // A head no position selects would be weights the trainer never moves
+        // and the engine never reads, which the static_assert on the table
+        // cannot see: the table can use a value that no piece count reaches.
+        {
+            std::array<bool, Nnue::Architecture::OutputBucketCount> reached{};
+            for (size_t pieces = 2; pieces <= 32; ++pieces)
+                reached[Nnue::Network::OutputBucketOfPieceCount(pieces)] = true;
+            for (const bool head : reached)
+                Require(head, "an output head is unreachable from any legal piece count");
+        }
+
+        // -- Forward reads the head the piece count selects -----------------
+        // Every weight is zero and every feature bias is zero, so the
+        // accumulator is zero, the activation of zero is zero, and the whole
+        // score is Dequantize(0, bias[bucket]). That makes the evaluation of a
+        // position a direct readout of which head it used: a wrong offset
+        // reports a different number rather than a subtly different one.
+        {
+            std::vector<std::byte> file(
+                Nnue::NetworkFormat::HeaderBytes + Nnue::Architecture::TotalParameterBytes,
+                std::byte{ 0 });
+            const std::span<std::byte> payload =
+                std::span<std::byte>(file).subspan(Nnue::NetworkFormat::HeaderBytes);
+
+            // Dequantize is bias * EvalScale / (QuantizationA * QuantizationB),
+            // so this makes head b report exactly 100 * (b + 1) centipawns.
+            static constexpr int32_t BiasStep =
+                Nnue::Architecture::QuantizationA * Nnue::Architecture::QuantizationB / 4;
+            static_assert(BiasStep * static_cast<int32_t>(
+                    Nnue::Architecture::OutputBucketCount) <= 32767,
+                "the per-head biases no longer fit in an int16 weight");
+
+            const size_t biasBase = Nnue::Architecture::TotalParameterCount -
+                Nnue::Architecture::OutputBiasCount;
+            for (size_t bucket = 0; bucket < Nnue::Architecture::OutputBucketCount; ++bucket)
+            {
+                Nnue::NetworkFormat::WriteWeight(payload, biasBase + bucket,
+                    static_cast<Nnue::Weight>(BiasStep * static_cast<int32_t>(bucket + 1)));
+            }
+
+            Nnue::NetworkFormat::Header header =
+                Nnue::NetworkFormat::Header::ForCurrentArchitecture();
+            header.checksum = Nnue::NetworkFormat::Checksum(payload);
+            Nnue::NetworkFormat::WriteHeader(header, file);
+
+            const std::filesystem::path path = std::filesystem::temp_directory_path() /
+                "nerachess-output-buckets.nnue";
+            {
+                std::ofstream stream(path, std::ios::binary | std::ios::trunc);
+                stream.write(reinterpret_cast<const char*>(file.data()),
+                    static_cast<std::streamsize>(file.size()));
+            }
+            Require(Nnue::Evaluator::Load(path) == Nnue::NetworkFormat::Status::Ok,
+                "the per-head network could not be installed");
+
+            for (const BucketCase& testCase : bucketCases)
+            {
+                ChessBoard board{ std::string(testCase.fen) };
+                const size_t bucket = Nnue::Network::OutputBucketOfPieceCount(testCase.pieces);
+                const Nnue::Score expected =
+                    static_cast<Nnue::Score>(100 * (static_cast<int32_t>(bucket) + 1));
+                Require(SearchEngine::Evaluate(board) == expected,
+                    "a position was evaluated through a different output head than "
+                    "its piece count selects");
+            }
+
+            // And the heads really are distinct: without this the check above
+            // would pass just as well on a network whose heads were all equal.
+            ChessBoard opening("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1");
+            ChessBoard endgame("4k3/8/8/8/8/8/4K3/8 w - - 0 1");
+            Require(SearchEngine::Evaluate(opening) != SearchEngine::Evaluate(endgame),
+                "two positions in different output buckets evaluated identically");
+
+            Nnue::Evaluator::Unload();
+            RemoveNetworkFile(path);
         }
     }
 
@@ -2208,6 +2364,16 @@ namespace
             "8/8/8/1k6/6K1/8/8/8 w - - 0 1",     // both bucket 5, one mirrored
             "8/8/8/8/8/3k4/8/1K6 w - - 0 1",     // White 1, Black 6, both mirrored
             "8/7K/8/8/8/8/k7/8 w - - 0 1",       // both bucket 7, one mirrored
+            // The thirteen above leave output buckets 3, 5 and 6 empty, and
+            // an output bucket the fixture never reaches is one the trainer's
+            // mirror of the map is never checked against. These four fill them
+            // and straddle the 28/29-piece boundary, which is where an
+            // off-by-one between the two implementations would show and
+            // nowhere else.
+            "r3k2r/pp3ppp/8/8/8/8/PP3PPP/R3K2R w KQkq - 0 1",              // 16, head 3
+            "r1bqk2r/pp3ppp/2n5/3p4/3P4/2N5/PP3PPP/R1BQK2R w KQkq - 0 1",  // 24, head 5
+            "rnbqkbnr/4pppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1",       // 28, head 6
+            "rnbqkbnr/3ppppp/8/8/8/8/PPPPPPPP/RNBQKBNR b KQkq - 0 1",      // 29, head 7
         };
 
         std::cout << "{\n  \"architectureHash\": "
@@ -2232,8 +2398,14 @@ namespace
                 if (!firstPosition)
                     std::cout << ",\n";
                 firstPosition = false;
+                // The output bucket is a property of the position, not of a
+                // perspective, so it is emitted for both halves on purpose:
+                // the trainer derives it from one perspective's feature count
+                // and a map that disagreed across the two would be caught here.
                 std::cout << "    { \"fen\": \"" << fen << "\", \"perspective\": \"" << name
-                          << "\", \"features\": [";
+                          << "\", \"outputBucket\": "
+                          << Nnue::Network::OutputBucketOf(board.GetBoardState())
+                          << ", \"features\": [";
                 for (size_t index = 0; index < indices.size(); ++index)
                     std::cout << (index == 0 ? "" : ", ") << indices[index];
                 std::cout << "] }";
@@ -2536,6 +2708,7 @@ int main(int argc, char** argv)
         TestNnueFeatureIndexing();
         TestNnueHorizontalMirroring();
         TestNnueKingBuckets();
+        TestNnueOutputBuckets();
         TestNnueAccumulatorUpdates();
         TestNnueOrientationRefresh();
         TestNnueAccumulatorStack();

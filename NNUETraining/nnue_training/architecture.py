@@ -8,7 +8,7 @@ comparing :func:`architecture_hash` against the value the engine emitted into
 
 Current shape::
 
-    (768 -> 512)x2 -> 1
+    (768x8 -> 512)x2 -> 1x8
 
 Changing anything in this module without changing the header (or the reverse)
 makes every network this trainer exports fail to load, which is the intended
@@ -67,7 +67,68 @@ OUTPUT_INPUT_SIZE = PERSPECTIVE_COUNT * HIDDEN_SIZE
 
 # -- Output layer ---------------------------------------------------------
 
-OUTPUT_BUCKET_COUNT = 1
+#: Output heads selected by the total number of pieces on the board. Only the
+#: head changes: a position still activates the same features and fills the
+#: same accumulator, so the extra heads cost 8 x 1024 weights and nothing at
+#: all per evaluation. :data:`OUTPUT_BUCKET_TABLE` is what divides the piece
+#: counts, and this must equal the number of distinct values in it.
+OUTPUT_BUCKET_COUNT = 8
+
+#: What an output bucket index means, independent of how many there are.
+#:
+#: 1. The total number of pieces on the board, divided by
+#:    :data:`OUTPUT_BUCKET_TABLE`.
+#:
+#: The same argument that gives :data:`FEATURE_SET_VERSION` its keep, applied
+#: to the other end of the network: OUTPUT_BUCKET_COUNT is a dimension and is
+#: caught on its own, but re-tuning the table without changing how many buckets
+#: it uses would leave every size field identical and every output weight
+#: meaning something else. Mixed into :func:`architecture_hash`. Must match
+#: ``NeraChessNNUE::Architecture::OutputBucketVersion``.
+OUTPUT_BUCKET_VERSION = 1
+
+#: Total pieces on the board -> output head, mirroring
+#: ``NeraChessNNUE::Network::OutputBucketTable``::
+#:
+#:     pieces:  2-4  5-8  9-12 13-16 17-20 21-24 25-28 29-32
+#:     bucket:    0    1     2     3     4     5     6     7
+#:
+#: Four piece counts to a head, which divides 2..32 evenly. Indexed by the
+#: count itself rather than computing ``(count - 1) // 4`` so that counts 0 and
+#: 1 land in bucket 0; those are not legal positions, but the feature code
+#: tolerates a board with no king and the tests build them.
+OUTPUT_BUCKET_TABLE = (
+    0, 0, 0, 0, 0,  # 0-4 pieces
+    1, 1, 1, 1,     # 5-8
+    2, 2, 2, 2,     # 9-12
+    3, 3, 3, 3,     # 13-16
+    4, 4, 4, 4,     # 17-20
+    5, 5, 5, 5,     # 21-24
+    6, 6, 6, 6,     # 25-28
+    7, 7, 7, 7,     # 29-32
+)
+
+assert len(OUTPUT_BUCKET_TABLE) == 33, "the table is indexed by a piece count, 0..32"
+assert set(OUTPUT_BUCKET_TABLE) == set(range(OUTPUT_BUCKET_COUNT)), (
+    "OUTPUT_BUCKET_TABLE must map into [0, OUTPUT_BUCKET_COUNT) and use every bucket"
+)
+
+
+def output_bucket_of(piece_count: int) -> int:
+    """Output head for a position with ``piece_count`` pieces on the board.
+
+    The whole definition of the map. Mirrors
+    ``NeraChessNNUE::Network::OutputBucketOfPieceCount``; the two are checked
+    against each other through ``tests/feature_vectors.json``, which the engine
+    writes with the bucket it chose for each position.
+
+    In the 768 feature set the number of active features per perspective *is*
+    the piece count -- one feature per piece, kings included -- so a trainer
+    holding a collated batch can call this without going back to the position.
+    """
+    if piece_count < 0:
+        raise ValueError(f"piece count {piece_count} is negative")
+    return OUTPUT_BUCKET_TABLE[min(piece_count, len(OUTPUT_BUCKET_TABLE) - 1)]
 
 # -- Quantization ---------------------------------------------------------
 
@@ -130,6 +191,7 @@ def architecture_hash() -> int:
     mix(INPUT_BUCKET_COUNT)
     mix(HIDDEN_SIZE)
     mix(OUTPUT_BUCKET_COUNT)
+    mix(OUTPUT_BUCKET_VERSION)
     mix(QUANTIZATION_A)
     mix(QUANTIZATION_B)
     mix(EVAL_SCALE)

@@ -23,6 +23,7 @@ document is the operational side.
 | `scripts/match.py` | Python | Plays two networks against each other to see which is better |
 | `scripts/port_feature_set.py` | Python | Re-headers a pre-mirroring network to seed a run |
 | `scripts/expand_king_buckets.py` | Python | Tiles a one-bucket network across king buckets to seed a run |
+| `scripts/expand_output_buckets.py` | Python | Tiles a one-head network across output buckets to seed a run |
 
 Samples are plain text, one position per line:
 
@@ -148,6 +149,21 @@ depth: they must match exactly. A subtle question — did the bucket map, the
 canonicalization and the accumulator refresh all land correctly? — becomes a
 byte comparison, answered in seconds rather than by a twenty-hour run that
 comes back weaker for reasons nobody can name.
+
+Crossing the output-bucket boundary is the third, and
+`scripts/expand_output_buckets.py` is how:
+
+```sh
+python3 scripts/expand_output_buckets.py --input old.nnue --output seed.nnue
+```
+
+Exact for the same kind of reason, at the other end of the network: it copies
+the single `1024 -> 1` output layer into all eight heads, and if every head
+holds the same weights and the same bias then which head a position's piece
+count selects cannot change its score. Prove it the same way — the same `eval`
+integers and the same node counts, this time over a suite that reaches every
+head, which means positions spread across the whole range of material rather
+than across the board.
 
 Sample packs cannot be ported: they store extracted feature indices, and
 `PACK_VERSION` was bumped so an old one is refused rather than trained on.

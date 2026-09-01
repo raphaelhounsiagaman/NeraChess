@@ -15,14 +15,14 @@
 //
 // The current shape is:
 //
-//     (768x8 -> 512)x2 -> 1
+//     (768x8 -> 512)x2 -> 1x8
 //
-// with eight input buckets and one output bucket. Features are horizontally
+// with eight input buckets and eight output buckets. Features are horizontally
 // canonicalized on the perspective's own king, and that king's canonical
 // square then selects which of the eight feature-transformer matrices its
-// features index (see FeatureSetVersion below). Output buckets by material
-// count are the remaining intended step; that bucket dimension already exists
-// so that adding it does not require reshaping call sites. See docs/NNUE.md.
+// features index (see FeatureSetVersion below). The total number of pieces on
+// the board then selects which of the eight output heads reads the finished
+// accumulator (see OutputBucketVersion below). See docs/NNUE.md.
 
 namespace NeraChessNNUE::Architecture
 {
@@ -81,9 +81,30 @@ namespace NeraChessNNUE::Architecture
 
     // -- Output layer ------------------------------------------------------
 
-    // Number of output heads selected by a position property (piece count is
-    // the usual choice). One head means every position uses the same weights.
-    inline constexpr size_t OutputBucketCount = 1;
+    // Number of output heads selected by the total number of pieces on the
+    // board. One head would mean every position uses the same weights, which
+    // forces the opening and a four-piece endgame to share one function.
+    //
+    // Only the head changes: a position still activates the same features and
+    // fills the same accumulator, so the extra heads cost 8 x 1024 weights and
+    // nothing at all per evaluation. Network::OutputBucketTable is what divides
+    // the piece counts, and this must equal the number of distinct values in
+    // that table.
+    inline constexpr size_t OutputBucketCount = 8;
+
+    // What an output bucket index means, independent of how many there are.
+    //
+    //   1  the total number of pieces on the board, divided by the table in
+    //      Network::OutputBucketTable
+    //
+    // The same argument that gives FeatureSetVersion its keep, applied to the
+    // other end of the network: OutputBucketCount is a dimension and is caught
+    // on its own, but re-tuning OutputBucketTable without changing how many
+    // buckets it uses leaves every size field identical and every output weight
+    // meaning something else. Bump this when that happens. Mixed into
+    // ArchitectureHash(), so such a network is rejected at load time rather
+    // than read as though nothing changed.
+    inline constexpr uint16_t OutputBucketVersion = 1;
 
     // -- Quantization ------------------------------------------------------
 
@@ -141,6 +162,7 @@ namespace NeraChessNNUE::Architecture
         mix(InputBucketCount);
         mix(HiddenSize);
         mix(OutputBucketCount);
+        mix(OutputBucketVersion);
         mix(static_cast<uint64_t>(QuantizationA));
         mix(static_cast<uint64_t>(QuantizationB));
         mix(static_cast<uint64_t>(EvalScale));

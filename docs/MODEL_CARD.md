@@ -9,16 +9,38 @@ duplication is what let the repository carry two contradictory accounts at once.
 | Field | Value |
 | --- | --- |
 | Path | [`NeraChessApp/Resources/NNUE/nera.nnue`](../NeraChessApp/Resources/NNUE/nera.nnue) |
-| SHA-256 | `58202d2c2a3626b65a8111d3c57661c9d2e73b62b810d887929781c11e5d9ec8` |
-| Size | 6,294,578 bytes |
-| Generation | binpack-kingbuckets-005, epoch 24 |
-| Shipped in | accepted by the strength test; see Promotion evidence |
-| Architecture | `(768x8 -> 512)x2 -> 1`, 8 input buckets, 1 output bucket |
+| SHA-256 | `13497684411512261b4397792f7a0afcbaf5e57bfdd22572536a20793f5995ea` |
+| Size | 6,308,928 bytes |
+| Generation | binpack-kingbuckets-005 epoch 24, tiled across eight output heads |
+| Shipped in | **not yet promoted** — see "This is a seed" below |
+| Architecture | `(768x8 -> 512)x2 -> 1x8`, 8 input buckets, 8 output buckets |
 | Feature set | 3 — horizontally canonicalized, then bucketed on the own king |
-| Architecture hash | `0x30346d9d` |
+| Output bucket version | 1 — total piece count, four counts to a head |
+| Architecture hash | `0x03f59c85` |
 | Quantization | QA 255, QB 64, eval scale 400 |
 | Activation | Squared clipped ReLU |
-| Parent | binpack-mirrored-004 epoch 17, tiled into feature set 3 (see below) |
+| Parent | binpack-kingbuckets-005 epoch 24, tiled into eight output heads (see below) |
+
+### This is a seed
+
+The file above is **not a trained eight-head network.** It is
+`binpack-kingbuckets-005` epoch 24 with its single output head copied eight
+times by `NNUETraining/scripts/expand_output_buckets.py`. Every head holds the
+same weights, so whichever head a position's piece count selects computes what
+the one-head network computed: it plays exactly as its parent did, to the
+centipawn and to the node.
+
+That is the point of shipping it. The architecture hash moved when the output
+buckets landed, so the previous file no longer loads, and CI treats a network
+that fails to load as a failure rather than a skip. A seed that is provably
+equivalent keeps the branch honest — it costs nothing and it turns "did the
+bucket table, the piece count and the weight offset all land correctly?" into a
+comparison against the engine that came before, which is recorded under
+Promotion evidence.
+
+It has none of the capacity the heads exist to provide until it has been
+trained. The strength question for output buckets is open until a run and a
+sequential test answer it.
 
 Verify the file you have is the file described here:
 
@@ -168,7 +190,27 @@ in, the network is verifiable by checksum but not reproducible.
 
 ## Promotion evidence
 
-**This network cleared the bar.** The sequential strength test against `main`
+**This file has not cleared the bar, and does not need to.** It is a tiling of
+the network that did, so the evidence it carries is an equivalence rather than a
+strength result:
+
+- **26 positions spanning all eight output heads** — the pre-bucket engine at
+  `43297be` with `binpack-kingbuckets-005` epoch 24, and this branch's engine
+  with the seed, returned identical integers from `eval` for every one.
+- **12 depth-12 searches** across the same spread agreed on node count *and*
+  best move, which no accidental agreement of evaluations would produce.
+- `nnue_training.verify` agrees integer-for-integer with the engine on all 22
+  of its positions, for the seed and for random networks written from both
+  languages.
+
+The strength evidence below belongs to the parent, `binpack-kingbuckets-005`
+epoch 24, which this seed reproduces exactly. Output buckets earn a row of
+their own once a run has trained the heads apart and a sequential test has
+judged the result.
+
+### The parent's result
+
+**That network cleared the bar.** The sequential strength test against `main`
 returned *Accepted: improvement* after two of a possible seven stages:
 
 | Games | Result | Score | Elo | Interval | LLR |
@@ -238,8 +280,11 @@ and no current measurement places generation 61 on the scale used in
   claim this entry replaces. The search's pruning margins are denominated in
   centipawns, so this changes what they mean; that is a reason to retune them,
   and a reason not to read a strength result here as isolating the data change.
-- **One output head.** Output buckets by material count remain unbuilt; the
-  dimension exists with a count of 1.
+- **The output heads are untrained.** They exist, they are wired end to end and
+  the engine and the trainer agree on which one every position uses -- but all
+  eight hold identical weights, so the network has exactly the capacity its
+  parent had. What they are worth is a question for a training run and a
+  strength test.
 - **Strength is unmeasured against any external reference** since the NNUE
   migration.
 - **Its gain is measured against `main`, not against the world.** +31.4 Elo is

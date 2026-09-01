@@ -33,10 +33,17 @@ from .engine import UciEngine
 #: horizontal orientations, since a disagreement about which side of the d/e
 #: boundary a king is on would otherwise show up only for some positions.
 #:
-#: The last five carry the kings through the input buckets the first eight do
-#: not reach, for the same reason: the engine and the trainer each choose a
-#: bucket independently, and a disagreement about one of them is invisible
-#: until a king actually stands there.
+#: The five after those carry the kings through the input buckets the first
+#: eight do not reach, for the same reason: the engine and the trainer each
+#: choose a bucket independently, and a disagreement about one of them is
+#: invisible until a king actually stands there.
+#:
+#: The last nine do the same job for the *output* buckets, which the first
+#: eighteen leave three of empty. A head that was read from the wrong offset
+#: would evaluate every position it owns wrongly and no position it does not,
+#: so a suite that never reaches a head cannot see it. Two of them sit either
+#: side of the 28/29-piece boundary, where an off-by-one between the engine's
+#: table and the trainer's would show up and nowhere else.
 DEFAULT_POSITIONS = [
     "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1",
     "4k3/8/8/8/3P4/8/8/4K3 w - - 0 1",
@@ -51,6 +58,15 @@ DEFAULT_POSITIONS = [
     "8/8/8/1k6/6K1/8/8/8 w - - 0 1",
     "8/8/8/8/8/3k4/8/1K6 w - - 0 1",
     "8/7K/8/8/8/8/k7/8 w - - 0 1",
+    "rnbqkbnr/3ppppp/8/8/8/8/PPPPPPPP/RNBQKBNR b KQkq - 0 1",
+    "rnbqkbnr/4pppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1",
+    "r1bqkbnr/3ppppp/8/8/8/8/PPPPPPP1/RNBQKBNR w KQkq - 0 1",
+    "r1bqk2r/pp3ppp/2n5/3p4/3P4/2N5/PP3PPP/R1BQK2R w KQkq - 0 1",
+    "r1bqk2r/pp3pp1/2n5/3p4/3P4/2N5/PP3PP1/R2QK2R b KQkq - 0 1",
+    "r3k2r/pp3ppp/8/8/8/8/PP3PPP/R3K2R w KQkq - 0 1",
+    "r3k2r/pp3ppp/8/8/8/8/5PPP/4K2R b Kkq - 0 1",
+    "4k3/4pp2/8/8/8/8/5P2/4K3 w - - 0 1",
+    "4k3/5p2/8/8/8/8/5P2/4K3 b - - 0 1",
 ]
 
 
@@ -68,7 +84,14 @@ class Comparison:
 def reference_evaluation(parameters: serialize.NetworkParameters, fen: str) -> int:
     """Evaluates a FEN with the reference integer forward pass."""
     own, their = feat.both_perspectives(fen)
-    return quant.forward(parameters, own, their)
+
+    # One feature per piece per perspective, so the count of a perspective's
+    # active features is the number of pieces on the board -- the same quantity
+    # Network::OutputBucketOf popcounts out of the occupancy. Omitting this
+    # would not fail loudly: it would compare head 0 for every position and
+    # report that a network with eight heads verifies.
+    bucket = arch.output_bucket_of(len(own))
+    return quant.forward(parameters, own, their, bucket)
 
 
 def compare(

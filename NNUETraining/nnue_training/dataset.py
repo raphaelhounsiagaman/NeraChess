@@ -26,6 +26,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Iterable, Iterator, Sequence
 
+from . import architecture as arch
 from . import features as feat
 from .atomic import atomic_write
 
@@ -354,13 +355,14 @@ class FeatureCache:
         scores: list[float] = []
         results: list[float] = []
 
+        output_buckets: list[int] = []
+
         for sample_index in order:
             own_offsets.append(len(own_indices))
-            own_indices.extend(
-                self.own_indices[
-                    self.own_offsets[sample_index] : self.own_offsets[sample_index + 1]
-                ]
-            )
+            start = self.own_offsets[sample_index]
+            end = self.own_offsets[sample_index + 1]
+            own_indices.extend(self.own_indices[start:end])
+            output_buckets.append(arch.output_bucket_of(end - start))
             their_offsets.append(len(their_indices))
             their_indices.extend(
                 self.their_indices[
@@ -377,6 +379,7 @@ class FeatureCache:
             their_offsets=their_offsets,
             scores=scores,
             results=results,
+            output_buckets=output_buckets,
         )
 
     def batches(
@@ -427,6 +430,12 @@ class Batch:
     their_offsets: list[int]
     scores: list[float]
     results: list[float]
+    #: Which output head each sample belongs to. Derived from the number of
+    #: active features rather than carried alongside the samples, because in
+    #: the 768 feature set those are the same number: one feature per piece per
+    #: perspective, kings included. That is also what lets the pack format stay
+    #: at version 3 -- there is nothing new to store.
+    output_buckets: list[int]
 
     def __len__(self) -> int:
         return len(self.scores)
@@ -443,10 +452,13 @@ def collate(samples: Sequence[Sample]) -> Batch:
     their_indices: list[int] = []
     their_offsets: list[int] = []
 
+    output_buckets: list[int] = []
+
     for sample in samples:
         own, their = sample.perspectives()
         own_offsets.append(len(own_indices))
         own_indices.extend(own)
+        output_buckets.append(arch.output_bucket_of(len(own)))
         their_offsets.append(len(their_indices))
         their_indices.extend(their)
 
@@ -457,6 +469,7 @@ def collate(samples: Sequence[Sample]) -> Batch:
         their_offsets=their_offsets,
         scores=[sample.score for sample in samples],
         results=[sample.result for sample in samples],
+        output_buckets=output_buckets,
     )
 
 

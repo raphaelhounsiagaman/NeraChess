@@ -7,7 +7,9 @@
 
 #include "BoardState.h"
 
+#include <array>
 #include <cstddef>
+#include <cstdint>
 #include <filesystem>
 #include <span>
 #include <vector>
@@ -60,9 +62,45 @@ namespace NeraChessNNUE
         Score Forward(const Accumulator& accumulator, Perspective sideToMove,
             size_t outputBucket = 0) const;
 
-        // Output head for a position. Constant while OutputBucketCount is 1;
-        // the usual refinement is to bucket by total piece count so endgames
-        // and middlegames get separate heads.
+        // Total pieces on the board -> output head.
+        //
+        //   pieces:  2-4  5-8  9-12 13-16 17-20 21-24 25-28 29-32
+        //   bucket:    0    1     2     3     4     5     6     7
+        //
+        // Four piece counts to a head, which divides 2..32 evenly and is the
+        // division every engine that does this arrived at. Material is a proxy
+        // for phase and nothing else: it says how much is left on the board,
+        // which is what makes king activity and a passed pawn mean one thing
+        // in the opening and another with four pieces left.
+        //
+        // The table is indexed by the piece count itself rather than computing
+        // (count - 1) / 4, so counts 0 and 1 land in bucket 0 instead of
+        // underflowing an unsigned subtraction. Those are not legal positions,
+        // but FeatureSet::ViewOf deliberately tolerates a board with no king
+        // and the test suite builds them.
+        static constexpr std::array<uint8_t, 33> OutputBucketTable = { {
+            0, 0, 0, 0, 0, // 0-4 pieces
+            1, 1, 1, 1,    // 5-8
+            2, 2, 2, 2,    // 9-12
+            3, 3, 3, 3,    // 13-16
+            4, 4, 4, 4,    // 17-20
+            5, 5, 5, 5,    // 21-24
+            6, 6, 6, 6,    // 25-28
+            7, 7, 7, 7,    // 29-32
+        } };
+
+        // Output head for a piece count. This is the whole definition of the
+        // map; OutputBucketOf is this applied to a board. The trainer mirrors
+        // it in nnue_training.architecture.output_bucket_of, and the two are
+        // checked against each other through the shared feature-vector fixture.
+        static constexpr size_t OutputBucketOfPieceCount(size_t pieceCount)
+        {
+            return OutputBucketTable[pieceCount < OutputBucketTable.size()
+                    ? pieceCount
+                    : OutputBucketTable.size() - 1];
+        }
+
+        // Output head for a position, from the total number of pieces on it.
         static size_t OutputBucketOf(const NeraChessEngine::BoardState& state);
 
     private:
@@ -80,4 +118,32 @@ namespace NeraChessNNUE
         // [output bucket], pre-scaled by QuantizationA * QuantizationB.
         std::vector<Weight> m_OutputBias;
     };
+
+    // The table and Architecture::OutputBucketCount are two statements of the
+    // same fact -- the constant sizes the network, the table decides what the
+    // heads mean -- so the same check the input buckets get applies here: a
+    // layout that left a head unreachable would ship weights nothing can read,
+    // and a value out of range would index past the output-weight block.
+    namespace Detail
+    {
+        constexpr bool EveryOutputBucketIsUsed()
+        {
+            std::array<bool, Architecture::OutputBucketCount> seen{};
+            for (const uint8_t bucket : Network::OutputBucketTable)
+            {
+                if (bucket >= Architecture::OutputBucketCount)
+                    return false;
+                seen[bucket] = true;
+            }
+            for (const bool used : seen)
+            {
+                if (!used)
+                    return false;
+            }
+            return true;
+        }
+    }
+
+    static_assert(Detail::EveryOutputBucketIsUsed(),
+        "OutputBucketTable must map into [0, OutputBucketCount) and use every bucket");
 }

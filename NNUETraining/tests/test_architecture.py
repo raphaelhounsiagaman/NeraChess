@@ -37,6 +37,14 @@ PRE_MIRRORING_ARCHITECTURE_HASH = 1_407_766_679
 #: it is what proves the two generations cannot be confused.
 PRE_KING_BUCKET_ARCHITECTURE_HASH = 1_184_502_749
 
+#: The hash this architecture had before output buckets, when one copy of the
+#: output layer read every position however much material was on the board.
+#: Like king buckets this moves a dimension, so the size fields would catch it
+#: too -- but the hash is what such a network carries, and every generation
+#: that ever shipped is pinned here so none of them can be read as the present
+#: one.
+PRE_OUTPUT_BUCKET_ARCHITECTURE_HASH = 808_742_301
+
 
 class ArchitectureHashTest(unittest.TestCase):
     def test_matches_the_engine(self) -> None:
@@ -59,6 +67,7 @@ class ArchitectureHashTest(unittest.TestCase):
         for name, previous in (
             ("pre-mirroring", PRE_MIRRORING_ARCHITECTURE_HASH),
             ("pre-king-bucket", PRE_KING_BUCKET_ARCHITECTURE_HASH),
+            ("pre-output-bucket", PRE_OUTPUT_BUCKET_ARCHITECTURE_HASH),
         ):
             with self.subTest(feature_set=name):
                 self.assertNotEqual(
@@ -123,6 +132,72 @@ class ArchitectureInvariantTest(unittest.TestCase):
     def test_bucket_counts_are_positive(self) -> None:
         self.assertGreaterEqual(arch.INPUT_BUCKET_COUNT, 1)
         self.assertGreaterEqual(arch.OUTPUT_BUCKET_COUNT, 1)
+
+    def test_the_output_bucket_table_accounts_for_every_output_bucket(self) -> None:
+        # The same argument as for the king buckets, at the other end of the
+        # network. OUTPUT_BUCKET_COUNT sizes the output layer; the table
+        # decides what the heads mean.
+        self.assertEqual(
+            set(arch.OUTPUT_BUCKET_TABLE), set(range(arch.OUTPUT_BUCKET_COUNT))
+        )
+        self.assertEqual(len(arch.OUTPUT_BUCKET_TABLE), 33)
+
+    def test_the_output_bucket_map_divides_the_legal_piece_counts(self) -> None:
+        # Stated as arithmetic rather than as the literal table, so the two
+        # say the same thing independently. Every legal position has between
+        # two and thirty-two pieces.
+        for pieces in range(2, 33):
+            with self.subTest(pieces=pieces):
+                self.assertEqual(arch.output_bucket_of(pieces), (pieces - 1) // 4)
+
+        # Every head is reachable, monotone in material, and nothing outside
+        # the table's domain escapes it.
+        buckets = [arch.output_bucket_of(pieces) for pieces in range(2, 33)]
+        self.assertEqual(set(buckets), set(range(arch.OUTPUT_BUCKET_COUNT)))
+        self.assertEqual(buckets, sorted(buckets))
+        self.assertEqual(arch.output_bucket_of(0), 0)
+        self.assertEqual(arch.output_bucket_of(64), arch.OUTPUT_BUCKET_COUNT - 1)
+        with self.assertRaises(ValueError):
+            arch.output_bucket_of(-1)
+
+    def test_the_output_bucket_map_matches_the_engine(self) -> None:
+        # The engine writes the head it chose for each fixture position, so
+        # this compares the two implementations rather than comparing this one
+        # against itself. It also proves the count of a perspective's active
+        # features is the piece count -- which is the identity the binpack
+        # trainer relies on to derive the bucket without an ABI change.
+        fixture = json.loads(FIXTURE.read_text(encoding="utf-8"))
+        seen = set()
+        for entry in fixture["positions"]:
+            with self.subTest(fen=entry["fen"], perspective=entry["perspective"]):
+                perspective = (
+                    feat.Perspective.WHITE
+                    if entry["perspective"] == "white"
+                    else feat.Perspective.BLACK
+                )
+                pieces = len(feat.active_features(entry["fen"], perspective))
+                self.assertEqual(arch.output_bucket_of(pieces), entry["outputBucket"])
+                seen.add(entry["outputBucket"])
+        self.assertEqual(
+            seen,
+            set(range(arch.OUTPUT_BUCKET_COUNT)),
+            "the fixture leaves an output head unchecked; regenerate it with "
+            "--nnue-feature-vectors after adding positions that reach it",
+        )
+
+    def test_the_output_bucket_version_is_part_of_the_hash(self) -> None:
+        # Re-tuning OUTPUT_BUCKET_TABLE without changing how many heads it
+        # uses leaves every size field identical, so this constant is the only
+        # thing that can tell the two layouts apart.
+        original = arch.OUTPUT_BUCKET_VERSION
+        try:
+            arch.OUTPUT_BUCKET_VERSION = original + 1
+            self.assertNotEqual(
+                arch.architecture_hash(),
+                json.loads(FIXTURE.read_text(encoding="utf-8"))["architectureHash"],
+            )
+        finally:
+            arch.OUTPUT_BUCKET_VERSION = original
 
     def test_the_king_bucket_table_accounts_for_every_input_bucket(self) -> None:
         # INPUT_BUCKET_COUNT sizes the network; the table decides what the

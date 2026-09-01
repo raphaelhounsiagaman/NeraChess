@@ -35,7 +35,7 @@ and only for what actually changed.
 ## Architecture
 
 ```
-(768x8 -> 512)x2 -> 1
+(768x8 -> 512)x2 -> 1x8
 ```
 
 | Property | Value | Why |
@@ -44,14 +44,16 @@ and only for what actually changed.
 | Feature set version | 3 | Horizontal canonicalization, then a king bucket |
 | Input buckets | 8 | The own king's canonical square picks the weight matrix |
 | Hidden size | 512 per perspective | 1024 values reach the output layer |
-| Output buckets | 1 | One head for every position |
+| Output buckets | 8 | The total piece count picks the output head |
+| Output bucket version | 1 | Piece count, divided by `Network::OutputBucketTable` |
 | Activation | Squared clipped ReLU | `clamp(x, 0, 1)^2` |
 | Quantization | QA 255, QB 64 | Feature weights at 255, output weights at 64 |
 | Eval scale | 400 | Maps the network output onto centipawns |
 
-That comes to 3,147,265 parameters and a 6,294,578-byte file: `8 x 768 x 512`
-feature weights, 512 feature biases shared across the buckets, 1024 output
-weights and one output bias, at two bytes each plus a 48-byte header.
+That comes to 3,154,440 parameters and a 6,308,928-byte file: `8 x 768 x 512`
+feature weights, 512 feature biases shared across the buckets, `8 x 1024`
+output weights and eight output biases, at two bytes each plus a 48-byte
+header.
 
 The single source of truth is
 [`NeraChessNNUE/src/NetworkArchitecture.h`](../NeraChessNNUE/src/NetworkArchitecture.h),
@@ -76,11 +78,19 @@ things, at eight times the feature-transformer parameters and no extra work
 per evaluation: a position still activates the same 32 features, they simply
 index a different block.
 
-The output-bucket dimension still exists with a count of 1, so adding
-material-based output heads later changes `Network::OutputBucketOf` rather
-than every call site.
+Output buckets answer the other half of that question, and cost almost nothing
+to ask. The board at move 8 and the board with four pieces left are not the same
+evaluation problem -- king activity is a liability in one and the main asset in
+the other, and a passed pawn is worth a fraction of a pawn or the game -- and a
+single output layer has to average those meanings together exactly as one
+feature matrix had to average king safety. Eight heads let it say eight
+different things for `8 x 1024` extra weights, 0.2% of the parameter count, and
+no extra work per evaluation at all: a position fills the same accumulator and
+then one head reads it instead of another. The dimension had been carried at a
+count of 1 since the format was written, so turning it on changed
+`Network::OutputBucketOf` and not a single call site.
 
-### The bucket map
+### The king-bucket map
 
 Horizontal canonicalization already puts a perspective's own king on files
 e-h, so the map's domain is 32 squares rather than 64, and the two mechanisms
@@ -116,6 +126,47 @@ sizes the network, the table decides what the buckets mean -- so a
 unused. Re-tuning the table without changing how many buckets it uses leaves
 every size field identical, which is exactly the case `FeatureSetVersion`
 exists to catch: bump it.
+
+### The output-bucket map
+
+`Network::OutputBucketTable` is indexed by the total number of pieces on the
+board:
+
+```
+   pieces:  2-4  5-8  9-12 13-16 17-20 21-24 25-28 29-32
+   head:      0    1     2     3     4     5     6     7
+```
+
+Four piece counts to a head, which divides 2..32 evenly and is the division
+every engine that does this arrived at. Unlike the king-bucket table there is
+nothing to tune away from uniform here: material is a one-dimensional quantity
+and the corpus covers it densely. `--data-stats` reports the share of positions
+each head would train, and over 2M positions of `nodes5000pv2_UHO` the thinnest
+are head 7 at 1.7% and head 0 at 2.5% -- small, but nothing like the far-rank
+king buckets that the corpus barely reaches at all.
+
+The table is indexed by the piece count rather than computing `(count - 1) / 4`
+so that counts 0 and 1 land in head 0 instead of underflowing an unsigned
+subtraction. Those are not legal positions, but `FeatureSet::ViewOf`
+deliberately tolerates a board with no king and the test suite builds them.
+
+A `static_assert` requires the table to map into range and to leave no head
+unused, for the same reason `KingBucketTable` carries one. And re-tuning the
+table without changing how many heads it uses would leave every size field
+identical and every output weight meaning something else, which is the case
+`Architecture::OutputBucketVersion` exists to catch: it is mixed into the
+architecture hash and nothing else reads it.
+
+The trainer never sees a board. It mirrors the map in
+`nnue_training.architecture.output_bucket_of` and reaches it through an
+identity the 768 feature set happens to provide: a perspective activates
+exactly one feature per piece, so the count of active features in a collated
+batch *is* the piece count the engine popcounts out of the occupancy. That is
+why the binpack loader needed no new field and no ABI bump to train eight
+heads. `neratrain.tests.test_output_buckets` checks the identity against
+decoded positions rather than trusting it, and the engine writes the head it
+chose for every fixture position into `tests/feature_vectors.json`, so the two
+maps are compared against each other and not each against itself.
 
 ### Perspectives
 
@@ -218,10 +269,16 @@ would leave every size identical and every weight meaning something else. The
 and the architecture hash covers what the weights mean.
 
 This is tested from both directions: `TestNnueFeatureIndexing`,
-`TestNnueHorizontalMirroring`, `TestNnueKingBuckets` and
-`TestNnueOrientationRefresh` in the C++ suite, and `SquareMirroringTest`,
-`KingOrientationTest`, `HorizontalCanonicalizationTest` and `KingBucketTest` in
-the Python one.
+`TestNnueHorizontalMirroring`, `TestNnueKingBuckets`,
+`TestNnueOutputBuckets` and `TestNnueOrientationRefresh` in the C++ suite, and
+`SquareMirroringTest`, `KingOrientationTest`, `HorizontalCanonicalizationTest`
+and `KingBucketTest` in the Python one.
+
+`Architecture::OutputBucketVersion` says the same thing about the output heads
+that `FeatureSetVersion` says about the feature indices, and exists for the same
+reason: the count is a dimension the size fields catch on their own, but the
+*map* is not, and re-dividing the piece counts among the same eight heads would
+otherwise be invisible.
 
 ---
 
@@ -319,6 +376,9 @@ shipped network means overwriting that file.
 - **NEON, SSE2, and AVX2 kernels**, each checked bit-for-bit against scalar
 - The PyTorch model, loss, batching, and training loop
 - Quantization and export
+- **Eight input buckets** on the perspective's own king, and **eight output
+  buckets** on the total piece count, with each map mirrored in the trainer and
+  cross-checked against the engine's own choice per position
 
 ### Not done
 
@@ -333,8 +393,8 @@ shipped network means overwriting that file.
    now a training input rather than an accident, but the search's pruning
    margins are still denominated in centipawns and have not been retuned against
    it.
-3. **Architecture growth** — output buckets, a wider hidden layer
-   — each worth A/B testing against the previous network rather than assuming.
+3. **Architecture growth** — a wider hidden layer, more input buckets — each
+   worth A/B testing against the previous network rather than assuming.
 
 ---
 

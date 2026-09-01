@@ -157,21 +157,16 @@ namespace NeraChessNNUE
 
     size_t Network::OutputBucketOf(const BoardState& state)
     {
-        if constexpr (Architecture::OutputBucketCount == 1)
-        {
-            (void)state;
-            return 0;
-        }
-        else
-        {
-            // TODO(nnue): bucket by total piece count once more than one head
-            // exists, using the same formula as the trainer.
-            Bitboard occupancy = 0;
-            for (const Bitboard pieces : state.pieceBitboards)
-                occupancy |= pieces;
-            const size_t pieceCount = BitUtil::PopCnt(occupancy);
-            return (pieceCount - 2) * Architecture::OutputBucketCount / 30;
-        }
+        Bitboard occupancy = 0;
+        for (const Bitboard pieces : state.pieceBitboards)
+            occupancy |= pieces;
+
+        // The piece bitboards are disjoint by construction, so the population
+        // count of their union is the number of pieces on the board. That is
+        // also the number of features each perspective activates, which is how
+        // the trainer derives the same bucket from a batch it has already
+        // built rather than from a position it no longer has.
+        return OutputBucketOfPieceCount(BitUtil::PopCnt(occupancy));
     }
 
     Score Network::Forward(const Accumulator& accumulator, Perspective sideToMove,
