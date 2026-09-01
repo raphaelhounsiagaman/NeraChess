@@ -12,7 +12,7 @@ duplication is what let the repository carry two contradictory accounts at once.
 | SHA-256 | `58202d2c2a3626b65a8111d3c57661c9d2e73b62b810d887929781c11e5d9ec8` |
 | Size | 6,294,578 bytes |
 | Generation | binpack-kingbuckets-005, epoch 24 |
-| Shipped in | candidate, not yet promoted |
+| Shipped in | accepted by the strength test; see Promotion evidence |
 | Architecture | `(768x8 -> 512)x2 -> 1`, 8 input buckets, 1 output bucket |
 | Feature set | 3 — horizontally canonicalized, then bucketed on the own king |
 | Architecture hash | `0x30346d9d` |
@@ -168,11 +168,29 @@ in, the network is verifiable by checksum but not reproducible.
 
 ## Promotion evidence
 
-**This network has not been promoted.** Its strength test against `main` is
-running; until it returns a verdict, the only evidence for king buckets is a
-validation curve, and this project's own record is that validation loss and
-Elo are different quantities. Its parent moved validation 4.2% and the games
-+7.3 Elo with an interval spanning zero.
+**This network cleared the bar.** The sequential strength test against `main`
+returned *Accepted: improvement* after two of a possible seven stages:
+
+| Games | Result | Score | Elo | Interval | LLR |
+| --- | --- | --- | --- | --- | --- |
+| 2000 | 671-491-838 | 0.5450 | +31.4 | [+21.0, +41.7] | +5.26 |
+
+Candidate `4ff61df` against baseline `140fb22`, 10+0.1, one thread and 128 MiB
+hash per engine, `UHO_4060_v4.epd`, `allow_network_change: true`. Workflow run
+33430016147.
+
+The verdict is what carries the stated 5% error rate; the interval describes
+the games played and, because a sequential test inspects the data repeatedly,
+carries no guarantee on its own. LLR +5.26 against boundaries of ±2.94 is a
+clear crossing rather than a marginal one.
+
+A local match under different conditions agrees: 400 games at a fixed 20,000
+nodes per move, candidate 53.9%, +27 Elo [+6, +48] by pair bootstrap. That the
+two agree across different time models and openings is worth more than either
+figure alone.
+
+The gain is net of what buckets cost — roughly 2% of nodes per second even with
+the refresh cache — so the evaluation earned back more than the speed it spent.
 
 Its parent, `binpack-mirrored-004` epoch 17, was measured against the commit
 `main` was at before horizontal mirroring, over 1,000 games with the search
@@ -224,11 +242,9 @@ and no current measurement places generation 61 on the scale used in
   dimension exists with a count of 1.
 - **Strength is unmeasured against any external reference** since the NNUE
   migration.
-- **Its own gain is unmeasured.** The strength test against `main` has not
-  returned. Everything currently known about king buckets is a 4.0% validation
-  improvement over the previous best, and the immediately preceding generation
-  is a standing reminder that a validation gain of that size bought an Elo
-  interval spanning zero.
+- **Its gain is measured against `main`, not against the world.** +31.4 Elo is
+  a statement about this engine's previous network under one time control, not
+  a rating. The bar it cleared is the project's own.
 - **Rarely-visited buckets are barely trained.** A king reaches the far ranks
   in a small fraction of positions, so buckets 6 and 7 saw far less gradient
   than 0 and 1 and remain close to the tiled seed. The capacity is allocated
