@@ -791,10 +791,12 @@ namespace NeraChessSearch
             if (inCheck || !IsQuiet(move))
                 candidates.push(move);
         }
-        SortMoves(board, candidates, ply, ttMove);
+        std::array<int32_t, 218> seeValues{};
+        SortMoves(board, candidates, ply, ttMove, 0, &seeValues);
 
-        for (const Move move : candidates)
+        for (size_t i = 0; i < candidates.size(); ++i)
         {
+            const Move move = candidates[i];
             if (!inCheck && !(move.GetMoveFlags() & MoveFlags::IS_PROMOTION))
             {
                 const Piece victim = (move.GetMoveFlags() & MoveFlags::IS_EN_PASSANT)
@@ -802,7 +804,7 @@ namespace NeraChessSearch
                         ? PieceType::BLACK_PAWN : PieceType::WHITE_PAWN)
                     : board.GetPiece(move.GetTargetSquare());
                 const bool deltaPrunable = standPat + PieceValue(victim) + 200 < alpha;
-                const bool seePrunable = MoveOrdering::StaticExchangeEvaluation(board, move) < -50;
+                const bool seePrunable = seeValues[i] < -50;
 
                 // Deciding this before MakeSearchMove avoids paying for the accumulator
                 // push and a full legal-move generation of the child position on a move
@@ -846,30 +848,43 @@ namespace NeraChessSearch
     }
 
     void SearchEngine::SortMoves(const ChessBoard& board, MoveList<218>& moves,
-        int ply, Move ttMove, Move previousMove)
+        int ply, Move ttMove, Move previousMove, std::array<int32_t, 218>* seeValues)
     {
         std::array<int32_t, 218> scores{};
+        std::array<int32_t, 218> see{};
         const Move counterMove = GetCounterMove(previousMove);
         const uint8_t side = board.GetBoardState().HasFlag(BoardStateFlags::WhiteToMove) ? 0 : 1;
         for (size_t i = 0; i < moves.size(); ++i)
         {
             const Move move = moves[i];
             int32_t score = 0;
-            if (move == ttMove)
+            const bool isTTMove = move == ttMove;
+            const bool isCapture = move.GetMoveFlags() & MoveFlags::IS_CAPTURE;
+
+            // The TT move's ordering score is fixed regardless of its SEE, so its
+            // exchange is only evaluated here when the caller (quiescence pruning)
+            // asked for every candidate's value; otherwise it stays unscored, same
+            // as before this value was made available to callers.
+            if (isCapture && (!isTTMove || seeValues))
+            {
+                const Piece victim = (move.GetMoveFlags() & MoveFlags::IS_EN_PASSANT)
+                    ? Piece(move.GetMovePiece().IsWhite() ? PieceType::BLACK_PAWN : PieceType::WHITE_PAWN)
+                    : board.GetPiece(move.GetTargetSquare());
+                const int captureSee = MoveOrdering::StaticExchangeEvaluation(board, move);
+                see[i] = captureSee;
+                if (!isTTMove)
+                {
+                    score += (captureSee >= 0 ? 10'000'000 : 5'000'000) +
+                        PieceValue(victim) * 16 - PieceValue(move.GetMovePiece()) + captureSee;
+                }
+            }
+
+            if (isTTMove)
             {
                 scores[i] = 20'000'000;
                 continue;
             }
 
-            if (move.GetMoveFlags() & MoveFlags::IS_CAPTURE)
-            {
-                const Piece victim = (move.GetMoveFlags() & MoveFlags::IS_EN_PASSANT)
-                    ? Piece(move.GetMovePiece().IsWhite() ? PieceType::BLACK_PAWN : PieceType::WHITE_PAWN)
-                    : board.GetPiece(move.GetTargetSquare());
-                const int see = MoveOrdering::StaticExchangeEvaluation(board, move);
-                score += (see >= 0 ? 10'000'000 : 5'000'000) +
-                    PieceValue(victim) * 16 - PieceValue(move.GetMovePiece()) + see;
-            }
             if (move.GetMoveFlags() & MoveFlags::IS_PROMOTION)
                 score += 9'000'000 + PieceValue(move.GetPromoPiece());
 
@@ -890,16 +905,22 @@ namespace NeraChessSearch
         {
             const Move move = moves[i];
             const int32_t score = scores[i];
+            const int32_t moveSee = see[i];
             size_t j = i;
             while (j > 0 && scores[j - 1] < score)
             {
                 scores[j] = scores[j - 1];
+                see[j] = see[j - 1];
                 moves[j] = moves[j - 1];
                 --j;
             }
             scores[j] = score;
+            see[j] = moveSee;
             moves[j] = move;
         }
+
+        if (seeValues)
+            *seeValues = see;
     }
 
     void SearchEngine::UpdatePrincipalVariation(int ply, Move move)
