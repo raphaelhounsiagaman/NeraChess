@@ -31,37 +31,42 @@ namespace NeraChessSearch::MoveOrdering
             return occupancy;
         }
 
-        Bitboard AttackersTo(uint8_t target, bool white, Bitboard occupancy,
-            const std::array<Bitboard, 12>& pieces)
+        // Pawn/knight/king attacks on `target` depend only on where those pieces started, not on
+        // what's blocking anything, so unlike the sliding attacks below they never need to be
+        // re-derived as the exchange proceeds -- computed once per colour and then just masked by
+        // the shrinking `occupancy` to drop pieces already used as attackers.
+        Bitboard NonSliderAttackers(uint8_t target, bool white, const std::array<Bitboard, 12>& pieces)
         {
             const uint8_t offset = white ? 0 : 6;
             const Bitboard pawnAttackers = white
                 ? MoveGenerator::s_BlackPawnAttackMasks[target]
                 : MoveGenerator::s_WhitePawnAttackMasks[target];
-            // The magic tables are built from CalculatePossible*Moves over every blocker
-            // subset, so these lookups return the same sets without walking the rays.
-            // Static exchange evaluation calls this once per attacker per capture, which
-            // makes it one of the hottest functions in move ordering.
-            const Bitboard diagonalAttacks = MoveGenerator::LookupBishopAttacks(target, occupancy);
-            const Bitboard straightAttacks = MoveGenerator::LookupRookAttacks(target, occupancy);
-
             return (pawnAttackers & pieces[offset + PieceType::WHITE_PAWN]) |
                 (MoveGenerator::s_KnightMoveMask[target] & pieces[offset + PieceType::WHITE_KNIGHT]) |
-                (diagonalAttacks & (pieces[offset + PieceType::WHITE_BISHOP] |
-                    pieces[offset + PieceType::WHITE_QUEEN])) |
-                (straightAttacks & (pieces[offset + PieceType::WHITE_ROOK] |
-                    pieces[offset + PieceType::WHITE_QUEEN])) |
                 (MoveGenerator::s_KingMoveMask[target] & pieces[offset + PieceType::WHITE_KING]);
         }
 
+        // `diagonalAttacks`/`straightAttacks` are the magic-table sliding attacks from `target`
+        // against the caller's current `occupancy` -- the only part of the attacker set that a
+        // vacated square can change, so the caller re-derives just those two lookups per exchange
+        // step instead of the whole attacker set. `pieces` is never mutated as attackers are used;
+        // masking every candidate by `occupancy` is what keeps a used piece's stale bitboard entry
+        // from being picked again, without the cost of copying and clearing twelve bitboards.
         Attacker LeastValuableAttacker(uint8_t target, bool white, Bitboard occupancy,
-            const std::array<Bitboard, 12>& pieces)
+            const std::array<Bitboard, 12>& pieces, Bitboard ownNonSliderAttackers,
+            Bitboard opponentNonSliderAttackers, Bitboard diagonalAttacks, Bitboard straightAttacks)
         {
             const uint8_t offset = white ? 0 : 6;
-            const Bitboard allAttackers = AttackersTo(target, white, occupancy, pieces);
+            const Bitboard allAttackers = (ownNonSliderAttackers |
+                (diagonalAttacks & (pieces[offset + PieceType::WHITE_BISHOP] |
+                    pieces[offset + PieceType::WHITE_QUEEN])) |
+                (straightAttacks & (pieces[offset + PieceType::WHITE_ROOK] |
+                    pieces[offset + PieceType::WHITE_QUEEN]))) &
+                occupancy;
+
             for (uint8_t type = 0; type < 6; ++type)
             {
-                Bitboard candidates = allAttackers & pieces[offset + type];
+                const Bitboard candidates = allAttackers & pieces[offset + type];
                 if (!candidates)
                     continue;
 
@@ -69,7 +74,18 @@ namespace NeraChessSearch::MoveOrdering
                 if (type == PieceType::WHITE_KING)
                 {
                     const Bitboard occupancyWithoutKing = occupancy & ~(1ULL << square);
-                    if (AttackersTo(target, !white, occupancyWithoutKing, pieces))
+                    const Bitboard oppositeDiagonal =
+                        MoveGenerator::LookupBishopAttacks(target, occupancyWithoutKing);
+                    const Bitboard oppositeStraight =
+                        MoveGenerator::LookupRookAttacks(target, occupancyWithoutKing);
+                    const uint8_t oppositeOffset = white ? 6 : 0;
+                    const Bitboard opponentAttackers = (opponentNonSliderAttackers |
+                        (oppositeDiagonal & (pieces[oppositeOffset + PieceType::WHITE_BISHOP] |
+                            pieces[oppositeOffset + PieceType::WHITE_QUEEN])) |
+                        (oppositeStraight & (pieces[oppositeOffset + PieceType::WHITE_ROOK] |
+                            pieces[oppositeOffset + PieceType::WHITE_QUEEN]))) &
+                        occupancyWithoutKing;
+                    if (opponentAttackers)
                         return {};
                 }
                 return { static_cast<uint8_t>(offset + type), square };
@@ -89,7 +105,7 @@ namespace NeraChessSearch::MoveOrdering
         }
     }
 
-    int StaticExchangeEvaluation(const ChessBoard& board, Move move)
+    int StaticExchangeEvaluation(const ChessBoard& board, Move move, Piece capturedPiece)
     {
         const uint8_t flags = move.GetMoveFlags();
         const uint8_t target = move.GetTargetSquare();
@@ -97,24 +113,18 @@ namespace NeraChessSearch::MoveOrdering
         const uint8_t movingPiece = move.GetMovePiece();
         const bool whiteMoved = movingPiece < 6;
 
-        std::array<Bitboard, 12> pieces = board.GetBoardState().pieceBitboards;
+        // `pieces` is read-only for the whole exchange: only `occupancy` is mutated as attackers
+        // are consumed, and every attacker lookup below masks by it, so a stale entry for an
+        // already-used piece can never be picked again (see LeastValuableAttacker).
+        const std::array<Bitboard, 12>& pieces = board.GetBoardState().pieceBitboards;
         Bitboard occupancy = Occupancy(pieces);
 
-        uint8_t capturedPiece = PieceType::NO_PIECE;
         if (flags & MoveFlags::IS_EN_PASSANT)
         {
-            capturedPiece = whiteMoved ? PieceType::BLACK_PAWN : PieceType::WHITE_PAWN;
             const uint8_t capturedSquare = whiteMoved ? target - 8 : target + 8;
-            pieces[capturedPiece] &= ~(1ULL << capturedSquare);
             occupancy &= ~(1ULL << capturedSquare);
         }
-        else if (flags & MoveFlags::IS_CAPTURE)
-        {
-            capturedPiece = board.GetPiece(target);
-            pieces[capturedPiece] &= ~(1ULL << target);
-        }
 
-        pieces[movingPiece] &= ~(1ULL << start);
         occupancy &= ~(1ULL << start);
         occupancy |= 1ULL << target;
 
@@ -126,14 +136,26 @@ namespace NeraChessSearch::MoveOrdering
             promotionGain = Value(pieceOnTarget) - Value(movingPiece);
         }
 
-        std::array<int, 32> gains{};
+        // Every index this function reads was written just above or in the loop below -- gains[0]
+        // here, gains[1..depth] in the loop -- so unlike a member array reused across calls, this
+        // one doesn't need to start zeroed.
+        std::array<int, 32> gains;
         gains[0] = Value(capturedPiece) + promotionGain;
         int depth = 0;
         bool whiteToCapture = !whiteMoved;
 
+        const Bitboard nonSliderWhite = NonSliderAttackers(target, true, pieces);
+        const Bitboard nonSliderBlack = NonSliderAttackers(target, false, pieces);
+
         while (depth + 1 < static_cast<int>(gains.size()))
         {
-            const Attacker attacker = LeastValuableAttacker(target, whiteToCapture, occupancy, pieces);
+            const Bitboard diagonalAttacks = MoveGenerator::LookupBishopAttacks(target, occupancy);
+            const Bitboard straightAttacks = MoveGenerator::LookupRookAttacks(target, occupancy);
+            const Attacker attacker = whiteToCapture
+                ? LeastValuableAttacker(target, true, occupancy, pieces, nonSliderWhite,
+                    nonSliderBlack, diagonalAttacks, straightAttacks)
+                : LeastValuableAttacker(target, false, occupancy, pieces, nonSliderBlack,
+                    nonSliderWhite, diagonalAttacks, straightAttacks);
             if (!attacker)
                 break;
 
@@ -143,7 +165,6 @@ namespace NeraChessSearch::MoveOrdering
             ++depth;
             gains[depth] = Value(pieceOnTarget) + recapturePromotionGain - gains[depth - 1];
 
-            pieces[attacker.piece] &= ~(1ULL << attacker.square);
             occupancy &= ~(1ULL << attacker.square);
             pieceOnTarget = recapturePromotionGain == 0
                 ? attacker.piece
@@ -157,5 +178,17 @@ namespace NeraChessSearch::MoveOrdering
             --depth;
         }
         return gains[0];
+    }
+
+    int StaticExchangeEvaluation(const ChessBoard& board, Move move)
+    {
+        const uint8_t flags = move.GetMoveFlags();
+        const uint8_t target = move.GetTargetSquare();
+        const uint8_t movingPiece = move.GetMovePiece();
+
+        const Piece capturedPiece = (flags & MoveFlags::IS_EN_PASSANT)
+            ? Piece(movingPiece < 6 ? PieceType::BLACK_PAWN : PieceType::WHITE_PAWN)
+            : board.GetPiece(target);
+        return StaticExchangeEvaluation(board, move, capturedPiece);
     }
 }

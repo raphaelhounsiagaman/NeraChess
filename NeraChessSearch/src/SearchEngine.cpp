@@ -791,7 +791,9 @@ namespace NeraChessSearch
             if (inCheck || !IsQuiet(move))
                 candidates.push(move);
         }
-        std::array<int32_t, 218> seeValues{};
+        // SortMoves only ever writes and this loop only ever reads indices below
+        // candidates.size(), so this doesn't need to start zeroed.
+        std::array<int32_t, 218> seeValues;
         SortMoves(board, candidates, ply, ttMove, 0, &seeValues);
 
         for (size_t i = 0; i < candidates.size(); ++i)
@@ -850,14 +852,19 @@ namespace NeraChessSearch
     void SearchEngine::SortMoves(const ChessBoard& board, MoveList<218>& moves,
         int ply, Move ttMove, Move previousMove, std::array<int32_t, 218>* seeValues)
     {
-        std::array<int32_t, 218> scores{};
-        std::array<int32_t, 218> see{};
+        // Every entry both arrays need is written by this loop (scores unconditionally,
+        // see explicitly below), so unlike `seeValues` -- reused by the caller across
+        // calls -- these don't need to start zeroed; only moves.size() of each is ever
+        // touched, not the full 218.
+        std::array<int32_t, 218> scores;
+        std::array<int32_t, 218> see;
         const Move counterMove = GetCounterMove(previousMove);
         const uint8_t side = board.GetBoardState().HasFlag(BoardStateFlags::WhiteToMove) ? 0 : 1;
         for (size_t i = 0; i < moves.size(); ++i)
         {
             const Move move = moves[i];
             int32_t score = 0;
+            int32_t moveSee = 0;
             const bool isTTMove = move == ttMove;
             const bool isCapture = move.GetMoveFlags() & MoveFlags::IS_CAPTURE;
 
@@ -870,14 +877,14 @@ namespace NeraChessSearch
                 const Piece victim = (move.GetMoveFlags() & MoveFlags::IS_EN_PASSANT)
                     ? Piece(move.GetMovePiece().IsWhite() ? PieceType::BLACK_PAWN : PieceType::WHITE_PAWN)
                     : board.GetPiece(move.GetTargetSquare());
-                const int captureSee = MoveOrdering::StaticExchangeEvaluation(board, move);
-                see[i] = captureSee;
+                moveSee = MoveOrdering::StaticExchangeEvaluation(board, move, victim);
                 if (!isTTMove)
                 {
-                    score += (captureSee >= 0 ? 10'000'000 : 5'000'000) +
-                        PieceValue(victim) * 16 - PieceValue(move.GetMovePiece()) + captureSee;
+                    score += (moveSee >= 0 ? 10'000'000 : 5'000'000) +
+                        PieceValue(victim) * 16 - PieceValue(move.GetMovePiece()) + moveSee;
                 }
             }
+            see[i] = moveSee;
 
             if (isTTMove)
             {
@@ -920,7 +927,10 @@ namespace NeraChessSearch
         }
 
         if (seeValues)
-            *seeValues = see;
+        {
+            for (size_t i = 0; i < moves.size(); ++i)
+                (*seeValues)[i] = see[i];
+        }
     }
 
     void SearchEngine::UpdatePrincipalVariation(int ply, Move move)
