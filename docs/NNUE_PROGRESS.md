@@ -209,3 +209,55 @@ buckets 6 and 7 sit close to the tiled seed, and `KingBucketTable` allocates
 capacity the corpus may not fill. And the corpus is now three full passes in
 across runs 003, 004 and 005; the capacity ceiling moved, but the data ceiling
 did not.
+
+### 2026-09-04 — output buckets, trained but not yet judged
+
+`binpack-outbuckets-006`, the first network with more than one output head:
+eight copies of the `1024 -> 1` output layer, selected by the total number of
+pieces on the board, four counts to a head.
+
+It started from `binpack-kingbuckets-005` epoch 24 with that layer tiled eight
+times by `scripts/expand_output_buckets.py`, which is an exact conversion — with
+every head identical, which head a piece count selects cannot change a score.
+The pre-bucket engine and the bucketed one returned identical `eval` integers
+over 26 positions spanning all eight heads, and identical node counts and best
+moves over 12 depth-12 searches, before a single gradient step was taken. So the
+run began *at* run 005's strength and its whole job was pulling the heads apart.
+
+It did pull them apart. Output bias per head moved from a uniform 962 to
+397-1105, and each head's weights now sit a mean 15.6-17.7 quantized units from
+head 0. That is worth stating because heads that stayed tied would have
+presented as "output buckets bought nothing" rather than as a bug.
+
+On the identical held-out split:
+
+| | kingbuckets-005 | outbuckets-006 |
+| --- | --- | --- |
+| epoch 1 | 0.002279 | 0.002225 |
+| best | 0.002171 (ep 24) | **0.002132 (ep 23)** |
+
+1.80% below run 005's best, at 11.5B positions into a 34-epoch run that ran to
+completion; epochs 24-34 moved the running minimum not at all.
+
+Note the first epoch. At 0.002225 it is **worse than the network it started
+from**, because the seed evaluates exactly as run 005's epoch 24 did and fresh
+Adam state has to be re-earned. It took until epoch 17 to get back under its own
+parent. A warm restart from an exact seed does not begin where the parent ended
+on this metric, and a reader comparing epoch 1 across runs 005 and 006 would
+otherwise draw the wrong conclusion from it.
+
+**This is a loss number and nothing more.** The row above the previous one
+records a generation that gained 4.2% of validation loss and returned +7.3 Elo
+with an interval spanning zero; run 005 gained 4.0% and returned +31.4. The
+mapping from one to the other is not a function. The sequential strength test
+has been dispatched against `main` with `allow_network_change: true`; this
+section gets its verdict when the test returns, and the branch does not merge
+before then.
+
+Two things for whoever runs the next one. The corpus is endgame-heavy — median
+13 pieces — so head 7 (29-32 pieces) trains on 1.7% of positions and head 0 on
+2.5%, against 23.5% for head 1. None is starved, but the opening and the bare
+endgame are where this network has had the least practice, and a non-uniform map
+is the lever if that shows. And this run was the first to keep the full
+schedule rather than being stopped by hand: 23 of its 71 hours produced no new
+best, which is the price of knowing the plateau was real.

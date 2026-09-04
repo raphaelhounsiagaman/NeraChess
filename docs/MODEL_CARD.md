@@ -9,38 +9,38 @@ duplication is what let the repository carry two contradictory accounts at once.
 | Field | Value |
 | --- | --- |
 | Path | [`NeraChessApp/Resources/NNUE/nera.nnue`](../NeraChessApp/Resources/NNUE/nera.nnue) |
-| SHA-256 | `13497684411512261b4397792f7a0afcbaf5e57bfdd22572536a20793f5995ea` |
+| SHA-256 | `53d7052412d7f767c154bf5c3accf96047a7fa7d2a5f0886dcea6c525866cdf0` |
 | Size | 6,308,928 bytes |
-| Generation | binpack-kingbuckets-005 epoch 24, tiled across eight output heads |
-| Shipped in | **not yet promoted** — see "This is a seed" below |
+| Generation | binpack-outbuckets-006, epoch 23 |
+| Shipped in | **strength test pending** — see Promotion evidence |
 | Architecture | `(768x8 -> 512)x2 -> 1x8`, 8 input buckets, 8 output buckets |
 | Feature set | 3 — horizontally canonicalized, then bucketed on the own king |
 | Output bucket version | 1 — total piece count, four counts to a head |
 | Architecture hash | `0x03f59c85` |
 | Quantization | QA 255, QB 64, eval scale 400 |
 | Activation | Squared clipped ReLU |
-| Parent | binpack-kingbuckets-005 epoch 24, tiled into eight output heads (see below) |
+| Parent | binpack-kingbuckets-005 epoch 24, tiled into eight output heads, then trained |
 
-### This is a seed
+### The run behind it
 
-The file above is **not a trained eight-head network.** It is
-`binpack-kingbuckets-005` epoch 24 with its single output head copied eight
-times by `NNUETraining/scripts/expand_output_buckets.py`. Every head holds the
-same weights, so whichever head a position's piece count selects computes what
-the one-head network computed: it plays exactly as its parent did, to the
-centipawn and to the node.
+`binpack-outbuckets-006`: 34 epochs of 500M positions (17.0B kept from 23.2B
+read) over 71 hours, warm-started from `binpack-kingbuckets-005` epoch 24 tiled
+across eight identical output heads by
+`NNUETraining/scripts/expand_output_buckets.py`. Best epoch 23, validation
+0.002132.
 
-That is the point of shipping it. The architecture hash moved when the output
-buckets landed, so the previous file no longer loads, and CI treats a network
-that fails to load as a failure rather than a skip. A seed that is provably
-equivalent keeps the branch honest — it costs nothing and it turns "did the
-bucket table, the piece count and the weight offset all land correctly?" into a
-comparison against the engine that came before, which is recorded under
-Promotion evidence.
+Every hyperparameter matches run 005 — the same seed, the same 64 validation
+chunks, the same corpus digest, `lr 1e-4`, lambda annealing 0.797 to 0.7 — so
+the architecture is the only variable between the two and their validation
+curves are directly comparable. The tiling made the starting point *exactly*
+run 005's network, so what the run measures is what eight heads add, not what a
+different initialization does.
 
-It has none of the capacity the heads exist to provide until it has been
-trained. The strength question for output buckets is open until a run and a
-sequential test answer it.
+The eight heads started identical and did not stay that way: their output
+biases moved from a uniform 962 to 397-1105, and each head's weights now sit a
+mean 15.6-17.7 quantized units from head 0. Worth checking rather than
+assuming, because heads that stayed tied would present as "output buckets
+bought nothing" rather than as a failure.
 
 Verify the file you have is the file described here:
 
@@ -84,18 +84,43 @@ with lambda continuing run 003's anneal from 0.797, and was stopped at epoch 22
 by the rule described below. Its best epoch is 17, at 8.5B positions into the
 run.
 
-`binpack-kingbuckets-005` is this network, and it is the first trained under
-feature set 3. It ran 28 epochs of 500M positions (14B, a little over one more
-full pass) with lambda continuing run 004's anneal from 0.797, at the same
-learning rate 1e-4 as every run before it, and was stopped at epoch 28 by the
-rule described below. Its best epoch is 24, at 12B positions into the run.
+`binpack-kingbuckets-005` is the first trained under feature set 3. It ran 28
+epochs of 500M positions (14B, a little over one more full pass) with lambda
+continuing run 004's anneal from 0.797, at the same learning rate 1e-4 as every
+run before it, and was stopped at epoch 28 by the rule described below. Its best
+epoch is 24, at 12B positions into the run.
 
 Every hyperparameter matches run 004's, so the architecture is the only
 variable between them and their validation curves compare directly. Run 005 is
 below run 004 at *every* epoch by roughly 3%: its epoch 1 (0.002279) already
 beat run 004's best-ever (0.002262), and its own best of 0.002171 is 4.0%
 below that. That is the capacity hypothesis behaving as predicted -- eight
-weight matrices where there was one -- and it is still only a loss number.
+weight matrices where there was one -- and the strength test has since agreed.
+
+`binpack-outbuckets-006` is this network, and it is the first with more than one
+output head. It ran its full 34 epochs of 500M positions (17.0B kept from 23.2B
+read) rather than being stopped by hand, at the same learning rate and the same
+lambda anneal from 0.797. Its best epoch is 23, at 11.5B positions in, and
+epochs 24 through 34 are eleven consecutive epochs that moved the running
+minimum not at all -- so the stopping rule was satisfied a long way before the
+schedule ran out, and the extra 23 hours bought the certainty that the plateau
+was real rather than a pause.
+
+Run 006's best of 0.002132 is 1.80% below run 005's. Read its first epoch
+carefully, though: at 0.002225 it is *worse than the network it started from*,
+because the tiled seed evaluates exactly as run 005's epoch 24 did and fresh
+Adam state has to be re-earned. It took until epoch 17 to get back under its own
+parent. Whether the remaining 1.80% is worth anything is a question for the
+games.
+
+**Run 006's warm start crossed an architecture boundary, exactly.** Output
+buckets change a dimension too, so run 005's network could not be loaded
+directly. `NNUETraining/scripts/expand_output_buckets.py` tiled it at the other
+end of the network: every head got the same `1024 -> 1` weights and the same
+bias, which makes the choice of head irrelevant and the seed exact. Verified
+before training started, the same way run 005's was — both engines' `eval` over
+26 positions spanning all eight heads, and their depth-12 node counts and best
+moves, all identical.
 
 **Run 005's warm start crossed a feature-set boundary, exactly.** King buckets
 change a dimension, so run 004's network could not be loaded directly.
@@ -125,7 +150,8 @@ Validation is 50,000 positions reservoir-sampled from 64 chunks reserved by
 seed and scattered across the whole file. Run 004 reuses `--seed 1`, so it
 holds out the *same* chunks as run 003 and the two curves compare directly:
 0.003550 at the start of run 001, 0.002829 at its end, 0.002458 at epoch 24 of
-run 002, 0.002362 at epoch 20 of run 003, **0.002262 at epoch 17 of run 004**.
+run 002, 0.002362 at epoch 20 of run 003, 0.002262 at epoch 17 of run 004,
+0.002171 at epoch 24 of run 005, **0.002132 at epoch 23 of run 006**.
 
 Run 003 is where the unmirrored network stopped paying. Its first sixteen
 epochs moved the running minimum from 0.002458 to 0.002365; its last four moved
@@ -190,23 +216,27 @@ in, the network is verifiable by checksum but not reproducible.
 
 ## Promotion evidence
 
-**This file has not cleared the bar, and does not need to.** It is a tiling of
-the network that did, so the evidence it carries is an equivalence rather than a
-strength result:
+**Pending.** The sequential strength test against `main` has been dispatched and
+has not returned. Until it does, this network has no strength claim: what is
+known about it is a validation loss 1.80% below its parent's, and
+`docs/NNUE_PROGRESS.md` records a generation that gained 4.2% of validation loss
+and returned +7.3 Elo with an interval spanning zero. **Loss is a poor guide
+here.** Do not merge this branch on the number above.
+
+What *is* established, from the seed this run started from:
 
 - **26 positions spanning all eight output heads** — the pre-bucket engine at
   `43297be` with `binpack-kingbuckets-005` epoch 24, and this branch's engine
-  with the seed, returned identical integers from `eval` for every one.
+  with the tiled seed, returned identical integers from `eval` for every one.
 - **12 depth-12 searches** across the same spread agreed on node count *and*
   best move, which no accidental agreement of evaluations would produce.
 - `nnue_training.verify` agrees integer-for-integer with the engine on all 22
-  of its positions, for the seed and for random networks written from both
-  languages.
+  of its positions, for this network, for the seed, and for random networks
+  written from both languages.
 
-The strength evidence below belongs to the parent, `binpack-kingbuckets-005`
-epoch 24, which this seed reproduces exactly. Output buckets earn a row of
-their own once a run has trained the heads apart and a sequential test has
-judged the result.
+That says the bucket table, the piece count and the weight offset all landed
+correctly, so a strength result measures the capacity the heads add rather than
+a plumbing bug. It does not say the capacity is worth anything.
 
 ### The parent's result
 
@@ -280,11 +310,14 @@ and no current measurement places generation 61 on the scale used in
   claim this entry replaces. The search's pruning margins are denominated in
   centipawns, so this changes what they mean; that is a reason to retune them,
   and a reason not to read a strength result here as isolating the data change.
-- **The output heads are untrained.** They exist, they are wired end to end and
-  the engine and the trainer agree on which one every position uses -- but all
-  eight hold identical weights, so the network has exactly the capacity its
-  parent had. What they are worth is a question for a training run and a
-  strength test.
+- **The output heads are trained but unjudged.** They have pulled apart and the
+  validation loss moved with them, but no game has been played. What they are
+  worth is a question for the strength test, not for the loss curve.
+- **The thinnest heads saw the least data.** Over the corpus, head 7 (29-32
+  pieces) trains on 1.7% of positions and head 0 (2-4) on 2.5%, against 23.5%
+  for head 1. That is the same shape of caveat the far-rank king buckets carry,
+  milder: none is starved, but the opening and the bare endgame are the two
+  places this network has had the least practice.
 - **Strength is unmeasured against any external reference** since the NNUE
   migration.
 - **Its gain is measured against `main`, not against the world.** +31.4 Elo is
