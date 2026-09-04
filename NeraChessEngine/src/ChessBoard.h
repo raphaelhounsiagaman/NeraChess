@@ -49,7 +49,8 @@ namespace NeraChessEngine
 
 	    // Same legal moves as GetLegalMoves(), without the ~880-byte copy -- for
 	    // callers that only read the list (e.g. filtering into a shorter list) and
-	    // never hold onto it past the next move made on this board.
+	    // never hold onto it past the next move made on this board. Backed directly
+	    // by the MoveGenerator's own list -- ChessBoard keeps no second copy.
 	    const MoveList<218>& GetLegalMovesRef() const;
 
         void MakeMove(Move move, bool gameMove = false);
@@ -121,7 +122,6 @@ namespace NeraChessEngine
 
         mutable MoveGenerator m_MoveGenerator;
 
-	    mutable MoveList<218> m_LegalMoves{};
 	    mutable bool m_WasBoardStateChanged = true;
 
 	    mutable uint64_t m_ZobristKey = 0;

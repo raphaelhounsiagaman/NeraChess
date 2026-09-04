@@ -95,9 +95,13 @@ namespace NeraChessSearch
             NeraChessEngine::Move previousMove, bool cutNode);
         Score QuiescenceSearch(NeraChessEngine::ChessBoard& board, Score alpha, Score beta, int ply);
 
+        // seeValues, when non-null, receives the static-exchange score computed for each
+        // capture while scoring it for ordering, reordered in step with moves so the
+        // caller can reuse it (e.g. for SEE pruning) instead of recomputing it.
         void SortMoves(const NeraChessEngine::ChessBoard& board,
             NeraChessEngine::MoveList<218>& moves, int ply, NeraChessEngine::Move ttMove,
-            NeraChessEngine::Move previousMove = 0);
+            NeraChessEngine::Move previousMove = 0,
+            std::array<int32_t, 218>* seeValues = nullptr);
         // Evaluation of the node the search is standing on, using this
         // worker's accumulator stack.
         Score EvaluateNode(const NeraChessEngine::ChessBoard& board);

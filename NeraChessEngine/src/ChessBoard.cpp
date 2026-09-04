@@ -612,22 +612,18 @@ namespace NeraChessEngine
 	{
 		if (m_WasBoardStateChanged)
 		{
-			m_LegalMoves = m_MoveGenerator.GenerateMoves(m_BoardState);
+			m_MoveGenerator.GenerateMoves(m_BoardState);
 			m_WasBoardStateChanged = false;
 		}
-		return m_LegalMoves;
+		return m_MoveGenerator.GetLegalMoves();
 	}
 
 	uint16_t ChessBoard::GetGameOver(bool gameCheck) const
 	{
 		uint16_t flags = GameOverFlags::IS_GAME_OVER;
-		if (m_WasBoardStateChanged)
-		{
-			m_LegalMoves = m_MoveGenerator.GenerateMoves(m_BoardState);
-			m_WasBoardStateChanged = false;
-		}	
-	
-		if (m_LegalMoves.size() == 0)
+		const MoveList<218>& legalMoves = GetLegalMovesRef();
+
+		if (legalMoves.size() == 0)
 		{
 
 			if (m_MoveGenerator.InCheck())
@@ -962,7 +958,7 @@ namespace NeraChessEngine
 	{
 		if (m_WasBoardStateChanged)
 		{
-			m_LegalMoves = m_MoveGenerator.GenerateMoves(m_BoardState);
+			m_MoveGenerator.GenerateMoves(m_BoardState);
 			m_WasBoardStateChanged = false;
 		}
 		return m_MoveGenerator.InCheck();

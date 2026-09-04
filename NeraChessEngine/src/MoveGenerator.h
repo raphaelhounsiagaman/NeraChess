@@ -16,7 +16,9 @@ namespace NeraChessEngine
 		MoveGenerator() = default;
 		~MoveGenerator() = default;
 
-		MoveList<218> GenerateMoves(const BoardState& board);
+		const MoveList<218>& GenerateMoves(const BoardState& board);
+
+		const MoveList<218>& GetLegalMoves() const { return m_LegalMoves; }
 
 		bool InCheck() const { return m_InCheck; };
 
@@ -32,7 +34,7 @@ namespace NeraChessEngine
 		void CalculateKnightMoves();
 		void CalculatePawnMoves();
 
-		void GeneratePromotions(Square startSquare, Square targetSquare);
+		void GeneratePromotions(Square startSquare, Square targetSquare, bool isCapture);
 
 		static Bitboard GetSlidingAttacks(Square square, Bitboard blockers, bool orthogonal);
 
