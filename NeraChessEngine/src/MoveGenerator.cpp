@@ -461,7 +461,7 @@ namespace NeraChessEngine
 
 	const std::array<std::array<Bitboard, 64>, 64> MoveGenerator::s_AlignMask = InitAlignMask();
 
-	MoveList<218> MoveGenerator::GenerateMoves(const BoardState& board)
+	const MoveList<218>& MoveGenerator::GenerateMoves(const BoardState& board)
 	{
 		m_BoardState = board;
 
@@ -724,15 +724,19 @@ namespace NeraChessEngine
 		Bitboard legalMask = ~(m_OpponentAttackMap | m_FriendlyPieces);
 		Bitboard kingMoves = s_KingMoveMask[m_FriendlyKingSquare] & legalMask;
 
+		PieceType friendlyKingPiece = m_WhiteToMove ? PieceType::WHITE_KING : PieceType::BLACK_KING;
+
 		while (kingMoves != 0)
 		{
 			int targetSquare = BitUtil::PopLSB(kingMoves);
+			// legalMask already excludes friendly pieces, so an occupied target here
+			// is necessarily an opponent piece -- no need to look it up.
 			m_LegalMoves.push(Move(
-				m_FriendlyKingSquare, 
-				targetSquare, 
-				m_WhiteToMove ? PieceType::WHITE_KING : PieceType::BLACK_KING,
+				m_FriendlyKingSquare,
+				targetSquare,
+				friendlyKingPiece,
 				0,
-				GetPiece(targetSquare) == PieceType::NO_PIECE ? 0 : MoveFlags::IS_CAPTURE
+				Square(targetSquare).ContainsSquare(m_OpponentPieces) ? MoveFlags::IS_CAPTURE : 0
 			));
 		}
 
@@ -749,9 +753,9 @@ namespace NeraChessEngine
 			{
 				int targetSquare = m_WhiteToMove ? Square::g1 : Square::g8;
 				m_LegalMoves.push(Move(
-					m_FriendlyKingSquare, 
+					m_FriendlyKingSquare,
 					targetSquare,
-					GetPiece(m_FriendlyKingSquare),
+					friendlyKingPiece,
 					0,
 					MoveFlags::IS_CASTLES
 				));
@@ -769,7 +773,7 @@ namespace NeraChessEngine
 				m_LegalMoves.push(Move(
 					m_FriendlyKingSquare,
 					targetSquare,
-					GetPiece(m_FriendlyKingSquare),
+					friendlyKingPiece,
 					0,
 					MoveFlags::IS_CASTLES
 				));
@@ -790,7 +794,17 @@ namespace NeraChessEngine
 			othogonalSliders &= ~m_PinRays;
 			diagonalSliders &= ~m_PinRays;
 		}
-	
+
+		// moveMask already excludes friendly pieces, so an occupied target square
+		// is necessarily an opponent piece -- no lookup needed for the capture flag.
+		// The moving piece is fixed by which bitboard the loop is walking; only
+		// rook-vs-queen (resp. bishop-vs-queen) needs disambiguating.
+		PieceType friendlyRook = m_WhiteToMove ? PieceType::WHITE_ROOK : PieceType::BLACK_ROOK;
+		PieceType friendlyBishop = m_WhiteToMove ? PieceType::WHITE_BISHOP : PieceType::BLACK_BISHOP;
+		PieceType friendlyQueen = m_WhiteToMove ? PieceType::WHITE_QUEEN : PieceType::BLACK_QUEEN;
+		Bitboard friendlyRooks = m_BoardState.pieceBitboards[friendlyRook];
+		Bitboard friendlyBishops = m_BoardState.pieceBitboards[friendlyBishop];
+
 		// Ortho
 		while (othogonalSliders != 0)
 		{
@@ -802,15 +816,17 @@ namespace NeraChessEngine
 				moveSquares &= s_AlignMask[startSquare][m_FriendlyKingSquare];
 			}
 
+			PieceType movePiece = Square(startSquare).ContainsSquare(friendlyRooks) ? friendlyRook : friendlyQueen;
+
 			while (moveSquares != 0)
 			{
 				int targetSquare = BitUtil::PopLSB(moveSquares);
 				m_LegalMoves.push(Move(
-					startSquare, 
+					startSquare,
 					targetSquare,
-					GetPiece(startSquare),
+					movePiece,
 					0,
-					GetPiece(targetSquare) == PieceType::NO_PIECE ? 0 : MoveFlags::IS_CAPTURE
+					Square(targetSquare).ContainsSquare(m_OpponentPieces) ? MoveFlags::IS_CAPTURE : 0
 				));
 			}
 		}
@@ -825,15 +841,17 @@ namespace NeraChessEngine
 				moveSquares &= s_AlignMask[startSquare][m_FriendlyKingSquare];
 			}
 
+			PieceType movePiece = Square(startSquare).ContainsSquare(friendlyBishops) ? friendlyBishop : friendlyQueen;
+
 			while (moveSquares != 0)
 			{
 				int targetSquare = BitUtil::PopLSB(moveSquares);
 				m_LegalMoves.push(Move(
 					startSquare,
 					targetSquare,
-					GetPiece(startSquare),
+					movePiece,
 					0,
-					GetPiece(targetSquare) == PieceType::NO_PIECE ? 0 : MoveFlags::IS_CAPTURE
+					Square(targetSquare).ContainsSquare(m_OpponentPieces) ? MoveFlags::IS_CAPTURE : 0
 				));
 			}
 		}
@@ -844,6 +862,8 @@ namespace NeraChessEngine
 		Bitboard knights = m_FriendlyKnights & m_NotPinRays;
 		Bitboard moveMask = ~m_FriendlyPieces & m_CheckRayBitmask;
 
+		PieceType friendlyKnight = m_WhiteToMove ? PieceType::WHITE_KNIGHT : PieceType::BLACK_KNIGHT;
+
 		while (knights != 0)
 		{
 			int knightSquare = BitUtil::PopLSB(knights);
@@ -853,11 +873,11 @@ namespace NeraChessEngine
 			{
 				int targetSquare = BitUtil::PopLSB(moveSquares);
 				m_LegalMoves.push(Move(
-					knightSquare, 
-					targetSquare, 
-					GetPiece(knightSquare),
+					knightSquare,
+					targetSquare,
+					friendlyKnight,
 					0,
-					GetPiece(targetSquare) == PieceType::NO_PIECE ? 0 : (uint8_t)MoveFlags::IS_CAPTURE
+					Square(targetSquare).ContainsSquare(m_OpponentPieces) ? (uint8_t)MoveFlags::IS_CAPTURE : 0
 				));
 			}
 		}
@@ -970,7 +990,9 @@ namespace NeraChessEngine
 			uint8_t startSquare = targetSquare - pushOffset;
 			if (!IsPinned(startSquare))
 			{
-				GeneratePromotions(startSquare, targetSquare);
+				// A push target is always an empty square (singlePush was masked
+				// by ~m_AllPieces), so this can never be a capture.
+				GeneratePromotions(startSquare, targetSquare, false);
 			}
 		}
 
@@ -982,7 +1004,9 @@ namespace NeraChessEngine
 
 			if (!IsPinned(startSquare) || s_AlignMask[startSquare][m_FriendlyKingSquare] == s_AlignMask[targetSquare][m_FriendlyKingSquare])
 			{
-				GeneratePromotions(startSquare, targetSquare);
+				// captureA/B were masked by m_OpponentPieces before the promotion-rank
+				// filter, so this is always a capture.
+				GeneratePromotions(startSquare, targetSquare, true);
 			}
 		}
 
@@ -993,7 +1017,7 @@ namespace NeraChessEngine
 
 			if (!IsPinned(startSquare) || s_AlignMask[startSquare][m_FriendlyKingSquare] == s_AlignMask[targetSquare][m_FriendlyKingSquare])
 			{
-				GeneratePromotions(startSquare, targetSquare);
+				GeneratePromotions(startSquare, targetSquare, true);
 			}
 		}
 
@@ -1032,15 +1056,19 @@ namespace NeraChessEngine
 	
 	}
 
-	void MoveGenerator::GeneratePromotions(Square startSquare, Square targetSquare)
+	void MoveGenerator::GeneratePromotions(Square startSquare, Square targetSquare, bool isCapture)
 	{
+		// The caller already knows whether targetSquare is occupied (it built the
+		// candidate mask from either an empty-square push or an opponent-masked
+		// capture), so isCapture replaces a redundant GetPiece lookup here.
+		const uint8_t flags = MoveFlags::IS_PROMOTION | (isCapture ? MoveFlags::IS_CAPTURE : 0);
 
 		m_LegalMoves.push(Move(
 			startSquare,
 			targetSquare,
 			m_WhiteToMove ? PieceType::WHITE_PAWN : PieceType::BLACK_PAWN,
 			m_WhiteToMove ? PieceType::WHITE_QUEEN : PieceType::BLACK_QUEEN,
-			MoveFlags::IS_PROMOTION | (GetPiece(targetSquare) == PieceType::NO_PIECE ? 0 : MoveFlags::IS_CAPTURE)
+			flags
 		));
 
 		m_LegalMoves.push(Move(
@@ -1048,15 +1076,15 @@ namespace NeraChessEngine
 			targetSquare,
 			m_WhiteToMove ? PieceType::WHITE_PAWN : PieceType::BLACK_PAWN,
 			m_WhiteToMove ? PieceType::WHITE_ROOK : PieceType::BLACK_ROOK,
-			MoveFlags::IS_PROMOTION | (GetPiece(targetSquare) == PieceType::NO_PIECE ? 0 : MoveFlags::IS_CAPTURE)
+			flags
 		));
 
 		m_LegalMoves.push(Move(
-			startSquare, 
-			targetSquare, 
+			startSquare,
+			targetSquare,
 			m_WhiteToMove ? PieceType::WHITE_PAWN   : PieceType::BLACK_PAWN ,
 			m_WhiteToMove ? PieceType::WHITE_BISHOP : PieceType::BLACK_BISHOP ,
-			MoveFlags::IS_PROMOTION | (GetPiece(targetSquare) == PieceType::NO_PIECE ? 0 : MoveFlags::IS_CAPTURE)
+			flags
 		));
 
 		m_LegalMoves.push(Move(
@@ -1064,7 +1092,7 @@ namespace NeraChessEngine
 			targetSquare,
 			m_WhiteToMove ? PieceType::WHITE_PAWN : PieceType::BLACK_PAWN,
 			m_WhiteToMove ? PieceType::WHITE_KNIGHT : PieceType::BLACK_KNIGHT,
-			MoveFlags::IS_PROMOTION | (GetPiece(targetSquare) == PieceType::NO_PIECE ? 0 : MoveFlags::IS_CAPTURE)
+			flags
 		));
 
 
