@@ -12,7 +12,7 @@ duplication is what let the repository carry two contradictory accounts at once.
 | SHA-256 | `53d7052412d7f767c154bf5c3accf96047a7fa7d2a5f0886dcea6c525866cdf0` |
 | Size | 6,308,928 bytes |
 | Generation | binpack-outbuckets-006, epoch 23 |
-| Shipped in | **strength test pending** — see Promotion evidence |
+| Shipped in | **not promoted** — the strength test was inconclusive; see Promotion evidence |
 | Architecture | `(768x8 -> 512)x2 -> 1x8`, 8 input buckets, 8 output buckets |
 | Feature set | 3 — horizontally canonicalized, then bucketed on the own king |
 | Output bucket version | 1 — total piece count, four counts to a head |
@@ -216,12 +216,26 @@ in, the network is verifiable by checksum but not reproducible.
 
 ## Promotion evidence
 
-**Pending.** The sequential strength test against `main` has been dispatched and
-has not returned. Until it does, this network has no strength claim: what is
-known about it is a validation loss 1.80% below its parent's, and
-`docs/NNUE_PROGRESS.md` records a generation that gained 4.2% of validation loss
-and returned +7.3 Elo with an interval spanning zero. **Loss is a poor guide
-here.** Do not merge this branch on the number above.
+**This network did not clear the bar.** The sequential test against `main` ran
+all six stages its 12,000-game ceiling allowed and never crossed a boundary:
+
+| Games | Result | Score | Elo | Interval | LLR |
+| --- | --- | --- | --- | --- | --- |
+| 12000 | 3583-3410-5007 | 0.5072 | +5.0 | [+0.8, +9.2] | +2.78 of ±2.94 |
+
+Candidate `cfee74d` against baseline `703fbb5`, 10+0.1, `allow_network_change:
+true`. Workflow run 33884330768. The verdict is `Likely improvement`, which is
+an inconclusive verdict and **carries no error guarantee** — and the interval
+above is not a substitute for one, because a sequential test consults it after
+every stage and it is narrower than it looks.
+
+The estimate landed on +5.0, exactly `elo1`, which is the value the test is
+worst at resolving by construction. So the honest summary is: probably a small
+real gain, not demonstrated to the standard this project merges on.
+
+The validation loss agreed in direction and overstated the size, which is the
+usual pattern here rather than a surprise: 1.80% of loss bought something around
+5 Elo, where run 005's 4.0% bought +31.4.
 
 What *is* established, from the seed this run started from:
 
@@ -310,9 +324,11 @@ and no current measurement places generation 61 on the scale used in
   claim this entry replaces. The search's pruning margins are denominated in
   centipawns, so this changes what they mean; that is a reason to retune them,
   and a reason not to read a strength result here as isolating the data change.
-- **The output heads are trained but unjudged.** They have pulled apart and the
-  validation loss moved with them, but no game has been played. What they are
-  worth is a question for the strength test, not for the loss curve.
+- **The gain is real-looking but unproven.** 12,000 games put it at +5.0 Elo
+  and could not separate that from zero to the standard this project uses. It is
+  a much smaller effect than king buckets, which is consistent with the sizes
+  involved: eight output heads add 8,192 weights where eight input buckets added
+  2.75 million.
 - **The thinnest heads saw the least data.** Over the corpus, head 7 (29-32
   pieces) trains on 1.7% of positions and head 0 (2-4) on 2.5%, against 23.5%
   for head 1. That is the same shape of caveat the far-rank king buckets carry,

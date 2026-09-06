@@ -261,3 +261,46 @@ endgame are where this network has had the least practice, and a non-uniform map
 is the lever if that shows. And this run was the first to keep the full
 schedule rather than being stopped by hand: 23 of its 71 hours produced no new
 best, which is the price of knowing the plateau was real.
+
+### 2026-09-05 — output buckets, measured and *not* accepted
+
+**Inconclusive.** The sequential test ran all six stages its 12,000-game ceiling
+allowed and never crossed a boundary. It reports `Likely improvement`, which is
+one of the verdicts that carries **no error guarantee** — it describes the games
+that happened to be played and nothing more.
+
+| Games | Result | Score | Elo | Interval | Pentanomial | LLR |
+| --- | --- | --- | --- | --- | --- | --- |
+| 12000 | 3583-3410-5007 | 0.5072 | +5.0 | [+0.8, +9.2] | [300, 1374, 2512, 1481, 333] | +2.78 of ±2.94 |
+
+Candidate `cfee74d` against baseline `703fbb5`, `allow_network_change: true`,
+10+0.1, one thread and 128 MiB hash per engine, `UHO_4060_v4.epd`, 24 shards.
+Workflow run 33884330768.
+
+The LLR by stage: −0.24, +0.02, +1.09, +2.31, +2.27, +2.78. It climbed steadily
+and stalled just short — 94% of the way to the accept boundary — and the Elo
+estimate settled on **+5.0, which is exactly `elo1`**. That is the one value the
+test is worst at resolving, by construction: a change worth precisely the
+boundary between H0 and H1 sits between the two hypotheses and neither wins.
+`docs/Strength-Testing.md` predicts ~8,400 games for a +5 change "and genuinely
+ambiguous"; 12,000 did not settle it either.
+
+**This does not clear the bar and the branch does not merge on it.** The bar is
+*Accepted: improvement*, and `docs/Strength-Testing.md` says why an interval
+clearing zero is not a substitute: in a sequential run the interval has been
+consulted after every stage and is narrower than it looks.
+
+What the result does say is that output buckets are very unlikely to be
+*harmful* — six stages of evidence with the LLR monotonically positive after
+stage 2 — and quite likely worth a few Elo. It is a smaller effect than king
+buckets, which crossed the same boundary after two stages at +31.4. That is not
+surprising: eight output heads add 8,192 weights where eight input buckets added
+2.75 million.
+
+Two things to weigh before spending more on it. The corpus is endgame-heavy, so
+head 7 (29-32 pieces) trains on 1.7% of positions and head 0 on 2.5% against
+23.5% for head 1; an unevenly spent map may be leaving some of the effect on the
+table. And a change this size is exactly the case `docs/Strength-Testing.md`
+says to take to a **longer time control** rather than to more games — a longer
+control buys more information per game, and an evaluation change in particular
+should be worth more at depth than at 10+0.1.
