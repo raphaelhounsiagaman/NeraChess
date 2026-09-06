@@ -2370,6 +2370,44 @@ namespace
         blackToMove.Stop();
     }
 
+    void TestSoftTimeStabilityScaling()
+    {
+        using namespace std::chrono;
+        using NeraChessSearch::SearchEngine;
+
+        const milliseconds soft{ 1000 };
+        const milliseconds hard{ 1500 };
+
+        // A move that just changed (stableIterations == 0) gets amplified, not cut.
+        Require(SearchEngine::ScaleSoftTimeForStability(soft, hard, 0) > soft,
+            "an unstable root move did not get more time than the plain soft limit");
+        // A handful of iterations in a row on the same move is treated as
+        // unremarkable, not as grounds to cut the budget yet.
+        Require(SearchEngine::ScaleSoftTimeForStability(soft, hard, 2) == soft,
+            "the curve is not centred at a small stability count");
+        // A long-settled move gets a shorter budget than the plain soft limit,
+        // and the curve is monotonically non-increasing in stability.
+        milliseconds previous = SearchEngine::ScaleSoftTimeForStability(soft, hard, 0);
+        for (int stable = 1; stable <= 10; ++stable)
+        {
+            const milliseconds scaled = SearchEngine::ScaleSoftTimeForStability(soft, hard, stable);
+            Require(scaled <= previous,
+                "soft-time scaling is not monotonically non-increasing in stability");
+            previous = scaled;
+        }
+        Require(SearchEngine::ScaleSoftTimeForStability(soft, hard, 6) < soft,
+            "a long-settled root move was not given a shorter budget");
+        // Stability beyond the tracked cap must not keep shrinking the budget.
+        Require(SearchEngine::ScaleSoftTimeForStability(soft, hard, 6) ==
+            SearchEngine::ScaleSoftTimeForStability(soft, hard, 50),
+            "stability scaling did not saturate at its tracked cap");
+
+        // hardTime is an absolute ceiling: amplifying an already-large soft
+        // limit must never be allowed to exceed it.
+        Require(SearchEngine::ScaleSoftTimeForStability(milliseconds{ 1400 }, hard, 0) == hard,
+            "amplified soft time was not clamped to hardTime");
+    }
+
     void TestOpeningBook()
     {
         NeraChessSearch::OpeningBook book(
@@ -2545,6 +2583,7 @@ int main(int argc, char** argv)
         TestSliderAttackLookups();
         TestStaticExchangeEvaluation();
         TestClockAndTimeManagement();
+        TestSoftTimeStabilityScaling();
         TestOpeningBook();
         std::cout << "All NeraChess engine tests passed.\n";
         return 0;
