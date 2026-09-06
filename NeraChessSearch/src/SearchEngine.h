@@ -69,6 +69,17 @@ namespace NeraChessSearch
         // accumulator rather than using the search's stack.
         static Score Evaluate(const NeraChessEngine::ChessBoard& board);
 
+        // Scales softTime by how many consecutive completed iterations have
+        // agreed on the current root move, clamped to hardTime. Pure function of
+        // its arguments (no search state), kept out of TimeManagement so
+        // CalculateLimits' own pinned test coverage and its "no view of the
+        // search" contract stay untouched. Public for direct unit testing of the
+        // curve; see the definition for its shape and why it is centred rather
+        // than a pure cut.
+        static std::chrono::milliseconds ScaleSoftTimeForStability(
+            std::chrono::milliseconds softTime, std::chrono::milliseconds hardTime,
+            int stableIterations);
+
     private:
         struct SharedSearchState
         {
