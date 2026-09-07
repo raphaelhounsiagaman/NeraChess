@@ -270,6 +270,13 @@ namespace NeraChessSearch
             return result;
         }
         Score previousScore = SCORE_DRAW;
+        // Number of consecutive completed iterations, ending at the previous
+        // depth, whose root move equalled the one just confirmed. Local to this
+        // call so each helper thread tracks its own root order independently;
+        // harmless, since only the main worker's iterationCallback/stop timing
+        // is observed by Search().
+        Move previousIterationMove = 0;
+        int stableIterations = 0;
 
         for (int depth = 1; depth <= m_Limits.maxDepth; ++depth)
         {
@@ -350,11 +357,27 @@ namespace NeraChessSearch
             if (m_Limits.iterationCallback)
                 m_Limits.iterationCallback(result);
 
+            if (depth > 1 && iteration.move == previousIterationMove)
+                ++stableIterations;
+            else
+                stableIterations = 0;
+            previousIterationMove = iteration.move;
+
             if (std::abs(result.score) >= SCORE_MATE - MAX_PLY)
                 break;
-            if (m_Limits.softTime.count() > 0 &&
-                TimeControlElapsed() >= m_Limits.softTime)
-                break;
+            if (m_Limits.softTime.count() > 0)
+            {
+                // Below this depth there have been too few iterations for
+                // stability to mean anything; use the plain soft limit.
+                constexpr int kStabilityScalingMinDepth = 6;
+                const std::chrono::milliseconds effectiveSoftTime =
+                    depth >= kStabilityScalingMinDepth
+                        ? ScaleSoftTimeForStability(m_Limits.softTime, m_Limits.hardTime,
+                            stableIterations)
+                        : m_Limits.softTime;
+                if (TimeControlElapsed() >= effectiveSoftTime)
+                    break;
+            }
         }
 
         // Every MakeMove in the search must be matched by an accumulator push
@@ -1005,6 +1028,43 @@ namespace NeraChessSearch
     {
         return std::chrono::duration_cast<std::chrono::milliseconds>(
             std::chrono::steady_clock::now().time_since_epoch()).count();
+    }
+
+    std::chrono::milliseconds SearchEngine::ScaleSoftTimeForStability(
+        std::chrono::milliseconds softTime, std::chrono::milliseconds hardTime,
+        int stableIterations)
+    {
+        // Iterative deepening's marginal value is not constant: an iteration that
+        // repeats a root move settled several plies ago tells the search almost
+        // nothing new, while one that just changed the root move is exactly the
+        // case a bigger budget is for. stableIterations is how many consecutive
+        // completed iterations agreed on the current root move; more of it means
+        // less reason to keep searching this move right now.
+        //
+        // Percent of the plain soft limit to spend, indexed by
+        // min(stableIterations, kMaxTrackedStability). Centred at index 2 (three
+        // iterations in a row on the same move counts as an unremarkable case,
+        // not evidence to cut) rather than at index 0, so a search that has only
+        // just settled still gets a real boost instead of merely losing less than
+        // a long-settled one -- a curve that only ever scales down is a time cut
+        // wearing a stability costume. The downward side is steeper and reaches
+        // further than the upward side: scaling down redistributes time for free
+        // through TimeManagement::CalculateLimits' remaining/estimatedMovesLeft
+        // term on the next move, while scaling up needs the explicit hardTime
+        // clamp below to stay safe.
+        constexpr int kMaxTrackedStability = 6;
+        constexpr std::array<int, kMaxTrackedStability + 1> kPercentByStability{
+            130, 115, 100, 85, 72, 62, 55
+        };
+
+        const int index = std::clamp(stableIterations, 0, kMaxTrackedStability);
+        const int64_t scaledMilliseconds = softTime.count() * kPercentByStability[index] / 100;
+
+        // hardTime is left untouched as the absolute ceiling (the clock-safety
+        // margin in CalculateLimits is sized against it, not against this
+        // scaling), so the amplified end of the curve is clamped to it explicitly
+        // rather than relying on the separate hard-limit check to catch it.
+        return std::min(std::chrono::milliseconds{ scaledMilliseconds }, hardTime);
     }
 
     bool SearchEngine::IsDrawOrTerminal(const ChessBoard& board,
