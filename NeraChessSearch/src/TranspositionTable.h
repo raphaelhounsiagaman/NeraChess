@@ -8,6 +8,10 @@
 #include <memory>
 #include <optional>
 
+#if defined(_MSC_VER) && !defined(__GNUC__) && !defined(__clang__)
+#include <xmmintrin.h>
+#endif
+
 namespace NeraChessSearch
 {
     enum class TTBound : uint8_t
@@ -46,6 +50,17 @@ namespace NeraChessSearch
         std::optional<TTEntry> Probe(uint64_t key) const;
         void Store(uint64_t key, int score, int depth, TTBound bound,
             NeraChessEngine::Move bestMove);
+
+        // Warms the cache line a later Probe(key) will read. Call as soon as key is
+        // known, so the load overlaps with whatever work happens before that probe.
+        void Prefetch(uint64_t key) const
+        {
+#if defined(__GNUC__) || defined(__clang__)
+            __builtin_prefetch(&m_Clusters[key & m_Mask]);
+#elif defined(_MSC_VER)
+            _mm_prefetch(reinterpret_cast<const char*>(&m_Clusters[key & m_Mask]), _MM_HINT_T0);
+#endif
+        }
 
         int HashFullPermill() const;
         size_t SizeBytes() const;
