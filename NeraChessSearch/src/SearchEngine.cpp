@@ -1222,6 +1222,7 @@ namespace NeraChessSearch
             // Nothing to update, and reading the captured piece off the board
             // would be pure overhead.
             board.MakeMove(move);
+            m_TranspositionTable->Prefetch(board.GetZobristKey());
             m_Accumulators.PushStale();
             return;
         }
@@ -1230,6 +1231,10 @@ namespace NeraChessSearch
         // encoding does not carry it.
         const NeraChessNNUE::DirtyPieces dirty = NeraChessNNUE::DescribeMove(board, move);
         board.MakeMove(move);
+        // The child's key is final here; warming its TT cluster now overlaps the
+        // load with the accumulator update and child-node setup below instead of
+        // stalling once the search actually probes it.
+        m_TranspositionTable->Prefetch(board.GetZobristKey());
         m_Accumulators.Push(*m_Network, board.GetBoardState(), dirty);
     }
 
