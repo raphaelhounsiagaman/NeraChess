@@ -2275,6 +2275,82 @@ namespace
         }
     }
 
+    void TestCapturesOnlyGeneration()
+    {
+        using namespace NeraChessEngine;
+
+        static constexpr std::string_view notInCheckFens[] = {
+            // Startpos: no captures at all -- the empty case.
+            "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1",
+            // Kiwipete: captures across every piece type plus castling rights,
+            // which a captures-only list must drop (castling never captures).
+            "r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq - 0 1",
+            // A pawn one step from promoting by capture (the push square is
+            // occupied, so only the capture-promotion is legal here).
+            "rnbq1k1r/pp1Pbppp/2p5/8/2B5/8/PPP1NnPP/RNBQK2R w KQ - 1 8",
+            // A pawn promoting by a quiet push, with no capture available --
+            // covers the "kept despite not being a capture" promotion case.
+            "7k/4P3/8/8/8/8/8/7K w - - 0 1",
+            // En passant available alongside ordinary captures.
+            "8/8/1k6/2b5/2pP4/8/5K2/8 b - d3 0 1",
+        };
+
+        for (const std::string_view fen : notInCheckFens)
+        {
+            ChessBoard board((std::string(fen)));
+            Require(board.GetError() == 0, "captures-only test FEN failed to parse");
+            Require(!board.IsInCheck(), "captures-only test position was expected to not be in check");
+
+            MoveList<218> fullMoves;
+            for (const Move move : board.GetLegalMovesRef())
+                fullMoves.push(move);
+
+            MoveList<218> captures;
+            for (const Move move : board.GetCapturesRef())
+                captures.push(move);
+
+            std::size_t expectedCount = 0;
+            for (const Move move : fullMoves)
+                if (move.GetMoveFlags() & (MoveFlags::IS_CAPTURE | MoveFlags::IS_PROMOTION))
+                    ++expectedCount;
+            Require(captures.size() == expectedCount,
+                "captures-only count disagreed with the filtered full list");
+
+            for (const Move move : captures)
+            {
+                bool found = false;
+                for (const Move full : fullMoves)
+                    found |= (full == move);
+                Require(found, "captures-only generation emitted a move absent from the full list");
+                Require(move.GetMoveFlags() & (MoveFlags::IS_CAPTURE | MoveFlags::IS_PROMOTION),
+                    "captures-only generation emitted a quiet, non-promotion move");
+            }
+        }
+
+        // In check, GetCapturesRef() must fall back to the full evasion list --
+        // it has no way to represent "no captures" separately from "no legal
+        // moves", so it must not restrict emission here at all.
+        ChessBoard inCheck("4k3/8/8/8/8/8/4r3/4K3 w - - 0 1");
+        Require(inCheck.IsInCheck(), "in-check test position was expected to be in check");
+
+        MoveList<218> fullEvasions;
+        for (const Move move : inCheck.GetLegalMovesRef())
+            fullEvasions.push(move);
+        MoveList<218> captureEvasions;
+        for (const Move move : inCheck.GetCapturesRef())
+            captureEvasions.push(move);
+
+        Require(captureEvasions.size() == fullEvasions.size(),
+            "in-check captures-only result dropped moves from the full evasion list");
+        for (const Move move : captureEvasions)
+        {
+            bool found = false;
+            for (const Move full : fullEvasions)
+                found |= (full == move);
+            Require(found, "in-check captures-only result diverged from the full evasion list");
+        }
+    }
+
     void TestStaticExchangeEvaluation()
     {
         using NeraChessSearch::MoveOrdering::StaticExchangeEvaluation;
@@ -2581,6 +2657,7 @@ int main(int argc, char** argv)
         LoadRequestedNetwork();
         TestSearchChoices();
         TestSliderAttackLookups();
+        TestCapturesOnlyGeneration();
         TestStaticExchangeEvaluation();
         TestClockAndTimeManagement();
         TestSoftTimeStabilityScaling();

@@ -461,12 +461,13 @@ namespace NeraChessEngine
 
 	const std::array<std::array<Bitboard, 64>, 64> MoveGenerator::s_AlignMask = InitAlignMask();
 
-	const MoveList<218>& MoveGenerator::GenerateMoves(const BoardState& board)
+	const MoveList<218>& MoveGenerator::GenerateMoves(const BoardState& board, bool capturesOnly)
 	{
 		m_BoardState = board;
+		m_CapturesOnly = capturesOnly;
 
 		m_LegalMoves.clear();
-	
+
 		InitGen();
 
 		CalculateKingMoves();
@@ -565,6 +566,10 @@ namespace NeraChessEngine
 
 		CalculateAttackMaps();
 
+		// Only restricts emission when not in check -- an in-check position needs
+		// its full evasion list regardless of what the caller asked for, since
+		// capturesOnly has no way to represent "no captures, but not stalemate".
+		m_CaptureFilter = (m_CapturesOnly && !m_InCheck) ? m_OpponentPieces : ~0ULL;
 	}
 
 	void MoveGenerator::CalculateAttackMaps()
@@ -721,7 +726,7 @@ namespace NeraChessEngine
 
 	void MoveGenerator::CalculateKingMoves()
 	{
-		Bitboard legalMask = ~(m_OpponentAttackMap | m_FriendlyPieces);
+		Bitboard legalMask = ~(m_OpponentAttackMap | m_FriendlyPieces) & m_CaptureFilter;
 		Bitboard kingMoves = s_KingMoveMask[m_FriendlyKingSquare] & legalMask;
 
 		PieceType friendlyKingPiece = m_WhiteToMove ? PieceType::WHITE_KING : PieceType::BLACK_KING;
@@ -740,8 +745,8 @@ namespace NeraChessEngine
 			));
 		}
 
-		// Castling
-		if (m_InCheck)
+		// Castling never captures, so it has no place in a captures-only list.
+		if (m_InCheck || m_CapturesOnly)
 			return;
 
 		Bitboard castleBlockers = m_OpponentAttackMap | m_AllPieces;
@@ -784,7 +789,7 @@ namespace NeraChessEngine
 
 	void MoveGenerator::CalculateSlidingMoves()
 	{
-		Bitboard moveMask = ~m_FriendlyPieces & m_CheckRayBitmask;
+		Bitboard moveMask = ~m_FriendlyPieces & m_CheckRayBitmask & m_CaptureFilter;
 
 		Bitboard othogonalSliders = m_FriendlyOrthogonalSliders;
 		Bitboard diagonalSliders = m_FriendlyDiagonalSliders;
@@ -860,7 +865,7 @@ namespace NeraChessEngine
 	void MoveGenerator::CalculateKnightMoves()
 	{
 		Bitboard knights = m_FriendlyKnights & m_NotPinRays;
-		Bitboard moveMask = ~m_FriendlyPieces & m_CheckRayBitmask;
+		Bitboard moveMask = ~m_FriendlyPieces & m_CheckRayBitmask & m_CaptureFilter;
 
 		PieceType friendlyKnight = m_WhiteToMove ? PieceType::WHITE_KNIGHT : PieceType::BLACK_KNIGHT;
 
@@ -912,39 +917,46 @@ namespace NeraChessEngine
 		captureB &= m_CheckRayBitmask & ~promotionRankMask;
 
 
-		while (singlePushNoPromotions != 0)
+		// A capturesOnly generation (only requested when not in check) has no use
+		// for a quiet single or double push -- neither can ever be a capture, and
+		// push promotions (kept below) already cover the one way a pawn push
+		// stays a quiescence candidate.
+		if (!m_CapturesOnly || m_InCheck)
 		{
-			int targetSquare = BitUtil::PopLSB(singlePushNoPromotions);
-			int startSquare = targetSquare - pushOffset;
-			if (!IsPinned(startSquare) || s_AlignMask[startSquare][m_FriendlyKingSquare] == s_AlignMask[targetSquare][m_FriendlyKingSquare])
+			while (singlePushNoPromotions != 0)
 			{
-				m_LegalMoves.push(Move(
-					startSquare,
-					targetSquare,
-					friendlyPawnPiece
-				));
+				int targetSquare = BitUtil::PopLSB(singlePushNoPromotions);
+				int startSquare = targetSquare - pushOffset;
+				if (!IsPinned(startSquare) || s_AlignMask[startSquare][m_FriendlyKingSquare] == s_AlignMask[targetSquare][m_FriendlyKingSquare])
+				{
+					m_LegalMoves.push(Move(
+						startSquare,
+						targetSquare,
+						friendlyPawnPiece
+					));
+				}
+			}
+
+			Bitboard doublePushTargetRankMask = m_WhiteToMove ? Square::Rank4 : Square::Rank5;
+			Bitboard doublePush = BitUtil::Shift(singlePush, pushOffset) & ~m_AllPieces & doublePushTargetRankMask & m_CheckRayBitmask;
+
+			while (doublePush != 0)
+			{
+				uint8_t targetSquare = BitUtil::PopLSB(doublePush);
+				uint8_t startSquare = targetSquare - pushOffset * 2;
+				if (!IsPinned(startSquare) || s_AlignMask[startSquare][m_FriendlyKingSquare] == s_AlignMask[targetSquare][m_FriendlyKingSquare])
+				{
+					m_LegalMoves.push(Move(
+						startSquare,
+						targetSquare,
+						friendlyPawnPiece,
+						0,
+						MoveFlags::PAWN_TWO_UP
+					));
+				}
 			}
 		}
 
-		Bitboard doublePushTargetRankMask = m_WhiteToMove ? Square::Rank4 : Square::Rank5;
-		Bitboard doublePush = BitUtil::Shift(singlePush, pushOffset) & ~m_AllPieces & doublePushTargetRankMask & m_CheckRayBitmask;
-
-		while (doublePush != 0)
-		{
-			uint8_t targetSquare = BitUtil::PopLSB(doublePush);
-			uint8_t startSquare = targetSquare - pushOffset * 2;
-			if (!IsPinned(startSquare) || s_AlignMask[startSquare][m_FriendlyKingSquare] == s_AlignMask[targetSquare][m_FriendlyKingSquare])
-			{
-				m_LegalMoves.push(Move(
-					startSquare,
-					targetSquare, 
-					friendlyPawnPiece,
-					0,
-					MoveFlags::PAWN_TWO_UP
-				));
-			}
-		}
-	
 
 		// Captures
 		while (captureA != 0)	

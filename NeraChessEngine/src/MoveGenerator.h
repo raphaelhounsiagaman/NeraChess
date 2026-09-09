@@ -16,7 +16,12 @@ namespace NeraChessEngine
 		MoveGenerator() = default;
 		~MoveGenerator() = default;
 
-		const MoveList<218>& GenerateMoves(const BoardState& board);
+		// capturesOnly restricts emitted moves to captures, promotions and en
+		// passant -- the only moves quiescence ever keeps -- when the position is
+		// not in check. In check, the full evasion list is generated regardless,
+		// since capturesOnly can't tell "no captures" from "no legal moves" and
+		// evasions need the complete list.
+		const MoveList<218>& GenerateMoves(const BoardState& board, bool capturesOnly = false);
 
 		const MoveList<218>& GetLegalMoves() const { return m_LegalMoves; }
 
@@ -95,6 +100,12 @@ namespace NeraChessEngine
 
 		bool m_InCheck{ false }; // check
 		bool m_InDoubleCheck{ false }; // check
+
+		bool m_CapturesOnly{ false };
+		// m_OpponentPieces when capturesOnly is active and the position is not in
+		// check, all-ones otherwise -- AND this into a move mask to gate emission
+		// to captures without an after-the-fact filter.
+		Bitboard m_CaptureFilter{ ~0ULL };
 
 	public:
 		static constexpr uint8_t m_MaxPossibleMoves = 218;

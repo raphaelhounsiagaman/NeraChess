@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <array>
+#include <cassert>
 #include <charconv>
 #include <cstdint>
 #include <iostream>
@@ -616,6 +617,46 @@ namespace NeraChessEngine
 			m_WasBoardStateChanged = false;
 		}
 		return m_MoveGenerator.GetLegalMoves();
+	}
+
+	const MoveList<218>& ChessBoard::GetCapturesRef() const
+	{
+#ifdef DEBUG
+		// Keep the mask-gated captures-only path honest against the full
+		// generator: a drift here would show up as a wrong move loop rather
+		// than a crash, so check it explicitly instead of trusting the masks.
+		MoveList<218> fullMoves;
+		for (const Move move : m_MoveGenerator.GenerateMoves(m_BoardState))
+			fullMoves.push(move);
+		// In check, GenerateMoves(capturesOnly=true) still returns the full
+		// evasion list (see the comment on the header declaration), so the
+		// expectation below has to match that rather than filtering by flags.
+		const bool wasInCheck = m_MoveGenerator.InCheck();
+#endif
+
+		m_MoveGenerator.GenerateMoves(m_BoardState, /*capturesOnly=*/true);
+		const MoveList<218>& captures = m_MoveGenerator.GetLegalMoves();
+
+#ifdef DEBUG
+		std::size_t expectedCount = 0;
+		for (const Move move : fullMoves)
+			if (wasInCheck || (move.GetMoveFlags() & (MoveFlags::IS_CAPTURE | MoveFlags::IS_PROMOTION)))
+				++expectedCount;
+		assert(captures.size() == expectedCount &&
+			"captures-only generation count disagrees with the filtered full list");
+		for (const Move move : captures)
+		{
+			bool found = false;
+			for (const Move full : fullMoves)
+				found |= (full == move);
+			assert(found && "captures-only generation emitted a move absent from the full list");
+		}
+#endif
+
+		// The shared buffer now holds a captures-only list, not the full one
+		// GetLegalMovesRef() caches by this flag -- force it to regenerate.
+		m_WasBoardStateChanged = true;
+		return captures;
 	}
 
 	uint16_t ChessBoard::GetGameOver(bool gameCheck) const

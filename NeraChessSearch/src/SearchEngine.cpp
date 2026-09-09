@@ -788,6 +788,8 @@ namespace NeraChessSearch
         Score bestScore = -SCORE_INF;
         Move bestMove = 0;
         Score standPat = -SCORE_INF;
+
+        MoveList<218> candidates;
         if (!inCheck)
         {
             standPat = EvaluateNode(board);
@@ -802,16 +804,23 @@ namespace NeraChessSearch
                 return bestScore;
             }
             alpha = std::max(alpha, bestScore);
+
+            // Generated directly as captures/promotions/en passant, so every
+            // emitted move is already a candidate -- no IsQuiet filter needed.
+            // An empty result means "no captures", not stalemate: a stalemate
+            // reached exactly at a quiescence horizon falls through to the
+            // stand-pat return below instead of SCORE_DRAW. That's an accepted,
+            // narrow trade-off (see #35) -- GetGameOver and the main search
+            // both still detect stalemate correctly at every other node.
+            for (const Move move : board.GetCapturesRef())
+                candidates.push(move);
         }
-
-        const MoveList<218>& legalMoves = board.GetLegalMovesRef();
-        if (legalMoves.size() == 0)
-            return inCheck ? -SCORE_MATE + ply : SCORE_DRAW;
-
-        MoveList<218> candidates;
-        for (const Move move : legalMoves)
+        else
         {
-            if (inCheck || !IsQuiet(move))
+            const MoveList<218>& legalMoves = board.GetLegalMovesRef();
+            if (legalMoves.size() == 0)
+                return -SCORE_MATE + ply;
+            for (const Move move : legalMoves)
                 candidates.push(move);
         }
         // SortMoves only ever writes and this loop only ever reads indices below

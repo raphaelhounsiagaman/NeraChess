@@ -53,6 +53,16 @@ namespace NeraChessEngine
 	    // by the MoveGenerator's own list -- ChessBoard keeps no second copy.
 	    const MoveList<218>& GetLegalMovesRef() const;
 
+	    // Captures, promotions and en passant only -- what quiescence's move loop
+	    // actually wants -- generated directly instead of filtering the full
+	    // list. Only meaningful when the position is not in check (in check, this
+	    // returns the same full evasion list GetLegalMovesRef() would); callers
+	    // that need to distinguish "no captures" from stalemate must not rely on
+	    // an empty result here to mean the latter. Backed by the same shared
+	    // buffer as GetLegalMovesRef() -- calling either invalidates a previously
+	    // returned reference to the other.
+	    const MoveList<218>& GetCapturesRef() const;
+
         void MakeMove(Move move, bool gameMove = false);
 	    void UndoMove(Move move);
 
