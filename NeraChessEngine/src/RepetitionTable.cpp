@@ -14,6 +14,8 @@ namespace NeraChessEngine
 
 	void RepetitionTable::RemoveEntry(uint64_t positionKey)
 	{
+		// Only read by the asserts below, so it goes unused once NDEBUG strips them.
+		(void)positionKey;
 		assert(!m_Keys.empty());
 		assert(m_Keys.back() == positionKey);
 		m_Keys.pop_back();
