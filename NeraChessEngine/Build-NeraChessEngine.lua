@@ -45,14 +45,14 @@ project "NeraChessEngine"
     symbols "on"
 
   filter "configurations:Release"
-    defines { "RELEASE" }
+    defines { "RELEASE", "NDEBUG" }
     runtime "Release"
     optimize "Speed"
     symbols "On"
     linktimeoptimization "On"
 
   filter "configurations:Dist"
-    defines { "DIST" }
+    defines { "DIST", "NDEBUG" }
     runtime "Release"
     optimize "Speed"
     symbols "Off"

@@ -29,6 +29,12 @@ make -C NeraChessTests config=release
 Use `config=debug` while developing engine/search/rules code — asserts (e.g.
 accumulator full-refresh verification) are compiled in.
 
+`Release` and `Dist` define `NDEBUG`, so `assert()` compiles out of every
+library and the played engine binaries (`NeraChessUCI`, `NeraChessApp`).
+`NeraChessTests` is deliberately excluded from that define and keeps every
+`assert()` live in all three configurations, so the Release run of the test
+suite in CI still exercises the invariant checks, not just the Debug run.
+
 The desktop app (`NeraChessApp`, requires SDL2) and full workspace generation
 are covered per-platform in `README.md` (`scripts/Setup-macOS.sh`,
 `scripts/Setup-Windows.bat`). On macOS, SDL deps come from Homebrew
