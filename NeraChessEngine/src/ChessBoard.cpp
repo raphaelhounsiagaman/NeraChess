@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <array>
+#include <cassert>
 #include <charconv>
 #include <cstdint>
 #include <iostream>
@@ -260,6 +261,7 @@ namespace NeraChessEngine
 		m_ZobristKeySet = true;
 
 		m_WasBoardStateChanged = true;
+		m_CheckInfoValid = false;
 
 		const Square startSquare = move.GetStartSquare();
 		const Square targetSquare = move.GetTargetSquare();
@@ -458,6 +460,7 @@ namespace NeraChessEngine
 		}
 
 		m_WasBoardStateChanged = true;
+		m_CheckInfoValid = false;
 
 		m_MovesPlayed.pop_back();
 		UndoInfo info = m_UndoStack.pop();
@@ -577,6 +580,7 @@ namespace NeraChessEngine
 		m_BoardState.boardStateFlags &= ~BoardStateFlags::CanEnPassant;
 		m_BoardState.enPassantFile = 8;
 		m_WasBoardStateChanged = true;
+		m_CheckInfoValid = false;
 		m_GameOverFlags = 0;
 
 		return true;
@@ -600,6 +604,7 @@ namespace NeraChessEngine
 		m_ZobristKey = info.zobristKey;
 		m_ZobristKeySet = true;
 		m_WasBoardStateChanged = true;
+		m_CheckInfoValid = false;
 		m_GameOverFlags = 0;
 	}
 
@@ -974,6 +979,83 @@ namespace NeraChessEngine
 	}
 
 	bool ChessBoard::GivesCheck(Move move) const
+	{
+		const uint8_t moveFlags = move.GetMoveFlags();
+
+		// Castling and en passant relocate a second piece (the rook, or the
+		// captured pawn) outside the landed-piece model the fast path assumes,
+		// so they always go straight to the exact implementation. They are a
+		// small fraction of calls.
+		if (moveFlags & (MoveFlags::IS_EN_PASSANT | MoveFlags::IS_CASTLES))
+			return GivesCheckSlow(move);
+
+		EnsureCheckInfo();
+		if (m_NoEnemyKing)
+			return false;
+
+		const Piece movePiece = move.GetMovePiece();
+		const uint8_t landedType = (moveFlags & MoveFlags::IS_PROMOTION)
+			? static_cast<uint8_t>(move.GetPromoPiece() % 6)
+			: static_cast<uint8_t>(movePiece % 6);
+
+		const Bitboard targetBit = s_SquareBitboard[move.GetTargetSquare()];
+		const Bitboard startBit = s_SquareBitboard[move.GetStartSquare()];
+
+		// One-sided reject: this can only ever prove "not a check". Landing on a
+		// square that attacks the enemy king (direct) or vacating the first
+		// blocker on some ray from it (a possible discovery) are the only ways a
+		// move can give check; anything neither test flags provably does not.
+		if (!((m_CheckSquares[landedType] & targetBit) || (m_DiscoveryRing & startBit)))
+		{
+			assert(!GivesCheckSlow(move) && "GivesCheck fast reject disagreed with GivesCheckSlow");
+			return false;
+		}
+
+		return GivesCheckSlow(move);
+	}
+
+	// Builds the per-node check-square cache GivesCheck's fast path reads.
+	// Lazy rather than eager in MakeMove: most nodes never prune, so most
+	// positions never need this built at all.
+	void ChessBoard::EnsureCheckInfo() const
+	{
+		if (m_CheckInfoValid)
+			return;
+		m_CheckInfoValid = true;
+
+		const bool whitesMove = m_BoardState.HasFlag(BoardStateFlags::WhiteToMove);
+		const uint8_t enemyOffset = whitesMove ? 6 : 0;
+		const Bitboard enemyKing = m_BoardState.pieceBitboards[enemyOffset + PieceType::WHITE_KING];
+		m_NoEnemyKing = (enemyKing == 0);
+		if (m_NoEnemyKing)
+			return;
+
+		const uint8_t enemyKingSquare = BitUtil::GetLSBIndex(enemyKing);
+
+		Bitboard occupancy = 0;
+		for (const Bitboard pieceSet : m_BoardState.pieceBitboards)
+			occupancy |= pieceSet;
+
+		const Bitboard bishopRays = MoveGenerator::LookupBishopAttacks(enemyKingSquare, occupancy);
+		const Bitboard rookRays = MoveGenerator::LookupRookAttacks(enemyKingSquare, occupancy);
+
+		m_CheckSquares[PieceType::WHITE_PAWN] = whitesMove
+			? MoveGenerator::s_BlackPawnAttackMasks[enemyKingSquare]
+			: MoveGenerator::s_WhitePawnAttackMasks[enemyKingSquare];
+		m_CheckSquares[PieceType::WHITE_KNIGHT] = MoveGenerator::s_KnightMoveMask[enemyKingSquare];
+		m_CheckSquares[PieceType::WHITE_BISHOP] = bishopRays;
+		m_CheckSquares[PieceType::WHITE_ROOK] = rookRays;
+		m_CheckSquares[PieceType::WHITE_QUEEN] = bishopRays | rookRays;
+		m_CheckSquares[PieceType::WHITE_KING] = 0;
+
+		// A superset of squares whose vacation could open a discovered check: the
+		// first occupied square on each ray from the enemy king, friendly or not.
+		// GivesCheck only uses this to decide whether to fall back to the exact
+		// path, so over-including here costs a slow-path call, never correctness.
+		m_DiscoveryRing = bishopRays | rookRays;
+	}
+
+	bool ChessBoard::GivesCheckSlow(Move move) const
 	{
 		const Piece movePiece = move.GetMovePiece();
 		const bool whitesMove = movePiece.IsWhite();
