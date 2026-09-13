@@ -26,6 +26,16 @@ depth 13–15 in a middlegame at 3 s is 4–6 plies shallower than engines with 
 node rate. The tree is not selective enough — nodes are being spent on moves that
 should have been reduced or pruned. This is a search-shape problem, not a speed problem.
 
+**Note (added after #49):** the node and nps figures above were measured before #49's
+fix, which stopped double-counting every position handed from the main search to
+quiescence. Reported node counts before that fix were 12–25% higher than the number of
+distinct positions actually visited, with the exact inflation depending on tree shape
+(measured at +24.5% on the nine-position sweep in #49). The absolute rates above
+overstate the true node rate; the diagnosis that motivated this backlog — depth 4–6
+plies shallower than expected at a comparable node rate — is a ratio between depth and
+rate and is not itself invalidated by the correction, but the node-rate side of that
+ratio was smaller than stated.
+
 ---
 
 ## Ranked improvements

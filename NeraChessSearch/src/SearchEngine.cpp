@@ -487,6 +487,17 @@ namespace NeraChessSearch
         if (ShouldStop())
             return SCORE_DRAW;
 
+        // A position with no depth left is handed to QuiescenceSearch, which
+        // independently re-derives everything below -- node counting,
+        // selective depth, PV length, the draw test, the horizon check and
+        // the mate-score clamp -- for the exact same position. Delegating
+        // here, before any of that runs, means each position is counted and
+        // evaluated once instead of twice; see issue #49. QuiescenceSearch's
+        // copy of this preamble is identical in content and order to the one
+        // below, so this is a pure reordering, not a behavior change.
+        if (depth <= 0)
+            return QuiescenceSearch(board, alpha, beta, ply);
+
         CountNode();
         m_SelectiveDepth = std::max(m_SelectiveDepth, ply);
         m_PvLength[ply] = ply;
@@ -519,8 +530,6 @@ namespace NeraChessSearch
         beta = std::min(beta, SCORE_MATE - ply - 1);
         if (alpha >= beta)
             return alpha;
-        if (depth <= 0)
-            return QuiescenceSearch(board, alpha, beta, ply);
 
         const uint64_t key = board.GetZobristKey();
         const bool ttScoreUsable = board.GetHalfMoveClock() < 90;
