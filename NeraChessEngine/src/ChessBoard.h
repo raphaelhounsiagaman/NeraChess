@@ -81,6 +81,14 @@ namespace NeraChessEngine
 	    // Making the move and calling IsInCheck() answers the same question but forces
 	    // a full legal-move generation for the child position, which is wasted work for
 	    // a move the search is about to discard.
+	    //
+	    // Fast path: every input to the answer except `move` is fixed for the whole
+	    // node, so a per-node cache of "which squares would give check" turns most
+	    // calls into a couple of bitboard tests. The cache is a one-sided filter --
+	    // it only ever proves a move does NOT give check; anything it cannot rule
+	    // out (including every real check) falls back to GivesCheckSlow() for the
+	    // exact answer, so a stale or imprecise cache can only cost performance,
+	    // never correctness.
 	    bool GivesCheck(Move move) const;
 
         uint16_t GetGameOver(bool gameCheck = true) const;
@@ -118,11 +126,34 @@ namespace NeraChessEngine
 	    static bool InsufficentMaterial(const ChessBoard& board);
 	    uint64_t GetRepetitionKey() const;
 
+	    // Exact GivesCheck: rebuilds the post-move attack picture from scratch.
+	    // Used directly for castling/en-passant (which relocate a second piece
+	    // outside the landed-piece model below) and as the fallback whenever the
+	    // per-node check-square cache cannot rule a move out.
+	    bool GivesCheckSlow(Move move) const;
+
+	    // Builds m_CheckSquares/m_DiscoveryRing/m_NoEnemyKing for the current
+	    // position if m_CheckInfoValid is false. Call before reading any of them.
+	    void EnsureCheckInfo() const;
+
     private:
 
         mutable MoveGenerator m_MoveGenerator;
 
 	    mutable bool m_WasBoardStateChanged = true;
+
+	    // Per-node cache for GivesCheck's fast reject. Indexed by PieceType % 6
+	    // (landed piece type); m_CheckSquares[type] holds the squares from which a
+	    // piece of that type would attack the enemy king given the position's
+	    // current occupancy. m_DiscoveryRing is a superset of the squares whose
+	    // vacation could open a discovered check (the first occupied square on
+	    // each ray from the enemy king). Invalidated at the same points as
+	    // m_WasBoardStateChanged, but with its own flag: that one is also cleared
+	    // by move generation as a side effect, which this cache must not be.
+	    mutable bool m_CheckInfoValid = false;
+	    mutable Bitboard m_CheckSquares[6] = {};
+	    mutable Bitboard m_DiscoveryRing = 0;
+	    mutable bool m_NoEnemyKing = false;
 
 	    mutable uint64_t m_ZobristKey = 0;
         mutable bool m_ZobristKeySet = true;
