@@ -665,6 +665,28 @@ namespace
         search.NewGame();
     }
 
+    void TestNodeCounting()
+    {
+        using namespace NeraChessEngine;
+        using namespace NeraChessSearch;
+
+        // Regression test for issue #49: PrincipalVariationSearch counted a
+        // node and then, whenever depth ran out, handed that same position to
+        // QuiescenceSearch, which counted it again -- one position, two
+        // nodes, for every main-search leaf. This pins an exact node count on
+        // a small, network-free (constant-eval) search, so the reported
+        // total is a function of the counting logic alone rather than of
+        // NNUE-driven move choice, and a reintroduction of the double count
+        // would raise it well outside this margin.
+        SearchEngine search(16);
+        ChessBoard position("4k3/8/8/8/8/8/4P3/4K3 w - - 0 1");
+        SearchLimits limits;
+        limits.maxDepth = 6;
+        const SearchResult result = search.Search(position, limits);
+        Require(result.nodes == 527, "node count regressed -- possible reintroduction of issue #49's "
+            "double counting of positions handed to quiescence search");
+    }
+
     void TestFiftyMoveTranspositions()
     {
         using namespace NeraChessSearch;
@@ -2567,6 +2589,7 @@ int main(int argc, char** argv)
         TestTranspositionTable();
         TestConcurrentTranspositionTable();
         TestSearchFoundations();
+        TestNodeCounting();
         TestFiftyMoveTranspositions();
         TestMultithreadedSearch();
         TestNnueSimdKernels();
