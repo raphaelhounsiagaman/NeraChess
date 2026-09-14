@@ -18,6 +18,15 @@ namespace NeraChessEngine
 
 		const MoveList<218>& GenerateMoves(const BoardState& board);
 
+		// Captures, capture-promotions, quiet promotions and en passant only --
+		// exactly the subset quiescence keeps after filtering GenerateMoves's
+		// result through IsQuiet(). Must only be called when the side to move is
+		// not in check: a quiet block or king step is as legal an evasion as a
+		// capture, and this generator excludes quiet non-promotion moves
+		// unconditionally, so calling it while in check would silently drop
+		// evasions rather than produce the required (possibly quiet) escape set.
+		const MoveList<218>& GenerateCaptures(const BoardState& board);
+
 		const MoveList<218>& GetLegalMoves() const { return m_LegalMoves; }
 
 		bool InCheck() const { return m_InCheck; };
@@ -29,10 +38,15 @@ namespace NeraChessEngine
 		void CalculateAttackMaps();
 		void GenSlidingAttacks();
 
-		void CalculateKingMoves();
-		void CalculateSlidingMoves();
-		void CalculateKnightMoves();
-		void CalculatePawnMoves();
+		// capturesOnly gates each emit mask down to opponent-occupied squares
+		// (and, for pawns, skips the non-promotion push loops entirely) instead
+		// of filtering the result afterwards -- the same technique already used
+		// to drop the GetPiece lookups below. It leaves every other invariant
+		// (pins, check evasion, promotion handling) untouched.
+		void CalculateKingMoves(bool capturesOnly = false);
+		void CalculateSlidingMoves(bool capturesOnly = false);
+		void CalculateKnightMoves(bool capturesOnly = false);
+		void CalculatePawnMoves(bool capturesOnly = false);
 
 		void GeneratePromotions(Square startSquare, Square targetSquare, bool isCapture);
 

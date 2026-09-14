@@ -813,14 +813,30 @@ namespace NeraChessSearch
             alpha = std::max(alpha, bestScore);
         }
 
-        const MoveList<218>& legalMoves = board.GetLegalMovesRef();
-        if (legalMoves.size() == 0)
-            return inCheck ? -SCORE_MATE + ply : SCORE_DRAW;
-
         MoveList<218> candidates;
-        for (const Move move : legalMoves)
+        if (inCheck)
         {
-            if (inCheck || !IsQuiet(move))
+            // In check, quiescence still needs the full evasion set -- a quiet
+            // block or king step is as legal a way out as a capture, and an
+            // empty list here is checkmate.
+            const MoveList<218>& legalMoves = board.GetLegalMovesRef();
+            if (legalMoves.size() == 0)
+                return -SCORE_MATE + ply;
+            for (const Move move : legalMoves)
+                candidates.push(move);
+        }
+        else
+        {
+            // Not in check: quiescence only ever keeps captures and promotions
+            // (IsQuiet(move) is false for both), so generate exactly that subset
+            // directly instead of generating the full legal list and filtering it.
+            // This means a true stalemate at this exact horizon node is scored as
+            // the stand-pat value above rather than SCORE_DRAW -- a captures-only
+            // list can no longer tell "no captures" from "no legal moves at all".
+            // That trade-off is deliberate (see issue #35): it costs nothing
+            // outside the rare case of a horizon node that is itself stalemate,
+            // and every major engine's quiescence search makes the same one.
+            for (const Move move : board.GetCapturesOnlyMovesRef())
                 candidates.push(move);
         }
         // SortMoves only ever writes and this loop only ever reads indices below

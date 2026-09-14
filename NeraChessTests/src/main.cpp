@@ -378,6 +378,80 @@ namespace
         }
     }
 
+    // ChessBoard::GetCapturesOnlyMovesRef() (issue #35) generates captures,
+    // capture-promotions, quiet promotions and en passant directly, instead of
+    // generating every legal move and filtering out the quiet ones the way
+    // quiescence used to. Whenever the side to move is not in check, the two
+    // must agree on the same set of moves (as a multiset -- generation order is
+    // not part of the contract). Compared over every non-check position of a
+    // small tree, including en passant, promotion and castling positions.
+    void CompareCapturesAgainstFilteredLegalMoves(ChessBoard& board, int depth)
+    {
+        if (!board.IsInCheck())
+        {
+            std::multiset<uint32_t> filtered;
+            for (const auto move : board.GetLegalMoves())
+            {
+                if (move.GetMoveFlags() & (NeraChessEngine::MoveFlags::IS_CAPTURE | NeraChessEngine::MoveFlags::IS_PROMOTION))
+                    filtered.insert(move);
+            }
+
+            std::multiset<uint32_t> captures;
+            for (const auto move : board.GetCapturesOnlyMovesRef())
+                captures.insert(move);
+
+            Require(filtered == captures,
+                "GetCapturesOnlyMovesRef disagreed with the filtered full legal move list");
+        }
+
+        if (depth <= 0)
+            return;
+        for (const auto move : board.GetLegalMoves())
+        {
+            board.MakeMove(move);
+            CompareCapturesAgainstFilteredLegalMoves(board, depth - 1);
+            board.UndoMove(move);
+        }
+    }
+
+    void TestQuiescenceCaptureGeneration()
+    {
+        static constexpr std::string_view positions[] = {
+            "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1",
+            "r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq - 0 1",
+            "8/2p5/3p4/KP5r/1R3p1k/8/4P1P1/8 w - - 0 1",
+            "r3k2r/Pppp1ppp/1b3nbN/nP6/BBP1P3/q4N2/Pp1P2PP/R2Q1RK1 w kq - 0 1",
+            // En passant, promotion and castling are the cases where the added
+            // "keep it as a capture/promotion" bookkeeping is easiest to get wrong.
+            "8/8/1k6/2b5/2pP4/8/5K2/8 b - d3 0 1",
+            "4k3/1P6/8/8/8/8/6p1/4K3 w - - 0 1",
+            "r3k2r/8/8/8/8/8/8/R3K2R w KQkq - 0 1",
+            "8/8/8/8/1k6/8/2P5/4K2R w K - 0 1",
+        };
+
+        for (const auto fen : positions)
+        {
+            ChessBoard board{ std::string(fen) };
+            CompareCapturesAgainstFilteredLegalMoves(board, 3);
+        }
+    }
+
+    // GetCapturesOnlyMovesRef() cannot distinguish "no captures available" from
+    // "no legal moves at all" -- a deliberate trade-off (issue #35): a true
+    // stalemate reached exactly at a quiescence horizon node is scored as the
+    // stand-pat evaluation rather than SCORE_DRAW. This pins down the one thing
+    // that trade-off still requires: the empty case must not crash and must not
+    // fabricate a move, whatever the search above does with an empty list.
+    void TestQuiescenceCapturesAtStalemate()
+    {
+        ChessBoard board("7k/5K2/6Q1/8/8/8/8/8 b - - 0 1");
+        Require(board.GetGameOver() & NeraChessEngine::GameOverFlags::IS_STALEMATE,
+            "test position is not actually stalemate");
+        Require(!board.IsInCheck(), "stalemate is not check");
+        Require(board.GetCapturesOnlyMovesRef().size() == 0,
+            "captures-only generation fabricated a move in a position with no legal moves");
+    }
+
     void TestNullMoveState()
     {
         ChessBoard board("4k3/8/8/3pP3/8/8/8/4K3 w - d6 17 42");
@@ -2585,6 +2659,8 @@ int main(int argc, char** argv)
         TestIncrementalZobrist();
         TestGivesCheck();
         TestFastInCheck();
+        TestQuiescenceCaptureGeneration();
+        TestQuiescenceCapturesAtStalemate();
         TestNullMoveState();
         TestTranspositionTable();
         TestConcurrentTranspositionTable();

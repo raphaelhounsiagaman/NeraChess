@@ -623,6 +623,11 @@ namespace NeraChessEngine
 		return m_MoveGenerator.GetLegalMoves();
 	}
 
+	const MoveList<218>& ChessBoard::GetCapturesOnlyMovesRef() const
+	{
+		return m_CapturesMoveGenerator.GenerateCaptures(m_BoardState);
+	}
+
 	uint16_t ChessBoard::GetGameOver(bool gameCheck) const
 	{
 		uint16_t flags = GameOverFlags::IS_GAME_OVER;
