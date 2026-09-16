@@ -32,6 +32,12 @@ namespace NeraChessSearch
         constexpr int FutilityBase = 70;
         constexpr int LateMovePruningMaxDepth = 8;
         constexpr int InternalIterativeReductionMinDepth = 4;
+        // Initial aspiration half-window, in centipawns. Sized against this engine's
+        // measured inter-iteration score volatility (median 24 cp, p80 59 cp) rather than
+        // a value borrowed from elsewhere; #54 found the previous 25 cp window narrower
+        // than that volatility, causing most iterations to fail and re-search the root.
+        constexpr int AspirationWindowMinDepth = 4;
+        constexpr Score AspirationWindowHalfWidth = 45;
         // Only the quiet moves that plausibly caused a cutoff need a history malus.
         constexpr size_t MaxTrackedQuietMoves = 64;
 
@@ -280,7 +286,7 @@ namespace NeraChessSearch
 
         for (int depth = 1; depth <= m_Limits.maxDepth; ++depth)
         {
-            Score window = depth >= 4 ? 25 : SCORE_INF;
+            Score window = depth >= AspirationWindowMinDepth ? AspirationWindowHalfWidth : SCORE_INF;
             Score alpha = window == SCORE_INF ? -SCORE_INF : previousScore - window;
             Score beta = window == SCORE_INF ? SCORE_INF : previousScore + window;
             RootResult iteration;
