@@ -635,7 +635,6 @@ namespace NeraChessSearch
         MoveList<218> moves = board.GetLegalMoves();
         if (moves.size() == 0)
             return inCheck ? -SCORE_MATE + ply : SCORE_DRAW;
-        SortMoves(board, moves, ply, ttMove, previousMove);
 
         Score bestScore = -SCORE_INF;
         Move bestMove = 0;
@@ -646,7 +645,11 @@ namespace NeraChessSearch
         const int lateMoveCountLimit = LateMoveCountLimit(depth, improving);
         bool firstMove = true;
         int moveIndex = 0;
-        for (const Move move : moves)
+
+        // Searches one candidate and returns whether it produced a beta cutoff. Pulled
+        // out of the loop below so the TT move can be searched through it before the
+        // rest of the list is scored and sorted (see the TT-move fast path after this).
+        auto searchMove = [&](Move move) -> bool
         {
             const bool quiet = IsQuiet(move);
             const bool killer = quiet &&
@@ -675,7 +678,7 @@ namespace NeraChessSearch
                         // moves sort ahead of losing captures, so breaking out here
                         // would also discard captures that still have to be searched.
                         ++moveIndex;
-                        continue;
+                        return false;
                     }
                 }
             }
@@ -712,7 +715,7 @@ namespace NeraChessSearch
             UndoSearchMove(board, move);
 
             if (m_Aborted)
-                return SCORE_DRAW;
+                return true;
 
             if (quiet && quietMoveCount < quietMovesSearched.size())
                 quietMovesSearched[quietMoveCount++] = move;
@@ -754,10 +757,51 @@ namespace NeraChessSearch
                             [previousMove.GetTargetSquare()] = move;
                     }
                 }
-                break;
+                return true;
             }
             firstMove = false;
             ++moveIndex;
+            return false;
+        };
+
+        // Stage 1 of #43's staged move picker: search the TT move before anything is
+        // scored or sorted. The TT move is found by scanning the already-generated list
+        // for it -- comparisons only, no writes -- rather than by sorting or rotating it
+        // into place, so this costs nothing beyond the scan itself. If it alone produces
+        // the cutoff (roughly half of all main-search move loops, per #43's measurement),
+        // SortMoves and every other candidate's score are never computed.
+        bool ttMoveSearched = false;
+        bool cutoff = false;
+        if (ttMove != 0)
+        {
+            for (const Move move : moves)
+            {
+                if (move == ttMove)
+                {
+                    cutoff = searchMove(move);
+                    ttMoveSearched = true;
+                    break;
+                }
+            }
+        }
+        if (m_Aborted)
+            return SCORE_DRAW;
+
+        if (!cutoff)
+        {
+            // SortMoves places the TT move first unconditionally when it is present in
+            // the list, so skipping the one entry equal to it here is exactly skipping
+            // the move already searched above -- nothing else needs to change.
+            SortMoves(board, moves, ply, ttMove, previousMove);
+            for (const Move move : moves)
+            {
+                if (ttMoveSearched && move == ttMove)
+                    continue;
+                if (searchMove(move))
+                    break;
+            }
+            if (m_Aborted)
+                return SCORE_DRAW;
         }
 
         TTBound bound = TTBound::Exact;
