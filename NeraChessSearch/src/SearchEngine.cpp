@@ -32,6 +32,10 @@ namespace NeraChessSearch
         constexpr int FutilityBase = 70;
         constexpr int LateMovePruningMaxDepth = 8;
         constexpr int InternalIterativeReductionMinDepth = 4;
+        // Below this depth, the root's own iteration holds too few nodes to be worth
+        // reducing, and the shallow iterations are where a cheap tactic is most likely
+        // to be found and least affordable to delay -- see issue #52.
+        constexpr int RootLateMoveReductionMinDepth = 8;
         // Only the quiet moves that plausibly caused a cutoff need a history malus.
         constexpr size_t MaxTrackedQuietMoves = 64;
 
@@ -429,10 +433,15 @@ namespace NeraChessSearch
         // accumulator was reset for this search before the root was entered, so the
         // NNUE evaluation is the right one to seed with (see EvaluateNode).
         m_StaticEval[0] = board.IsInCheck() ? SCORE_NONE : EvaluateNode(board);
+        const bool rootInCheck = board.IsInCheck();
+        const uint8_t rootSide = board.GetBoardState().HasFlag(BoardStateFlags::WhiteToMove) ? 0 : 1;
         bool firstMove = true;
+        int moveIndex = 0;
         for (const Move move : moves)
         {
+            const bool quiet = IsQuiet(move);
             MakeSearchMove(board, move);
+            const bool givesCheck = board.IsInCheck();
             Score score;
             if (firstMove)
             {
@@ -441,8 +450,22 @@ namespace NeraChessSearch
             }
             else
             {
+                // Every non-first root move is searched with a zero window purely to
+                // prove "not better than the current best", exactly like an interior
+                // node's late moves -- so it gets the same reduced -> full-depth ->
+                // full-window ladder. Gated to deep iterations only: shallow ones hold
+                // too few nodes to be worth it and are where a delayed tactic costs the
+                // most (see issue #52).
+                const int reduction = quiet && !rootInCheck && !givesCheck &&
+                        depth >= RootLateMoveReductionMinDepth
+                    ? LateMoveReduction(depth, moveIndex, true, false, false, false,
+                        m_History[rootSide][move.GetStartSquare()][move.GetTargetSquare()])
+                    : 0;
                 score = -PrincipalVariationSearch(board, -alpha - 1, -alpha,
-                    depth - 1, 1, false, true, move, true);
+                    depth - 1 - reduction, 1, false, true, move, true);
+                if (!m_Aborted && reduction > 0 && score > alpha)
+                    score = -PrincipalVariationSearch(board, -alpha - 1, -alpha,
+                        depth - 1, 1, false, true, move, true);
                 if (!m_Aborted && score > alpha && score < beta)
                     score = -PrincipalVariationSearch(board, -beta, -alpha,
                         depth - 1, 1, true, true, move, false);
@@ -465,6 +488,7 @@ namespace NeraChessSearch
             if (alpha >= beta)
                 break;
             firstMove = false;
+            ++moveIndex;
         }
 
         TTBound bound = TTBound::Exact;
