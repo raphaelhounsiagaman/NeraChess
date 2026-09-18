@@ -722,7 +722,7 @@ namespace NeraChessSearch
                             continue;
                         UpdateHistoryScore(
                             m_History[side][failed.GetStartSquare()][failed.GetTargetSquare()],
-                            -bonus / 2);
+                            -bonus);
                     }
                     if (previousMove != 0)
                     {
