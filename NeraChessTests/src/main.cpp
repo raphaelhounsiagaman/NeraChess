@@ -2450,6 +2450,31 @@ namespace
         // limit must never be allowed to exceed it.
         Require(SearchEngine::ScaleSoftTimeForStability(milliseconds{ 1400 }, hard, 0) == hard,
             "amplified soft time was not clamped to hardTime");
+
+        // A clock-based search (the default) keeps applying the curve past the
+        // minimum depth, in both directions.
+        NeraChessSearch::SearchLimits clockLimits;
+        clockLimits.softTime = soft;
+        clockLimits.hardTime = hard;
+        Require(SearchEngine::EffectiveSoftTime(clockLimits, 20, 0) > soft,
+            "an unstable root move under a clock did not get more time than the plain soft limit");
+        Require(SearchEngine::EffectiveSoftTime(clockLimits, 20, 6) < soft,
+            "a long-settled root move under a clock was not given a shorter budget");
+        Require(SearchEngine::EffectiveSoftTime(clockLimits, 3, 0) == soft,
+            "the curve was applied below its minimum depth");
+
+        // A fixed go movetime has no clock to bank a saved iteration into --
+        // unused time is simply forfeited, not redistributed by
+        // TimeManagement::CalculateLimits on a later move -- so scaling must
+        // stay off regardless of depth or stability (issue #58).
+        NeraChessSearch::SearchLimits fixedMoveTimeLimits;
+        fixedMoveTimeLimits.softTime = soft;
+        fixedMoveTimeLimits.hardTime = hard;
+        fixedMoveTimeLimits.scaleSoftTimeForStability = false;
+        Require(SearchEngine::EffectiveSoftTime(fixedMoveTimeLimits, 20, 0) == soft,
+            "a fixed-movetime search was scaled up for an unstable root move");
+        Require(SearchEngine::EffectiveSoftTime(fixedMoveTimeLimits, 20, 6) == soft,
+            "a fixed-movetime search was scaled down for a settled root move");
     }
 
     void TestOpeningBook()

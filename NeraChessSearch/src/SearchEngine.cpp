@@ -371,14 +371,8 @@ namespace NeraChessSearch
                 break;
             if (m_Limits.softTime.count() > 0)
             {
-                // Below this depth there have been too few iterations for
-                // stability to mean anything; use the plain soft limit.
-                constexpr int kStabilityScalingMinDepth = 6;
                 const std::chrono::milliseconds effectiveSoftTime =
-                    depth >= kStabilityScalingMinDepth
-                        ? ScaleSoftTimeForStability(m_Limits.softTime, m_Limits.hardTime,
-                            stableIterations)
-                        : m_Limits.softTime;
+                    EffectiveSoftTime(m_Limits, depth, stableIterations);
                 if (TimeControlElapsed() >= effectiveSoftTime)
                     break;
             }
@@ -1098,6 +1092,19 @@ namespace NeraChessSearch
         // scaling), so the amplified end of the curve is clamped to it explicitly
         // rather than relying on the separate hard-limit check to catch it.
         return std::min(std::chrono::milliseconds{ scaledMilliseconds }, hardTime);
+    }
+
+    std::chrono::milliseconds SearchEngine::EffectiveSoftTime(
+        const SearchLimits& limits, int depth, int stableIterations)
+    {
+        if (!limits.scaleSoftTimeForStability)
+            return limits.softTime;
+        // Below this depth there have been too few iterations for stability
+        // to mean anything; use the plain soft limit.
+        constexpr int kStabilityScalingMinDepth = 6;
+        return depth >= kStabilityScalingMinDepth
+            ? ScaleSoftTimeForStability(limits.softTime, limits.hardTime, stableIterations)
+            : limits.softTime;
     }
 
     bool SearchEngine::IsDrawOrTerminal(const ChessBoard& board,
