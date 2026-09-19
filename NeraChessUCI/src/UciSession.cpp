@@ -438,6 +438,10 @@ void UciSession::StartSearch(std::string_view command)
     {
         limits.hardTime = *moveTime;
         limits.softTime = std::max(std::chrono::milliseconds{ 1 }, *moveTime * 19 / 20);
+        // There is no clock here, so time the stability curve would cut from
+        // this search is not banked into a later move -- it is simply
+        // forfeited (issue #58). Use the plain soft limit instead.
+        limits.scaleSoftTimeForStability = false;
     }
     else if (!infinite)
     {

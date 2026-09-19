@@ -46,6 +46,13 @@ namespace NeraChessSearch
         uint64_t maxNodes = 0;
         std::chrono::milliseconds softTime{ 0 };
         std::chrono::milliseconds hardTime{ 0 };
+        // The stability curve in EffectiveSoftTime() only pays for itself when
+        // time saved on a settled move is recovered on a later move via
+        // TimeManagement::CalculateLimits -- true under wtime/btime, not under
+        // a fixed go movetime, which has no later move to bank the saving
+        // into (issue #58). UciSession::StartSearch clears this on the
+        // movetime path; every other construction site keeps the curve.
+        bool scaleSoftTimeForStability = true;
         std::vector<NeraChessEngine::Move> rootMoves;
         std::function<void(const SearchResult&)> iterationCallback;
     };
@@ -79,6 +86,13 @@ namespace NeraChessSearch
         static std::chrono::milliseconds ScaleSoftTimeForStability(
             std::chrono::milliseconds softTime, std::chrono::milliseconds hardTime,
             int stableIterations);
+
+        // Folds SearchLimits::scaleSoftTimeForStability and the minimum-depth
+        // gate into the single soft-time value SearchWorker's stop check
+        // compares the clock against. Public, like ScaleSoftTimeForStability
+        // above, so the flag's wiring can be unit tested without timing.
+        static std::chrono::milliseconds EffectiveSoftTime(
+            const SearchLimits& limits, int depth, int stableIterations);
 
     private:
         struct SharedSearchState
