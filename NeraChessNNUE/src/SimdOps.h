@@ -105,6 +105,22 @@ namespace NeraChessNNUE::Simd
             }
         }
 
+        // destination[i] = source[i] + added[i] - removedA[i] - removedB[i]
+        //
+        // The capture shape: one feature added (the mover's destination) and
+        // two removed (the mover's origin, and the captured piece), so this
+        // does in one pass what a CopyAddSubtract followed by a Subtract
+        // would otherwise do in two.
+        inline void CopyAddSubtractSubtract(Weight* destination, const Weight* source,
+            const Weight* added, const Weight* removedA, const Weight* removedB, size_t count)
+        {
+            for (size_t index = 0; index < count; ++index)
+            {
+                destination[index] = static_cast<Weight>(
+                    source[index] + added[index] - removedA[index] - removedB[index]);
+            }
+        }
+
         // Activate already rescales its result onto [0, QuantizationA], so
         // each term fits int32 with room to spare; only a run of them needs
         // widening. Summing Quantization::ActivationChunk terms at a time in
@@ -264,6 +280,17 @@ namespace NeraChessNNUE::Simd
             {
                 destination[index] = static_cast<Weight>(
                     source[index] + added[index] - removed[index]);
+            }
+        }
+
+        __attribute__((target("avx2")))
+        inline void CopyAddSubtractSubtractAvx2(Weight* destination, const Weight* source,
+            const Weight* added, const Weight* removedA, const Weight* removedB, size_t count)
+        {
+            for (size_t index = 0; index < count; ++index)
+            {
+                destination[index] = static_cast<Weight>(
+                    source[index] + added[index] - removedA[index] - removedB[index]);
             }
         }
 
@@ -604,6 +631,72 @@ namespace NeraChessNNUE::Simd
             removed + index, count - index);
 #else
         Scalar::CopyAddSubtract(destination, source, added, removed, count);
+#endif
+    }
+
+    // destination[i] = source[i] + added[i] - removedA[i] - removedB[i]
+    //
+    // The fused replacement for a capture's Push: DescribeMove reports one
+    // added feature and two removed for a capture (en passant and
+    // capture-promotions included), so this reads the parent once and writes
+    // the child directly instead of CopyAddSubtract followed by a second
+    // Subtract pass over the whole accumulator.
+    inline void CopyAddSubtractSubtract(Weight* destination, const Weight* source,
+        const Weight* added, const Weight* removedA, const Weight* removedB, size_t count)
+    {
+#if defined(NNUE_SIMD_NEON)
+        size_t index = 0;
+        for (; index + 8 <= count; index += 8)
+        {
+            const int16x8_t updated = vsubq_s16(
+                vsubq_s16(
+                    vaddq_s16(vld1q_s16(source + index), vld1q_s16(added + index)),
+                    vld1q_s16(removedA + index)),
+                vld1q_s16(removedB + index));
+            vst1q_s16(destination + index, updated);
+        }
+        Scalar::CopyAddSubtractSubtract(destination + index, source + index, added + index,
+            removedA + index, removedB + index, count - index);
+#elif defined(NNUE_SIMD_AVX2)
+        size_t index = 0;
+        for (; index + 16 <= count; index += 16)
+        {
+            const __m256i updated = _mm256_sub_epi16(
+                _mm256_sub_epi16(
+                    _mm256_add_epi16(
+                        _mm256_loadu_si256(reinterpret_cast<const __m256i*>(source + index)),
+                        _mm256_loadu_si256(reinterpret_cast<const __m256i*>(added + index))),
+                    _mm256_loadu_si256(reinterpret_cast<const __m256i*>(removedA + index))),
+                _mm256_loadu_si256(reinterpret_cast<const __m256i*>(removedB + index)));
+            _mm256_storeu_si256(reinterpret_cast<__m256i*>(destination + index), updated);
+        }
+        Scalar::CopyAddSubtractSubtract(destination + index, source + index, added + index,
+            removedA + index, removedB + index, count - index);
+#elif defined(NNUE_SIMD_SSE2)
+#if defined(NNUE_SIMD_X86_DISPATCH)
+        if (Dispatch::SelectedTier() == Dispatch::Tier::Avx2)
+        {
+            Dispatch::CopyAddSubtractSubtractAvx2(destination, source, added, removedA, removedB,
+                count);
+            return;
+        }
+#endif
+        size_t index = 0;
+        for (; index + 8 <= count; index += 8)
+        {
+            const __m128i updated = _mm_sub_epi16(
+                _mm_sub_epi16(
+                    _mm_add_epi16(
+                        _mm_loadu_si128(reinterpret_cast<const __m128i*>(source + index)),
+                        _mm_loadu_si128(reinterpret_cast<const __m128i*>(added + index))),
+                    _mm_loadu_si128(reinterpret_cast<const __m128i*>(removedA + index))),
+                _mm_loadu_si128(reinterpret_cast<const __m128i*>(removedB + index)));
+            _mm_storeu_si128(reinterpret_cast<__m128i*>(destination + index), updated);
+        }
+        Scalar::CopyAddSubtractSubtract(destination + index, source + index, added + index,
+            removedA + index, removedB + index, count - index);
+#else
+        Scalar::CopyAddSubtractSubtract(destination, source, added, removedA, removedB, count);
 #endif
     }
 
