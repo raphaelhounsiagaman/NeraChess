@@ -79,6 +79,21 @@ namespace NeraChessNNUE
         assert(target != source &&
             "ApplyDeltaFrom's source must not alias the accumulator it writes");
 
+        // A capture (en passant and capture-promotions included) removes the
+        // mover's origin and the captured piece while adding only the
+        // mover's destination. That is 75% of incremental updates in a real
+        // search, and the generic path below would pay for it with a
+        // CopyAddSubtract pass followed by a second Subtract pass over the
+        // whole accumulator; fusing both removals into one pass halves the
+        // accumulator traffic for exactly this shape.
+        if (delta.addedCount == 1 && delta.removedCount == 2)
+        {
+            Simd::CopyAddSubtractSubtract(target, source, network.FeatureColumn(delta.added[0]),
+                network.FeatureColumn(delta.removed[0]), network.FeatureColumn(delta.removed[1]),
+                Architecture::HiddenSize);
+            return;
+        }
+
         const size_t paired = std::min(delta.addedCount, delta.removedCount);
 
         // The first delta operation reads `source` (the parent) and writes

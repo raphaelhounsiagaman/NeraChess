@@ -982,7 +982,8 @@ namespace
     // exercising Simd::Add et al. alone only tests whichever tier this
     // machine happens to pick.
     void RequireAccumulatorDispatchTierAgrees(const Nnue::Weight* accumulator,
-        const Nnue::Weight* added, const Nnue::Weight* removed, size_t length)
+        const Nnue::Weight* added, const Nnue::Weight* removed, const Nnue::Weight* removedB,
+        size_t length)
     {
 #if defined(NNUE_SIMD_X86_DISPATCH)
         if (!__builtin_cpu_supports("avx2"))
@@ -1033,10 +1034,19 @@ namespace
         Require(copyDispatch == copyScalar,
             "SIMD CopyAddSubtract's AVX2 dispatch tier disagrees with the scalar reference at "
             "length " + std::to_string(length));
+
+        Nnue::Simd::Dispatch::CopyAddSubtractSubtractAvx2(copyDispatch.data(), accumulator, added,
+            removed, removedB, length);
+        Nnue::Simd::Scalar::CopyAddSubtractSubtract(copyScalar.data(), accumulator, added,
+            removed, removedB, length);
+        Require(copyDispatch == copyScalar,
+            "SIMD CopyAddSubtractSubtract's AVX2 dispatch tier disagrees with the scalar "
+            "reference at length " + std::to_string(length));
 #else
         (void)accumulator;
         (void)added;
         (void)removed;
+        (void)removedB;
         (void)length;
 #endif
     }
@@ -1078,11 +1088,13 @@ namespace
                 std::vector<Nnue::Weight> values(length);
                 std::vector<Nnue::Weight> added(length);
                 std::vector<Nnue::Weight> removed(length);
+                std::vector<Nnue::Weight> removedB(length);
                 for (size_t index = 0; index < length; ++index)
                 {
                     values[index] = next();
                     added[index] = next();
                     removed[index] = next();
+                    removedB[index] = next();
                 }
 
                 const auto compare = [&](std::string_view what,
@@ -1135,6 +1147,16 @@ namespace
                     "SIMD CopyAddSubtract disagrees with the scalar reference at length " +
                         std::to_string(length));
 
+                std::vector<Nnue::Weight> copyFusedSubVector(length);
+                std::vector<Nnue::Weight> copyFusedSubScalar(length);
+                Nnue::Simd::CopyAddSubtractSubtract(copyFusedSubVector.data(), values.data(),
+                    added.data(), removed.data(), removedB.data(), length);
+                Nnue::Simd::Scalar::CopyAddSubtractSubtract(copyFusedSubScalar.data(),
+                    values.data(), added.data(), removed.data(), removedB.data(), length);
+                Require(copyFusedSubVector == copyFusedSubScalar,
+                    "SIMD CopyAddSubtractSubtract disagrees with the scalar reference at "
+                    "length " + std::to_string(length));
+
                 Require(Nnue::Simd::ActivatedDotProduct(values.data(), added.data(), length) ==
                     Nnue::Simd::Scalar::ActivatedDotProduct(values.data(), added.data(), length),
                     "SIMD ActivatedDotProduct disagrees with the scalar reference at length " +
@@ -1142,7 +1164,7 @@ namespace
 
                 RequireDispatchTiersAgree(values.data(), added.data(), length);
                 RequireAccumulatorDispatchTierAgrees(values.data(), added.data(), removed.data(),
-                    length);
+                    removedB.data(), length);
             }
         }
 
@@ -1157,7 +1179,7 @@ namespace
             "SIMD ActivatedDotProduct overflows where the scalar reference does not");
         RequireDispatchTiersAgree(saturated.data(), extremeWeights.data(), saturated.size());
         RequireAccumulatorDispatchTierAgrees(saturated.data(), extremeWeights.data(),
-            extremeWeights.data(), saturated.size());
+            extremeWeights.data(), extremeWeights.data(), saturated.size());
     }
 
     // Sorted active features for one perspective. Sorting is how two feature
