@@ -39,6 +39,19 @@ namespace NeraChessSearch
         // Only the quiet moves that plausibly caused a cutoff need a history malus.
         constexpr size_t MaxTrackedQuietMoves = 64;
 
+        // Singular search (multi-cut only -- see issue #60). A node's TT move is
+        // "singular-tested" once the stored entry is recent and deep enough to trust:
+        // a reduced-depth search with that move excluded is run against a margin below
+        // the stored score. If some other move also reaches that margin, the position is
+        // one the search would have to work hard to fail low at, and the node returns
+        // early rather than searching it to full depth. Issue #60 measured the matching
+        // singular-extension half (re-searching the TT move one ply deeper when the
+        // verification fails low) as a large net loss on this engine's branching factor,
+        // so only the multi-cut return is wired in.
+        constexpr int SingularMinDepth = 7;
+        constexpr int SingularTTDepthMargin = 3;
+        constexpr int SingularMarginPerPly = 2;
+
         // Late move reductions, indexed by remaining depth and move number. The
         // logarithmic shape is what lets late quiet moves lose several plies at high
         // depth while the first few moves stay nearly full depth.
@@ -506,7 +519,7 @@ namespace NeraChessSearch
 
     Score SearchEngine::PrincipalVariationSearch(ChessBoard& board,
         Score alpha, Score beta, int depth, int ply, bool pvNode, bool allowNull,
-        Move previousMove, bool cutNode)
+        Move previousMove, bool cutNode, Move excludedMove)
     {
         if (ShouldStop())
             return SCORE_DRAW;
@@ -557,7 +570,11 @@ namespace NeraChessSearch
 
         const uint64_t key = board.GetZobristKey();
         const bool ttScoreUsable = board.GetHalfMoveClock() < 90;
-        const std::optional<TTEntry> ttEntry = m_TranspositionTable->Probe(key);
+        // A singular-search verification node (excludedMove != 0) is re-entered at
+        // this same position with one move excluded, so the stored entry describes
+        // a node this one is not -- it must neither cut nor supply a TT move here.
+        const std::optional<TTEntry> ttEntry =
+            excludedMove == 0 ? m_TranspositionTable->Probe(key) : std::nullopt;
         Move ttMove = 0;
         if (ttEntry)
         {
@@ -627,8 +644,12 @@ namespace NeraChessSearch
 
         // Internal iterative reduction: a node deep enough to matter but with no stored
         // move will order badly, so it is cheaper to search it a ply shallower and let
-        // the resulting entry order the re-search.
-        if (depth >= InternalIterativeReductionMinDepth && ttMove == 0 && (pvNode || cutNode))
+        // the resulting entry order the re-search. A singular-search verification node
+        // always has ttMove == 0 (the probe above is skipped for it), but it is already
+        // a shallow, single-purpose probe against a margin rather than a normal search,
+        // so it must not be reduced again on top of that.
+        if (excludedMove == 0 && depth >= InternalIterativeReductionMinDepth &&
+            ttMove == 0 && (pvNode || cutNode))
             --depth;
 
         const Score originalAlpha = alpha;
@@ -648,6 +669,9 @@ namespace NeraChessSearch
         int moveIndex = 0;
         for (const Move move : moves)
         {
+            if (move == excludedMove)
+                continue;
+
             const bool quiet = IsQuiet(move);
             const bool killer = quiet &&
                 (move == m_KillerMoves[ply][0] || move == m_KillerMoves[ply][1]);
@@ -677,6 +701,32 @@ namespace NeraChessSearch
                         ++moveIndex;
                         continue;
                     }
+                }
+            }
+
+            // Singular search (multi-cut only, issue #60): the TT move at a deep
+            // enough, non-PV node with a recent, non-upper-bound entry is tested by
+            // excluding it and re-searching this same position at half depth against
+            // a margin below the stored score. If some other move also reaches that
+            // margin, at least one alternative independently holds beta, and the node
+            // returns without searching to full depth. Mate scores are excluded --
+            // singularBeta would otherwise be a fabricated mate bound -- and PV nodes
+            // are excluded, since an unproven fail-high has no business on the PV.
+            if (excludedMove == 0 && move == ttMove && ttMove != 0 && ttEntry && !pvNode &&
+                depth >= SingularMinDepth && ttEntry->depth >= depth - SingularTTDepthMargin &&
+                ttEntry->GetBound() != TTBound::Upper)
+            {
+                const Score ttScoreLocal = ScoreFromTT(ttEntry->score, ply);
+                if (std::abs(ttScoreLocal) < SCORE_MATE - MAX_PLY)
+                {
+                    const Score singularBeta = ttScoreLocal - SingularMarginPerPly * depth;
+                    const Score verified = PrincipalVariationSearch(board, singularBeta - 1,
+                        singularBeta, (depth - 1) / 2, ply, false, false, previousMove,
+                        cutNode, move);
+                    if (m_Aborted)
+                        return SCORE_DRAW;
+                    if (verified >= singularBeta && singularBeta >= beta)
+                        return singularBeta;
                 }
             }
 
@@ -765,7 +815,10 @@ namespace NeraChessSearch
             bound = TTBound::Upper;
         else if (bestScore >= beta)
             bound = TTBound::Lower;
-        if (ttScoreUsable)
+        // A singular-search verification node describes a position with one move
+        // excluded, not the real position at this key -- it must not overwrite the
+        // entry the real search already stored (or will store) here.
+        if (excludedMove == 0 && ttScoreUsable)
             m_TranspositionTable->Store(key, ScoreToTT(bestScore, ply), depth, bound, bestMove);
         return bestScore;
     }
