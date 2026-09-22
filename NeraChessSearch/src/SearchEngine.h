@@ -103,7 +103,8 @@ namespace NeraChessSearch
         RootResult SearchRoot(NeraChessEngine::ChessBoard& board, int depth, Score alpha, Score beta);
         Score PrincipalVariationSearch(NeraChessEngine::ChessBoard& board,
             Score alpha, Score beta, int depth, int ply, bool pvNode, bool allowNull,
-            NeraChessEngine::Move previousMove, bool cutNode);
+            NeraChessEngine::Move previousMove, bool cutNode,
+            NeraChessEngine::Move excludedMove = 0);
         Score QuiescenceSearch(NeraChessEngine::ChessBoard& board, Score alpha, Score beta, int ply);
 
         // seeValues, when non-null, receives the static-exchange score computed for each
