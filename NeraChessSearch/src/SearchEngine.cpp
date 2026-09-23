@@ -846,6 +846,12 @@ namespace NeraChessSearch
         std::array<int32_t, 218> seeValues;
         SortMoves(board, candidates, ply, ttMove, 0, &seeValues);
 
+        // Tracks the highest delta bound proved by a pruned move: the node has proved the
+        // true score is at most this, so a final bestScore below it is understated and must
+        // not be published as a TT bound (issue #61). Stays -SCORE_INF, and therefore never
+        // constrains the store below, when delta pruning never fires.
+        Score provenDeltaBound = -SCORE_INF;
+
         for (size_t i = 0; i < candidates.size(); ++i)
         {
             const Move move = candidates[i];
@@ -855,7 +861,8 @@ namespace NeraChessSearch
                     ? Piece(move.GetMovePiece().IsWhite()
                         ? PieceType::BLACK_PAWN : PieceType::WHITE_PAWN)
                     : board.GetPiece(move.GetTargetSquare());
-                const bool deltaPrunable = standPat + PieceValue(victim) + 200 < alpha;
+                const Score deltaBound = standPat + PieceValue(victim) + 200;
+                const bool deltaPrunable = deltaBound < alpha;
                 const bool seePrunable = seeValues[i] < -50;
 
                 // Deciding this before MakeSearchMove avoids paying for the accumulator
@@ -863,7 +870,13 @@ namespace NeraChessSearch
                 // that is about to be discarded. GivesCheck answers the same question as
                 // making the move and calling IsInCheck() without either cost.
                 if ((deltaPrunable || seePrunable) && !board.GivesCheck(move))
+                {
+                    // A losing SEE is not an upper bound on the move's value, so only a
+                    // delta prune (a proven bound) feeds provenDeltaBound.
+                    if (deltaPrunable)
+                        provenDeltaBound = std::max(provenDeltaBound, deltaBound);
                     continue;
+                }
             }
 
             MakeSearchMove(board, move);
@@ -894,7 +907,9 @@ namespace NeraChessSearch
         }
 
         const TTBound bound = bestScore <= originalAlpha ? TTBound::Upper : TTBound::Exact;
-        if (ttScoreUsable)
+        // Publishing bestScore here would understate a bound the node already proved higher
+        // (see provenDeltaBound above), so skip the store rather than record an unsound one.
+        if (ttScoreUsable && provenDeltaBound <= bestScore)
             m_TranspositionTable->Store(key, ScoreToTT(bestScore, ply), 0, bound, bestMove);
         return bestScore;
     }
