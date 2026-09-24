@@ -686,11 +686,21 @@ namespace NeraChessSearch
             }
             else
             {
-                const int reduction = quiet && !inCheck && !givesCheck
-                    ? LateMoveReduction(depth, moveIndex, pvNode, cutNode, improving,
-                        killer || counter,
-                        m_History[side][move.GetStartSquare()][move.GetTargetSquare()])
-                    : 0;
+                // Non-promotion captures get the same table lookup as a quiet move of
+                // the same lateness, one ply less and with no history term: there is no
+                // capture history to read, and m_History is keyed for quiet moves only.
+                const bool nonPromotionCapture = !quiet &&
+                    (move.GetMoveFlags() & MoveFlags::IS_CAPTURE) &&
+                    !(move.GetMoveFlags() & MoveFlags::IS_PROMOTION);
+                int reduction = 0;
+                if ((quiet || nonPromotionCapture) && !inCheck && !givesCheck)
+                {
+                    reduction = LateMoveReduction(depth, moveIndex, pvNode, cutNode, improving,
+                        quiet && (killer || counter),
+                        quiet ? m_History[side][move.GetStartSquare()][move.GetTargetSquare()] : 0);
+                    if (nonPromotionCapture)
+                        reduction = std::max(0, reduction - 1);
+                }
 
                 score = -PrincipalVariationSearch(board, -alpha - 1, -alpha,
                     depth - 1 - reduction, ply + 1, false, true, move, true);
