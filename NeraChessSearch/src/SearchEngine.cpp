@@ -612,7 +612,13 @@ namespace NeraChessSearch
             {
                 if (ttScoreUsable)
                 {
-                    m_TranspositionTable->Store(key, ScoreToTT(beta, ply), depth,
+                    // The cutoff is only backed by the reduced null search, not a
+                    // full-depth one, so the stored depth must reflect what was
+                    // actually searched behind it (usually 0, i.e. quiescence only) or
+                    // later probes will treat a heuristic bound as a proven full-depth
+                    // result.
+                    const int searchedDepth = std::max(0, depth - 1 - reduction);
+                    m_TranspositionTable->Store(key, ScoreToTT(beta, ply), searchedDepth,
                         TTBound::Lower, ttMove);
                 }
                 return beta;
