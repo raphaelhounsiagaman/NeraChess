@@ -284,7 +284,9 @@ namespace NeraChessSearch
 
         for (int depth = 1; depth <= m_Limits.maxDepth; ++depth)
         {
-            Score window = depth >= 4 ? 25 : SCORE_INF;
+            // Sized against the engine's own iteration-to-iteration score swing
+            // (median ~24 cp, p80 ~59 cp); 25 failed nearly every iteration.
+            Score window = depth >= 4 ? 45 : SCORE_INF;
             Score alpha = window == SCORE_INF ? -SCORE_INF : previousScore - window;
             Score beta = window == SCORE_INF ? SCORE_INF : previousScore + window;
             RootResult iteration;
