@@ -2082,12 +2082,19 @@ namespace
         // Same defect, conversion phase: a won Q+N vs R+R endgame whose reported
         // principal variation cycles back to a position it has already passed
         // through, which a correct search should never prefer over progress.
+        //
+        // The root's own position is deliberately not part of this: in-tree
+        // repetition excludes the root's occurrence (see IsInTreeRepetition), so a
+        // line that returns to the root once is scored normally, and whether this
+        // PV does so at any given depth is an accident of tree shape -- main itself
+        // returns to the root at depths 14, 18 and 19 here (issue #48). What #18
+        // guarantees is that no position *inside* the tree is revisited.
         search.NewGame();
         ChessBoard endgame("8/8/2n5/1k6/1p2q3/8/1R5K/1R6 b - - 7 55");
         SearchLimits endgameLimits;
         endgameLimits.maxDepth = 13;
         const SearchResult endgameResult = search.Search(endgame, endgameLimits);
-        std::vector<uint64_t> pvKeys{ endgame.GetZobristKey() };
+        std::vector<uint64_t> pvKeys;
         ChessBoard pvWalker = endgame;
         for (const NeraChessEngine::Move pvMove : endgameResult.principalVariation)
         {
