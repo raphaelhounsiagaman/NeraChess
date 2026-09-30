@@ -808,13 +808,19 @@ namespace
         std::mutex depthMutex;
         std::condition_variable depthCondition;
         int reachedDepth = 0;
+        bool stopIssued = false;
         stoppedLimits.iterationCallback = [&](const SearchResult& iteration)
         {
-            {
-                std::scoped_lock lock(depthMutex);
-                reachedDepth = iteration.completedDepth;
-            }
-            depthCondition.notify_one();
+            std::unique_lock lock(depthMutex);
+            reachedDepth = iteration.completedDepth;
+            depthCondition.notify_all();
+            // Hold the main worker here until the stop has been issued. No network
+            // is loaded at this point, so every position evaluates to 0 and the
+            // tree collapses: all 30 iterations finish in tens of milliseconds,
+            // and a stop that arrived after that found a completed, unaborted
+            // search -- a race this test lost on slower-waking CI runners.
+            if (reachedDepth >= 2)
+                depthCondition.wait_for(lock, std::chrono::seconds{ 2 }, [&] { return stopIssued; });
         };
         SearchResult stoppedResult;
         std::jthread searching([&]
@@ -824,8 +830,10 @@ namespace
         std::unique_lock depthLock(depthMutex);
         const bool startedPromptly = depthCondition.wait_for(depthLock,
             std::chrono::seconds{ 2 }, [&] { return reachedDepth >= 2; });
-        depthLock.unlock();
         search.RequestStop();
+        stopIssued = true;
+        depthLock.unlock();
+        depthCondition.notify_all();
         searching.join();
         Require(startedPromptly, "multithreaded search did not start promptly");
         Require(stoppedResult.aborted &&
