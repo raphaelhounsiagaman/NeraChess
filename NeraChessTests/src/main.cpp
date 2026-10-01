@@ -808,13 +808,19 @@ namespace
         std::mutex depthMutex;
         std::condition_variable depthCondition;
         int reachedDepth = 0;
+        bool stopIssued = false;
         stoppedLimits.iterationCallback = [&](const SearchResult& iteration)
         {
-            {
-                std::scoped_lock lock(depthMutex);
-                reachedDepth = iteration.completedDepth;
-            }
-            depthCondition.notify_one();
+            std::unique_lock lock(depthMutex);
+            reachedDepth = iteration.completedDepth;
+            depthCondition.notify_all();
+            // Hold the main worker here until the stop has been issued. No network
+            // is loaded at this point, so every position evaluates to 0 and the
+            // tree collapses: all 30 iterations finish in tens of milliseconds,
+            // and a stop that arrived after that found a completed, unaborted
+            // search -- a race this test lost on slower-waking CI runners.
+            if (reachedDepth >= 2)
+                depthCondition.wait_for(lock, std::chrono::seconds{ 2 }, [&] { return stopIssued; });
         };
         SearchResult stoppedResult;
         std::jthread searching([&]
@@ -824,8 +830,10 @@ namespace
         std::unique_lock depthLock(depthMutex);
         const bool startedPromptly = depthCondition.wait_for(depthLock,
             std::chrono::seconds{ 2 }, [&] { return reachedDepth >= 2; });
-        depthLock.unlock();
         search.RequestStop();
+        stopIssued = true;
+        depthLock.unlock();
+        depthCondition.notify_all();
         searching.join();
         Require(startedPromptly, "multithreaded search did not start promptly");
         Require(stoppedResult.aborted &&
@@ -2082,12 +2090,19 @@ namespace
         // Same defect, conversion phase: a won Q+N vs R+R endgame whose reported
         // principal variation cycles back to a position it has already passed
         // through, which a correct search should never prefer over progress.
+        //
+        // The root's own position is deliberately not part of this: in-tree
+        // repetition excludes the root's occurrence (see IsInTreeRepetition), so a
+        // line that returns to the root once is scored normally, and whether this
+        // PV does so at any given depth is an accident of tree shape -- main itself
+        // returns to the root at depths 14, 18 and 19 here (issue #48). What #18
+        // guarantees is that no position *inside* the tree is revisited.
         search.NewGame();
         ChessBoard endgame("8/8/2n5/1k6/1p2q3/8/1R5K/1R6 b - - 7 55");
         SearchLimits endgameLimits;
         endgameLimits.maxDepth = 13;
         const SearchResult endgameResult = search.Search(endgame, endgameLimits);
-        std::vector<uint64_t> pvKeys{ endgame.GetZobristKey() };
+        std::vector<uint64_t> pvKeys;
         ChessBoard pvWalker = endgame;
         for (const NeraChessEngine::Move pvMove : endgameResult.principalVariation)
         {

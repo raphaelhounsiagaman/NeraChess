@@ -31,6 +31,11 @@ namespace NeraChessSearch
         constexpr int FutilityMargin = 90;
         constexpr int FutilityBase = 70;
         constexpr int LateMovePruningMaxDepth = 8;
+        // A capture whose static exchange loses more than this per remaining ply is
+        // skipped at shallow non-PV nodes. Tight on purpose: a looser -200 per ply
+        // pruned less and grew some trees -- see issue #48.
+        constexpr int SeePruningMaxDepth = 6;
+        constexpr int SeePruningMarginPerPly = 50;
         constexpr int InternalIterativeReductionMinDepth = 4;
         // Below this depth, the root's own iteration holds too few nodes to be worth
         // reducing, and the shallow iterations are where a cheap tactic is most likely
@@ -629,7 +634,8 @@ namespace NeraChessSearch
         MoveList<218> moves = board.GetLegalMoves();
         if (moves.size() == 0)
             return inCheck ? -SCORE_MATE + ply : SCORE_DRAW;
-        SortMoves(board, moves, ply, ttMove, previousMove);
+        std::array<int32_t, 218>& seeValues = (*m_SeeValues)[ply];
+        SortMoves(board, moves, ply, ttMove, previousMove, &seeValues);
 
         Score bestScore = -SCORE_INF;
         Move bestMove = 0;
@@ -640,8 +646,9 @@ namespace NeraChessSearch
         const int lateMoveCountLimit = LateMoveCountLimit(depth, improving);
         bool firstMove = true;
         int moveIndex = 0;
-        for (const Move move : moves)
+        for (size_t i = 0; i < moves.size(); ++i)
         {
+            const Move move = moves[i];
             const bool quiet = IsQuiet(move);
             const bool killer = quiet &&
                 (move == m_KillerMoves[ply][0] || move == m_KillerMoves[ply][1]);
@@ -671,6 +678,21 @@ namespace NeraChessSearch
                         ++moveIndex;
                         continue;
                     }
+                }
+            }
+            else if (canPrune && bestScore > -SCORE_INF && depth <= SeePruningMaxDepth &&
+                !(move.GetMoveFlags() & MoveFlags::IS_PROMOTION) &&
+                seeValues[i] < -SeePruningMarginPerPly * depth)
+            {
+                // A capture that loses material on its own square. The TT move is never
+                // skipped: it sorts first and is searched before bestScore is set.
+                // Promotions are exempt because their exchange is dominated by the
+                // promotion gain, and checks for the same reason as quiet moves.
+                givesCheck = board.GivesCheck(move);
+                if (!givesCheck)
+                {
+                    ++moveIndex;
+                    continue;
                 }
             }
 

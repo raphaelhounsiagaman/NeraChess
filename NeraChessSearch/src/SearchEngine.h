@@ -196,6 +196,11 @@ namespace NeraChessSearch
         std::array<std::array<NeraChessEngine::Move, 64>, 12> m_CounterMoves{};
         std::array<std::array<NeraChessEngine::Move, MAX_PLY>, MAX_PLY> m_PvTable{};
         std::array<int, MAX_PLY> m_PvLength{};
+
+        // Per-ply static-exchange scores from SortMoves, read back by the main
+        // search's capture pruning. ~110 KB, so it lives on the heap (see below).
+        std::unique_ptr<std::array<std::array<int32_t, 218>, MAX_PLY>> m_SeeValues =
+            std::make_unique<std::array<std::array<int32_t, 218>, MAX_PLY>>();
     };
 
     // Callers routinely construct a SearchEngine inside a worker thread, and a
