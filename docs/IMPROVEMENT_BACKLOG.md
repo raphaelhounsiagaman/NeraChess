@@ -223,4 +223,40 @@ noted.
 
 Items 2 (extensions, with a tighter gate than the one rejected above), 3 (continuation
 history), and 4 (search-side two-fold repetition) are the next candidates, in that
-order. Item 5's remaining per-node copies are now the largest speed item left.
+order. Item 5's remaining per-node copies were since measured at a bit-identical tree and
+are *not* worth taking — see the table below.
+
+---
+
+## Strength-test results, September 2026
+
+Measured with `.github/workflows/strength-test.yml` at 10+0.1 (see
+`docs/Strength-Testing.md`), each against the `main` of its day. Recorded so that the
+rejected ones are not re-attempted blindly; the linked issue holds the full measurement.
+
+Two lessons from this batch. A fixed-length 1,000-game run is a screen, not a verdict:
+#57's first screen read +4.9 Elo before its sequential test accepted it at +26.8. And a
+smaller tree at fixed depth predicts little on its own — #54 cut it by up to 23% and #60
+by 18%, and both still came back neutral or worse. What separated them was the gain at
+fixed time: a few tenths of a ply for the rejected changes, below what an `elo1=5`
+sequential test resolves, against +0.93 ply at 1 s for #57.
+
+### Accepted
+
+| Change | Issue / PR | Result |
+| --- | --- | --- |
+| History malus equal to the bonus on quiet beta cutoffs (was half) | #57 / #63 | +26.8 Elo [+14.7, +39.0], accepted after 1,000 games (LLR +3.20) |
+| SEE pruning of losing captures: skip when `SEE < -50 * depth`, `depth <= 6`, non-PV, not giving check | #48 / #65 | +9.6 Elo [+4.4, +14.7], accepted after 6,000 games (LLR +5.11) |
+
+### Rejected
+
+| Change | Issue | Result | Why, and what is still untested |
+| --- | --- | --- | --- |
+| Captures-only move generation in quiescence | #35 (a) | −4.9 Elo [−17.6, +7.8], 1,000 games | Only −2% of search instructions left once (b) and (c) shipped, and it gives up exact stalemate detection at the quiescence horizon. If it returns, it returns as the capture stage of a staged picker (#43). |
+| Wider aspiration window, ±25 → ±45 cp | #54 | +2.2 Elo [−1.6, +6.0] over 12,000 games, no verdict; a 1,000-game rerun on a later `main` read −6.3 [−18.6, +6.1] | The window width is worth about 2 Elo; an adaptive window tunes the same lever. Item 11's "widen only the failing side" measured +1.6% *more* nodes at depth 13 — do not take it on faith. |
+| Singular-search multi-cut, without the extension | #60 | −5.2 Elo [−18.6, +8.1], 1,000 games; the issue's own fixed-node screen read −1.5 [−21.9, +18.8] over 450 games | Both halves negative. The singular *extension* was never played: +34% to +143% nodes at depth 13 and 17 fewer summed plies at 2 s. A retry should not trust null-move TT entries (#62). |
+| Skip quiescence TT stores that understate a proven delta bound | #61 (B) | −4.9 Elo [−17.6, +7.8], 1,000 games | Variant (A), restoring the bound into `bestScore`, cost ~3 summed plies at 1 s and was not played. Removing delta pruning outright (−4.8% nodes at depth 11) was not played either. |
+| Store null-move TT cutoffs at the depth actually searched | #62 (b) | +2.8 Elo [−9.7, +15.2], 1,000 games | +6.6% nodes at depth 16 for soundness alone. The tag-only variant (a) is a guard for #55 or a singular retry, not an Elo change. |
+| Late move reductions for captures | #48 (2) | 0.0 Elo [−12.4, +12.4], 1,000 games | Exactly flat; the SEE-pruning half of the same issue was accepted instead. |
+| Search the TT move before scoring and sorting the rest | #43, stage 1 | −6.9 Elo [−19.8, +5.9], 1,000 games | Suspected cause: the deferred scoring reads history the TT move's own subtree has already changed. The full staged picker is still open in #43. |
+| Item 5's `MoveList` copy and value-initialization fixes | #54 (aside) | Bit-identical tree; faster in only 3 of 12 interleaved pairs (median ratio 1.009) | Out-of-order execution and `rep movsb` already hide the traffic. |
